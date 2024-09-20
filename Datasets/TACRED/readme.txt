@@ -1,6 +1,8 @@
-It is a licensed dataset
+url: https://catalog.ldc.upenn.edu/LDC2018T24
 
-https://catalog.ldc.upenn.edu/LDC2018T24
+paper: https://catalog.ldc.upenn.edu/docs/LDC2018T24/zhang2017tacred.pdf
+
+It is a licensed dataset
 
 The dataset seems to be available on HF and the description is here
 https://huggingface.co/datasets/DFKI-SLT/tacred
