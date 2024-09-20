@@ -1,4 +1,4 @@
-https://cogcomp.seas.upenn.edu/page/resource_view/43
+source URL: https://cogcomp.seas.upenn.edu/page/resource_view/43
 
 col0 has the sentence id, each row is a word, the word is in col5
 col1 is the entity class label
