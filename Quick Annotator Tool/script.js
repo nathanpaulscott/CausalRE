@@ -2,11 +2,6 @@
 ///////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////
 //TO DO
-// add in function to right click in span mode and delete a span with a warning
-// add in function to right click in rel mode and delete a relation, this one needs a menu based on what relations there are and then the user chooses the one to remove or chooses the ALL option
-
-
-
 
 
 ///////////////////////////////////////////////////////////////////
