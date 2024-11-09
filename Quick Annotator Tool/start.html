@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Text Annotation Tool</title>
+</head>
+<body>
+<div id="topContainer">
+    <!-- Instructions and verious buttons will be added here by JavaScript -->
+</div>
+<!-- pop up messages -->
+<div id="NoAddRelMsg" style="display:none">
+	<strong>Relation Already Exists</strong>
+</div>
+<div id="RawInputContainer" style="margin-bottom: 10px;">
+	<div style="block">
+		<label for="fileInput">Raw Data Import</label>
+		<input type="file" id="fileInput" accept=".json">
+	</div>
+	<div style="block">
+		<label for="schemaInput">Schema Import...</label>
+		<input type="file" id="schemaInput" accept=".json">
+	</div>
+</div>
+<div id="PreAnnotatedInputContainer" style="margin-bottom: 10px;">
+	<label for="PAfileInput">PreAnnotated Data Import:</label>
+	<input type="file" id="PAfileInput" accept=".json">
+</div>
+<div id="dataContainer" style="margin-top:20px;">
+     <!-- Container for document divs -->
+</div>
+<script src="script.js"></script>
+</body>
+</html>

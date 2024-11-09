@@ -1,0 +1,38 @@
+{
+    "span_types":[
+        {
+            "name":"E_type1",
+            "color":"rgb(135,206,250)"
+        },
+        {
+            "name":"E_type2",
+            "color":"rgb(144,238,144)"
+        },
+        {
+            "name":"E_type3",
+            "color":"rgb(255,182,193)"
+        },
+        {
+            "name":"E_type4",
+            "color":"rgb(255,165,0)"
+        }
+    ],
+    "relation_types":[
+        {
+            "name":"R_type1",
+            "color": "rgb(135,206,250)"
+        },
+        {
+            "name":"R_type2",
+            "color": "rgb(144,238,144)"
+        },
+        {
+            "name":"R_type3",
+            "color": "rgb(255,182,193)"
+        },
+        {
+            "name":"R_type4",
+            "color": "rgb(255,165,0)"
+        }
+    ]
+}
