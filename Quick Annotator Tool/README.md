@@ -18,7 +18,9 @@ Just click and drag the span and selecct the type from teh menu that opos up at 
 Just left click on any annotated span and the tool will go to relation mode, the clicked span will become the head span in the relation and will have a flashing red border.  To add a relation (head, tail, type), you left click on any of the other annotated spans in that document and the tool will give you a menu to select the relation type to add, the black border aroudn the tail spans, indicates if that span is a tail span and the thickness indicates how many types it has as relations.  To remove an existing relation, you right click on an annotated span that has a black border (thickness indicating how many types it has relations for) in relation mode, the tool will give you a menu at the click point to select which relation type to remove. 
 
 ## View Results and Export
-Near the top of the screen there are 2 buttons: Export and View Results.  The export button exports the annotations to .json in a format that you can just reload later and continue annotating.  The view results button just displays the current export file in a new tab.
+Near the top of the screen there are 2 buttons: 
+- Export => The export button exports the annotations to .json in a format that you can just reload later and continue annotating.
+- View Results => The view results button just displays the current export file in a new tab.
 
 
 
