@@ -4,12 +4,16 @@
 //TO DO
 
 
+
 ///////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////
 //GLOBAL PARAMS
 //data storage vars
-let documents = [];
+let source_data = {};   //holds the dict of source data, each key is a source id and the value is the source text
+let sources = [];       //holds the source id for each doc
+let offsets = [];       //holds the offset for the doc in the source given by sources[docIndex]
+let raw_docs = [];      //holds the unannotated doc
 let spans = [];
 let relations = [];
 
@@ -21,6 +25,7 @@ let relationCounters = [];
 let activeRelation = { active: false, headElement: null, headIndex: null };
 let tool_state = 'span_mode'; // Possible values: 'span_mode', 'relation_mode'
 let mouseDownDocIndex = null;
+let input_format = 'min';
 
 //set the offset for the popup messages near the click point
 let msg_offset_x = 40;
@@ -112,8 +117,6 @@ div[id*="InputContainer"] {
 document.head.appendChild(style);
 
 
-
-
 function delete_span_styles() {
     //delets all span_style from <style>...</style>
     // Find the <style> element
@@ -171,7 +174,6 @@ function update_span_styles_from_schema() {
     // Append new styles to the style element
     styleElement.appendChild(document.createTextNode(newStyles));
 }
-
 
 
 //add the span_styles from the schema
@@ -433,12 +435,11 @@ function removeExistingMenus() {
 //IMPORT/EXPORT
 document.addEventListener('DOMContentLoaded', function() {
     const fileInput = document.getElementById('fileInput');
-    const schemaInput = document.getElementById('schemaInput');
     const preannotatedInput = document.getElementById('PAfileInput');
     const topInstructions = document.getElementById('topInstructions');
 
     fileInput.addEventListener('change', function(event) {
-        //this selects the data import .json file and loads it into the documents list and displays it on screen
+        //this selects the data import .json file and loads it into the raw_docs list and displays it on screen
         const file = event.target.files[0];
         if (!file) {
             alert("No file selected.");
@@ -447,9 +448,24 @@ document.addEventListener('DOMContentLoaded', function() {
         const reader = new FileReader();
         reader.onload = function(e) {
             try {
-                //read in the json list ot hte documents list
-                documents = JSON.parse(e.target.result);
-                //display the documents on screen
+                let temp = JSON.parse(e.target.result);
+
+                if (input_format === 'min') {
+                    raw_docs = temp.raw_docs;
+                }
+                else if (format === 'full') {
+                    //This is for the more complex input case, not used for now
+                    raw_docs = temp.raw_docs.map(x => x.raw_doc);
+                    sources = temp.raw_docs.map(x => x.source);
+                    offsets = temp.raw_docs.map(x => x.offset);
+                    source_data = temp.source_data;
+                }
+
+                schema = temp.schema;
+                //update the span_styles from the schema
+                update_span_styles_from_schema();
+
+                //display the raw_docs on screen
                 display_documents("reset");
             } catch (error) {
                 console.error("Error reading JSON: ", error);
@@ -458,31 +474,6 @@ document.addEventListener('DOMContentLoaded', function() {
         };
         reader.readAsText(file);
         fileInput.value = ''; 
-    });
-    
-    schemaInput.addEventListener('change', function(event) {
-        //this selects the schema import .json file and loads it into the associated js vars
-        const file = event.target.files[0];
-        if (!file) {
-            alert("No file selected.");
-            return;
-        }
-        const reader = new FileReader();
-        reader.onload = function(e) {
-            try {
-                //read in the json list to the schema object
-                let temp = JSON.parse(e.target.result);
-                //did not get an error, so update schema
-                schema = temp;
-                //update the span_styles from the schema
-                update_span_styles_from_schema();
-            } catch (error) {
-                console.error("Error reading JSON: ", error);
-                alert("Failed to load JSON file. Please ensure the file is correctly formatted.");
-            }
-        };
-        reader.readAsText(file);
-        schemaInput.value = ''; 
     });
     
     preannotatedInput.addEventListener('change', function(event) {
@@ -498,17 +489,28 @@ document.addEventListener('DOMContentLoaded', function() {
             try {
                 //read in the json list to the schema object
                 let temp = JSON.parse(e.target.result);
-                //did not get an error, so update vars
-                schema = temp["schema"];
+
+                if (input_format === 'min') {
+                    raw_docs = temp.raw_docs;
+                }
+                else if (format === 'full') {
+                    //This is for the more complex input case, not used for now
+                    raw_docs = temp.raw_docs.map(x => x.raw_doc);
+                    sources = temp.raw_docs.map(x => x.source);
+                    offsets = temp.raw_docs.map(x => x.offset);
+                    source_data = temp.source_data;
+                }
+
+                spans = temp.spans;
+                relations = temp.relations;
+                schema = temp.schema;
                 //update the span_styles from the schema
                 update_span_styles_from_schema();
-                //update the documents, spans and relations vars
-                documents = temp["raw_data"];
-                spans = temp["spans"];
-                relations = temp["relations"];
+    
                 //fill out the counters
-                counters = spans.map(innerList => innerList.length + 1);
-                relationCounters = relations.map(innerList => innerList.length + 1);
+                counters = spans.map(x => x.length + 1);
+                relationCounters = relations.map(x => x.length + 1);
+    
                 //display docs with annotations
                 display_documents("load");
             } catch (error) {
@@ -525,12 +527,12 @@ document.addEventListener('DOMContentLoaded', function() {
 
     const exportButton = document.createElement('button');
     exportButton.textContent = 'Export Data';
-    exportButton.onclick = saveAnnotations;
+    exportButton.onclick = function() {export_data("export");};
     buttonsContainer.appendChild(exportButton);
 
     const viewResultsButton = document.createElement('button');
     viewResultsButton.textContent = 'View Results';
-    viewResultsButton.onclick = viewAnnotations;
+    viewResultsButton.onclick = function() {export_data("view");};
     buttonsContainer.appendChild(viewResultsButton);
 
     //add the topContainer to the topInstructions div
@@ -540,7 +542,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
 
 function display_documents(option) {
-    //this function loads in the documents to the browser and loads the annotations if otpion is "load", otherwise it resets the annotations if option is "reset"
+    //this function loads in the raw_docs to the browser and loads the annotations if otpion is "load", otherwise it resets the annotations if option is "reset"
 
     //this builds the div for each doc and displays it on the browser
     const container = document.getElementById('dataContainer');
@@ -548,11 +550,13 @@ function display_documents(option) {
     //clear any existing contents
     container.innerHTML = '';
     
-    //create new contents from documents
-    documents.forEach((text, index) => {
+    //create new contents from raw_docs
+    raw_docs.forEach((text, index) => {
         //make the header element for the doc
-        const header = document.createElement('h4');
-        header.textContent = `doc${index}`;
+        const header = document.createElement('div');
+        header.textContent = `id: doc${index}`;
+        header.style.fontWeight = 'bold';
+        header.style.fontSize = '12px';
         container.appendChild(header);
 
         //make the div to hold the document and fill it
@@ -608,54 +612,38 @@ function display_documents(option) {
 }
 
 
-function viewAnnotations() {
+function export_data(option) {
+    //option is either "view" or "export"
     //function to view the annotation data in a separate tab
-    let annotated_data = [];
-    documents.forEach((_, index) => {
+    let annotated_docs = [];
+    raw_docs.forEach((_, index) => {
         const docDiv = document.getElementById(`doc${index}`);
         //annotated_data.push(docDiv.innerHTML);
-        converted_text = convertInnerHTML(docDiv, "view");
-        annotated_data.push(converted_text);
+        converted_text = convertInnerHTML(docDiv, option);
+        annotated_docs.push(converted_text);
     });
 
-    const view_data = {
-        raw_data: documents,
-        annotated_data: annotated_data,
+    const out_data = {
+        raw_docs: raw_docs,
+        annotated_docs: annotated_docs,
         spans: spans,
         relations: relations,
         schema: schema
     };
 
-    const newWindow = window.open("", "_blank");
-    newWindow.document.write(`<pre>${JSON.stringify(view_data, null, 4)}</pre>`);
+    if (option === "view") {
+        const newWindow = window.open("", "_blank");
+        newWindow.document.write(`<pre>${JSON.stringify(out_data, null, 4)}</pre>`);
+    }
+    else if (option === "export") {
+        const jsonBlob = new Blob([JSON.stringify(out_data, null, 4)], {type: 'application/json'});
+        const jsonLink = document.createElement('a');
+        jsonLink.download = generateTimestampedFilename('annotated_docs', 'json');
+        jsonLink.href = URL.createObjectURL(jsonBlob);
+        jsonLink.click();
+    }
 }
 
-
-
-function saveAnnotations() {
-    //function to export the annotation data to a .json file
-    let annotated_data = [];
-    documents.forEach((_, index) => {
-        const docDiv = document.getElementById(`doc${index}`);
-        //annotated_data.push(docDiv.innerHTML);
-        converted_text = convertInnerHTML(docDiv, "export");
-        annotated_data.push(converted_text);
-    });
-
-    const export_data = {
-        raw_data: documents,
-        annotated_data: annotated_data,
-        spans: spans,
-        relations: relations,
-        schema: schema
-    };
-
-    const jsonBlob = new Blob([JSON.stringify(export_data, null, 4)], {type: 'application/json'});
-    const jsonLink = document.createElement('a');
-    jsonLink.download = generateTimestampedFilename('annotated_docs', 'json');
-    jsonLink.href = URL.createObjectURL(jsonBlob);
-    jsonLink.click();
-}
 
 
 //utility function to add a timestampt to a filename
