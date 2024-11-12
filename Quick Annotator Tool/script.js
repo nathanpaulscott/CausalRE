@@ -17,15 +17,15 @@ let raw_docs = [];      //holds the unannotated doc
 let spans = [];
 let relations = [];
 
-//counters
-let counters = [];
-let relationCounters = [];
-
 //control vars
-let activeRelation = { active: false, headElement: null, headIndex: null };
+let active_span = {
+    Element:    null, 
+    Index:      null
+};
 let tool_state = 'span_mode'; // Possible values: 'span_mode', 'relation_mode'
 let mouseDownDocIndex = null;
 let input_format = 'min';
+let instructions = add_instructions();
 
 //set the offset for the popup messages near the click point
 let msg_offset_x = 40;
@@ -79,22 +79,35 @@ schema = {
 // Inject CSS for flashing border animation
 const style = document.createElement('style');
 style.innerHTML = `
-@keyframes flashing-border {
+@keyframes red-flashing-border {
     0% { border-color: transparent; }
     50% { border-color: red; }
     100% { border-color: transparent; }
 }
-
-.flashing-border {
+.red-flashing-border {
     border: 4px dashed red;
-    animation: flashing-border 0.5s linear infinite; /* Flashes 2x per second */
+    animation: red-flashing-border 0.5s linear infinite; /* Flashes 2x per second */
 }
 
+@keyframes black-flashing-border {
+    0% { border-color: transparent; }
+    50% { border-color: black; }
+    100% { border-color: transparent; }
+}
+.black-flashing-border {
+    border: 4px dashed black;
+    animation: black-flashing-border 0.5s linear infinite; /* Flashes 2x per second */
+}
 
-.tail-border-1 { border: 2px dashed black; }
-.tail-border-2 { border: 4px dashed black; }
-.tail-border-3 { border: 6px dashed black; }
-.tail-border-4 { border: 8px dashed black; }
+.tail-border-1 { border: 3px dashed black; }
+.tail-border-2 { border: 5px dashed black; }
+.tail-border-3 { border: 7px dashed black; }
+.tail-border-4 { border: 9px dashed black; }
+
+.head-border-1 { border: 3px dashed red; }
+.head-border-2 { border: 5px dashed red; }
+.head-border-3 { border: 7px dashed red; }
+.head-border-4 { border: 9px dashed red; }
 
 #current_mode {
    color: red;
@@ -103,7 +116,7 @@ style.innerHTML = `
 }
 
 /* Adjust body padding to accommodate instruction div */
-body { padding-top: 150px; }
+body { padding-top: 30px; }
 
 
 div[id*="InputContainer"] {
@@ -154,6 +167,51 @@ function delete_span_styles() {
 }
 
 
+function add_instructions() {
+    const instructions = document.createElement('div');
+    instructions.id = 'topInstructions';
+    instructions.style.position = 'fixed';
+    instructions.style.top = '0';
+    instructions.style.width = '100%';
+    instructions.style.backgroundColor = '#f9f9f9';
+    instructions.style.padding = '10px';
+    instructions.style.textAlign = 'left';
+    instructions.style.fontSize = '14px';
+    instructions.style.fontFamily = 'Arial, sans-serif';
+    instructions.style.borderBottom = '1px solid #ddd';
+    instructions.style.zIndex = '1000';
+    instructions.style.maxHeight = '30px'; // Initially collapsed
+    instructions.style.overflow = 'hidden';
+    instructions.style.cursor = 'pointer'; // Indicate hover effect
+    instructions.style.transition = 'max-height 0.3s ease-in-out';
+
+    instructions.innerHTML = `
+        <div id="instructions-header"><strong>INSTRUCTIONS</strong></div>
+        <div id="instructions-content" style="display: none;">
+            <br>
+            <strong>Span Mode:</strong><br>
+            - <strong>Click and drag</strong> to select spans of text to annotate.<br>
+            - <strong>RightClick</strong> on any annotated span to remove that span.<br>
+            <strong>Relation Mode:</strong><br>
+            - <strong>ctrl-click</strong> on any span to move to relation mode (selected span as head) and see the selected span's tail spans.<br>
+            - <strong>LeftClick</strong> on any span to add the relation with it as tail.<br>
+            - <strong>RightClick</strong> on any highlighted tail span to remove the relation to it.<br>
+            <strong>Reverse Relation Mode:</strong><br>
+            - <strong>shift-click</strong> on any span to move to reverse relation mode (selected span as tail) and see the selected span's head spans.<br>
+            - <strong>LeftClick</strong> on any span to add the relation with it as head.<br>
+            - <strong>RightClick</strong> on any highlighted head span to remove the relation to it.<br>
+            <strong>Go Back to Span Mode:</strong><br>
+            - Press <strong>ESC</strong> or <strong>shift-click</strong> or <strong>ctrl-click</strong> on a non-span to go back to Span Mode.<br>
+        </div>
+    `;
+
+    const topContainer = document.getElementById('topContainer');
+    // Append the instructions div to 'topContainer'
+    topContainer.appendChild(instructions);
+    
+    return instructions
+}
+
 
 //update the span styles from the schema
 function update_span_styles_from_schema() {
@@ -176,48 +234,110 @@ function update_span_styles_from_schema() {
 }
 
 
+function add_export_and_view_results_buttons() {
+    //add the export and view results buttons
+    const buttonsContainer = document.createElement('div');
+
+    const statediv = document.createElement('div');
+    statediv.style.padding = '10px';
+    statediv.style.textAlign = 'left';
+    statediv.style.fontSize = '14px';
+    statediv.style.fontFamily = 'Arial, sans-serif';
+    statediv.style.zIndex = '1000';
+    statediv.innerHTML = '<strong>Current Mode:</strong> <span id="current_mode">span_mode</span>';
+    buttonsContainer.appendChild(statediv);
+
+    const exportButton = document.createElement('button');
+    exportButton.textContent = 'Export Data';
+    exportButton.onclick = function() {export_data("export");};
+    exportButton.style.marginLeft = '10px';
+    buttonsContainer.appendChild(exportButton);
+
+    const viewResultsButton = document.createElement('button');
+    viewResultsButton.textContent = 'View Results';
+    viewResultsButton.onclick = function() {export_data("view");};
+    viewResultsButton.style.marginLeft = '10px';
+    buttonsContainer.appendChild(viewResultsButton);
+
+    //add the topContainer to the topInstructions div
+    topContainer.appendChild(buttonsContainer);
+}
+
+function add_tooltip_info() {
+    // Create a tooltip element and add it to the document
+    const tooltip = document.createElement('div');
+    tooltip.id = 'tooltip_info';
+    tooltip.style.position = 'absolute';
+    tooltip.style.backgroundColor = '#333';
+    tooltip.style.color = '#fff';
+    tooltip.style.padding = '5px';
+    tooltip.style.borderRadius = '5px';
+    tooltip.style.fontSize = '12px';
+    tooltip.style.display = 'none';
+    tooltip.style.zIndex = '1000';
+
+    //const container = document.getElementById('RawInputContainer');
+    //container.insertAdjacentElement('beforestart', tooltip);
+    const container = document.getElementById('RawInputContainer');
+    container.parentNode.insertBefore(tooltip, container);
+    
+    return tooltip
+}
+
+
+function add_tooltip_caution() {
+    // Create a tooltip element and add it to the document
+    const tooltip = document.createElement('div');
+    tooltip.id = 'tooltip_caution';
+    tooltip.style.position = 'absolute';
+    tooltip.style.backgroundColor = 'white'; // White text
+    tooltip.style.color = 'red'; // Red text
+    tooltip.style.padding = '5px';
+    tooltip.style.borderRadius = '5px';
+    tooltip.style.display = 'none';
+    tooltip.style.zIndex = '1500';
+    tooltip.style.fontWeight = 'bold';
+    tooltip.style.fontSize = '14px';
+
+    const container = document.getElementById('RawInputContainer');
+    container.parentNode.insertBefore(tooltip, container);
+
+    return tooltip
+}
+
+
 //add the span_styles from the schema
 update_span_styles_from_schema();
-
-
-
-// Create and style instruction and buttons text at the top of the screen
-const instructions = document.createElement('div');
-instructions.id = 'topInstructions'; // Set the ID to 'topInstructions'
-instructions.style.position = 'fixed';
-instructions.style.top = '0';
-instructions.style.width = '100%';
-instructions.style.backgroundColor = '#f9f9f9';
-instructions.style.padding = '10px';
-instructions.style.textAlign = 'left';
-instructions.style.fontSize = '14px';
-instructions.style.fontFamily = 'Arial, sans-serif';
-instructions.style.borderBottom = '1px solid #ddd';
-instructions.style.zIndex = '1000';
-
-instructions.innerHTML = `
-    <strong>INSTRUCTIONS</strong><br>
-    <strong>Span Mode:</strong> Click and drag to select spans of text to annotate.<br>
-    Click on annotated spans to select a head span and enter Relation Mode.<br>
-    <strong>Relation Mode:</strong> Click on tail spans to add that relation.<br>
-    Press <strong>ESC</strong> to go back to Span Mode.<br>
-    <strong>Current Mode:</strong> <span id=current_mode>span_mode</span>
-`;
-
-const topContainer = document.getElementById('topContainer');
-// Append the instructions div to 'topContainer'
-topContainer.appendChild(instructions);
+//add the export and view results buttons
+add_export_and_view_results_buttons();
+//add the tooltip info div
+const tooltip_info = add_tooltip_info();
+//add the no add relation tooltip
+const tooltip_caution = add_tooltip_caution();
 
 
 ///////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////
 //LISTENERS AND GLOBAL FUNCTIONS
+// Add hover behavior to show/hide instructions
+document.getElementById('topInstructions').addEventListener('mouseenter', () => {
+    instructions.style.maxHeight = '300px';
+    document.getElementById('instructions-content').style.display = 'block';
+});
+
+document.getElementById('topInstructions').addEventListener('mouseleave', () => {
+    instructions.style.maxHeight = '30px';
+    document.getElementById('instructions-content').style.display = 'none';
+});
+
+
 //right click listener
 document.getElementById('dataContainer').addEventListener('contextmenu', function(event) {
     // Prevent the default context menu from appearing
     event.preventDefault();
     
+    //get target
     const target = event.target;
 
     //close other open menus if we did not click on them
@@ -233,25 +353,19 @@ document.getElementById('dataContainer').addEventListener('contextmenu', functio
     docIndex = parseInt(docDiv.id.replace('doc', ''));
     
     // check if the user clicked on an unannotated span, do nothing if so
-    if (target.getAttribute('type') === "unannotated") {
-        return;
-    }
+    if (target.getAttribute('type') === "unannotated") return;
 
     //these are the processing cases.....
     //here the clicked span type is "annotated" and we are in span_mode so remove it
-    if (tool_state === 'span_mode') {
-        //Delete this span from spans and relations
-        remove_span_handler(event, docIndex);
-    }
+    if (tool_state === 'span_mode') 
+        edit_span_handler(event, docIndex, null, "rmv");
     
     //here the clicked span type is "annotated" and we are in relation_mode, so check if it is a tail span and remove it if so
     else {  
         const spanId = target.getAttribute('span-id');
         //process relation if the clicked span is not the head and is in the same document
-        if (docIndex === activeRelation.headIndex && spanId !== activeRelation.headElement.getAttribute('span-id')) {
-            remove_relation_handler(event, docIndex);
-        }
-        //console.log('processing candidate tail span');
+        if (docIndex === active_span.Index && spanId !== active_span.Element.getAttribute('span-id'))
+            edit_relation_handler(event, docIndex, 'rmv');
     }
 });
 
@@ -260,67 +374,86 @@ document.getElementById('dataContainer').addEventListener('contextmenu', functio
 
 //left click listener to handle span interactions and menu management
 document.getElementById('dataContainer').addEventListener('click', function(event) {
-    //console.log('Left-click detected at:', event.clientX, event.clientY);
-    //Ignore non-primary clicks (right-clicks, etc.)
-    //if (event.button !== 0) {console.log('ignore right click');return;}
+    // Disable default Ctrl+Click and Shift+Click behaviors
+    if (event.ctrlKey || event.shiftKey) {
+        event.preventDefault(); // Prevent the default browser action
+        event.stopPropagation(); // Stop the event from propagating further
+    }
     
-    const target = event.target;
+    //Determine the click type
+    let ctrl_left_click = event.button === 0 && event.ctrlKey && !event.shiftKey;
+    let shift_left_click = event.button === 0 && event.shiftKey && !event.ctrlKey;
+    let left_click = event.button === 0 && !(event.ctrlKey || event.shiftKey);
+    let ctrl_shift_left_click = event.button === 0 && event.ctrlKey && event.shiftKey;
 
+    // Ignore Ctrl+Shift+Click, treat it as a normal left-click
+    if (ctrl_shift_left_click) {
+       ctrl_left_click = false;
+       shift_left_click = false;
+    }   
+
+    //console.log('Left-click detected at:', event.clientX, event.clientY);
+    const target = event.target;
     //close other open menus if we did not click on them
     close_other_menus(target);
-
-    //check we clicked on a span
+    
+    //check we clicked on a span tag and it was not span that had type as unannotated, exit if so
+    //if (!target || target.tagName !== "SPAN" || target.getAttribute('type')  === "unannotated") return;
     if (!target || target.tagName !== "SPAN") return;
-    
-    //check the parent div is an editable div
-    docDiv = get_parent_div_for_mouse_event(target);
+    //check the parent div is a docDiv, if not exit
+    let docDiv = get_parent_div_for_mouse_event(target);
     if (!docDiv) return;
-    //all good so get the docDiv object and extract the docIndex
-    docIndex = parseInt(docDiv.id.replace('doc', ''));
+    //all good so extract the docIndex
+    let docIndex = parseInt(docDiv.id.replace('doc', ''));
     
-    // check if the user clicked on an unannotated span, do nothing if so
-    if (target.getAttribute('type') === "unannotated") {
-        return;
-    }
-
     //these are the processing cases.....
-    //here the clicked span type is "annotated" so process it
-    if (tool_state === 'span_mode') {
-        // Enter relation mode and set the clicked span as the head
-        const clickedSpan = target;
-        const spanId = clickedSpan.getAttribute('span-id');
-        enterRelationMode(clickedSpan, docIndex);
-        //console.log('selecting head span, going to rel mode');
-    }
-    
-    //we are already in rel mode with a selected head span
-    else {  
-        const clickedSpan = target;
-        const spanId = clickedSpan.getAttribute('span-id');
-        //process relation if the clicked span is not the head and is in the same document
-        if (docIndex === activeRelation.headIndex && spanId !== activeRelation.headElement.getAttribute('span-id')) {
-            add_relation_handler(event, docIndex);
+    if ((ctrl_left_click || shift_left_click) && target.getAttribute('type') === "unannotated") 
+        exit_relation_mode();
+    //ctrl left click, so enter relation mode from whatever state we are in
+    else if (ctrl_left_click) 
+        enter_relation_mode(target, docIndex, 'relation_mode');
+    //shift left click, so enter reverse relation mode from whatever state we are in
+    else if (shift_left_click) 
+        enter_relation_mode(target, docIndex, 'rev_relation_mode');
+    //if plain left click do nothing in span mode, add relation in any of the relation modes
+    else if (left_click) {
+        //if in span_mode enter relation mode on plain left click
+        if (tool_state === 'span_mode') return;
+        //if already in any of the relation modes, process add the selected span as a relation to add
+        else if (tool_state !== 'span_mode' && target.getAttribute('type') !== "unannotated") {
+            const spanId = target.getAttribute('span-id');
+            //check that the clicked span was not the same as the active_span span and is in the same docDiv, if not exit
+            if (docIndex !== active_span.Index || spanId === active_span.Element.getAttribute('span-id')) return;
+            //all good, we clicked on an acceptable candidate span in the same docDiv, so process the add relation
+            edit_relation_handler(event, docIndex, 'add');
+            //console.log('processing candidate head/tail span');
         }
-        //console.log('processing candidate tail span');
     }
 });
 
 
 
+//add the exit all relation modes on esc button press event
+document.addEventListener('keydown', function(event) {
+    if (event.key === 'Escape' && (tool_state === 'relation_mode' || tool_state === 'rev_relation_mode')) 
+        exit_relation_mode();
+});
+
+
 
 document.getElementById('dataContainer').addEventListener('mousedown', function(event) {
+    // Disable default Ctrl+Click and Shift+Click behaviors
+    if (event.ctrlKey || event.shiftKey) {
+        event.preventDefault(); // Prevent the default browser action
+        event.stopPropagation(); // Stop the event from propagating further
+    }
+
     let target = event.target;
     
     // Check if the tool state is span_mode
-    if (tool_state !== "span_mode") {
-        //console.log('mousedown only used in span_mode');
-        return;
-    }
+    if (tool_state !== "span_mode") return;
     // Check if the event is happening in a span and it is of type "unannotated"
-    if (target.tagName !== "SPAN" || target.getAttribute('type') !== "unannotated") {
-        //console.log('did not click on a valid area to capture mousedown, must be an unannotated span');
-        return;
-    }
+    if (target.tagName !== "SPAN" || target.getAttribute('type') !== "unannotated") return;
     //check if the parent div is valid
     let docDiv = get_parent_div_for_mouse_event(target);
     if (!docDiv) return;
@@ -341,15 +474,9 @@ document.getElementById('dataContainer').addEventListener('mouseup', function(ev
     let target = event.target;
     
     // Check if the tool state is span_mode
-    if (tool_state !== "span_mode") {
-        //console.log('mouseup only used in span_mode');
-        return;
-    }
+    if (tool_state !== "span_mode") return;
     // Check if the event is happening in a span and it is of type "unannotated"
-    if (target.tagName !== "SPAN" || target.getAttribute('type') !== "unannotated") {
-        //console.log('did not click on a valid area to capture a mouseup, must be an unannotated span');
-        return;
-    }
+    if (target.tagName !== "SPAN" || target.getAttribute('type') !== "unannotated") return;
     //check if the parent div is valid
     let docDiv = get_parent_div_for_mouse_event(target);
     if (!docDiv) return;
@@ -358,48 +485,83 @@ document.getElementById('dataContainer').addEventListener('mouseup', function(ev
     let docIndex = parseInt(docDiv.id.replace('doc', ''));
     
     //check if mousedown and mouseup are in the same document and if the selection represents an actual drag (non-zero length)
-    if (capturedMouseDownDocIndex !== docIndex) {
-        //console.log('got an invalid seleciton as mouseup was in a different doc');
-        return;
-    }
+    if (capturedMouseDownDocIndex !== docIndex) return;
 
     //got an aceptable mouseup, so process it
     setTimeout(() => {
         const selection = window.getSelection();
         // Check if the selection range has more than zero length (implies dragging)
-        if (selection.isCollapsed || selection.toString().length == 0) {
-            //console.log('selected a zero span');
-            return;
-        }
+        if (selection.isCollapsed || selection.toString().length == 0) return;
         
         //got a click and drag so get the range and span of text
         const range = selection.getRangeAt(0);
         
         //check that the mousedown and up where in the same unannotated span tag, if not do not process as they would be overlapping spans
-    if (range.startContainer !== range.endContainer) {
-        //console.log('got an overlapping selection!!!!');
-        return;
-    } 
-    
-    //got to here so all good, now annotate the span
-    add_span_handler(event, docIndex, range);
-    }, 50);
+        if (range.startContainer !== range.endContainer) return;
+        
+        //got to here so all good, now annotate the span
+        edit_span_handler(event, docIndex, range, "add");
+    }, 50);    //50ms timeout
+});
+
+
+
+document.getElementById('dataContainer').addEventListener('mouseover', function(event) {
+    const target = event.target;
+
+    // Check if the hovered element is an annotated span
+    if (target.tagName === 'SPAN' && target.getAttribute('type') === 'annotated') {
+        const spanId = target.getAttribute('span-id');
+        // Display the tooltip with the content
+        tooltip_info.textContent = spanId;
+        tooltip_info.style.display = 'block';
+        // Position the tooltip near the mouse cursor
+        tooltip_info.style.left = `${event.clientX + window.scrollX - msg_offset_x}px`;
+        tooltip_info.style.top = `${event.clientY + window.scrollY + msg_offset_y}px`;
+    }
+});
+
+
+document.getElementById('dataContainer').addEventListener('mousemove', function(event) {
+    // Move the tooltip along with the mouse
+    if (tooltip_info.style.display === 'block') {
+        tooltip_info.style.left = `${event.clientX + window.scrollX - msg_offset_x}px`;
+        tooltip_info.style.top = `${event.clientY + window.scrollY + msg_offset_y}px`;
+    }
+});
+
+
+document.getElementById('dataContainer').addEventListener('mouseout', function(event) {
+    const target = event.target;
+    // Hide the tooltip when the mouse leaves an annotated span
+    if (target.tagName === 'SPAN' && target.getAttribute('type') === 'annotated') {
+        tooltip_info.style.display = 'none';
+    }
 });
 
 
 
 //utility to close all open menus if the target is not within it
 function close_other_menus(target) {
-    const openMenus = document.querySelectorAll('div[style*="position: absolute"]');
+    //const openMenus = document.querySelectorAll('div[style*="position: absolute"]');
+    const existingMenus = document.querySelectorAll('div[id="menu"]');
     // Close any open menu if clicked outside of it
-    if (openMenus.length > 0) {
-        openMenus.forEach(menu => {
+    if (existingMenus.length > 0) {
+        existingMenus.forEach(menu => {
             if (!menu.contains(target)) {
                 document.body.removeChild(menu);
             }
         });
     }
 }
+
+
+// Utility function to remove existing menus
+function removeExistingMenus() {
+    const existingMenus = document.querySelectorAll('div[id="menu"]');
+    existingMenus.forEach(menu => menu.parentNode.removeChild(menu));
+}
+
 
 
 
@@ -412,22 +574,6 @@ function get_parent_div_for_mouse_event(target) {
     //got to here so passed the check
     return docDiv;
 }
-
-
-//add the exit relation mode on esc button press event
-document.addEventListener('keydown', function(event) {
-    if (event.key === 'Escape' && tool_state === 'relation_mode') {
-        exitRelationMode();
-    }
-});
-
-
-// Utility function to remove existing menus
-function removeExistingMenus() {
-    const existingMenus = document.querySelectorAll('div[style*="position: absolute"]');
-    existingMenus.forEach(menu => menu.parentNode.removeChild(menu));
-}
-
 
 ///////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////
@@ -507,10 +653,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 //update the span_styles from the schema
                 update_span_styles_from_schema();
     
-                //fill out the counters
-                counters = spans.map(x => x.length + 1);
-                relationCounters = relations.map(x => x.length + 1);
-    
                 //display docs with annotations
                 display_documents("load");
             } catch (error) {
@@ -521,24 +663,7 @@ document.addEventListener('DOMContentLoaded', function() {
         reader.readAsText(file);
         preannotatedInput.value = ''; 
     });
-
-    //add the export and view results buttons
-    const buttonsContainer = document.createElement('div');
-
-    const exportButton = document.createElement('button');
-    exportButton.textContent = 'Export Data';
-    exportButton.onclick = function() {export_data("export");};
-    buttonsContainer.appendChild(exportButton);
-
-    const viewResultsButton = document.createElement('button');
-    viewResultsButton.textContent = 'View Results';
-    viewResultsButton.onclick = function() {export_data("view");};
-    buttonsContainer.appendChild(viewResultsButton);
-
-    //add the topContainer to the topInstructions div
-    topInstructions.appendChild(buttonsContainer);
 });
-
 
 
 function display_documents(option) {
@@ -573,10 +698,8 @@ function display_documents(option) {
             //reset vars
             spans[index] = [];
             relations[index] = [];
-            counters[index] = 1;
-            relationCounters[index] = 1;
 
-            //add the text tot eh docdiv
+            //add the text to the docdiv
             docDiv.innerHTML = `<span type="unannotated">${text}</span>`;
         }
         else if (option ==="load") {
@@ -692,23 +815,15 @@ function convertInnerHTML(div, type) {
 ///////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////
 //SPANS
-function add_span_handler(event, docIndex, range) {
+function edit_span_handler(event, docIndex, range, action) {
     //make give the span type menu
-    const menu = createSpanTypeMenu(event, docIndex, range, "add");
-    document.body.appendChild(menu);
+    show_span_menu(event, docIndex, range, action);
 }
 
 
-function remove_span_handler(event, docIndex) {
-    //make the span type menu
-    const menu = createSpanTypeMenu(event, docIndex, null, "rmv");
-    document.body.appendChild(menu);
-}
-
-
-
-function createSpanTypeMenu(event, docIndex, range, action) {
+function show_span_menu(event, docIndex, range, action) {
     const menu = document.createElement('div');
+    menu.id = 'menu';
     menu.style.position = 'absolute';
     menu.style.left = `${event.clientX + window.scrollX}px`;
     menu.style.top = `${event.clientY + window.scrollY}px`;
@@ -722,7 +837,10 @@ function createSpanTypeMenu(event, docIndex, range, action) {
             const item = document.createElement('div');
             item.textContent = `Annotate as ${type["name"]}`;
             item.style.backgroundColor = type["color"];
-            item.onclick = () => add_span(docIndex, type["name"], type["color"], range, menu);
+            item.onclick = () => {
+                add_span(docIndex, type["name"], type["color"], range);
+                document.body.removeChild(menu); // Close menu after selection
+            }
             menu.appendChild(item);
         });
     }
@@ -734,15 +852,37 @@ function createSpanTypeMenu(event, docIndex, range, action) {
         item.style.fontWeight = 'bold';
         item.style.fontSize = '14px';
         //add the click listener
-        item.onclick = () => remove_span(target_span, docIndex, menu);
+        item.onclick = () => {
+            remove_span(target_span, docIndex);
+            document.body.removeChild(menu); // Close menu after selection
+        }
         menu.appendChild(item);
     }
-    return menu;
+    document.body.appendChild(menu);
 }
 
 
-function add_span(docIndex, type, color, range, menu) {
-    const spanId = `E${counters[docIndex]++}`;
+function get_next_span_id(docIndex) {
+    //find the highest id number and add 1
+    let max_id = 0;
+    spans[docIndex].forEach(span => {
+        const match = span.id.match(/^E\d+_(\d+)$/);
+        if (match) {
+            // Extract the value of x as an integer
+            const id = parseInt(match[1], 10);
+            if (!isNaN(id) && id > max_id)
+                max_id = id;
+        }
+    });
+
+    // Generate the next available ID by incrementing the highest found x
+    return `E${docIndex}_${max_id + 1}`;
+}
+
+
+
+function add_span(docIndex, type, color, range) {
+    const spanId = get_next_span_id(docIndex);
 
     //range.startContainer is the text node, its parent is the span holding it, we will split this parent span
     //NOTE: we have already checked that .startContainer and .endContainer are the same as we are not handling overlap selections
@@ -799,18 +939,10 @@ function add_span(docIndex, type, color, range, menu) {
         end: absoluteEndIndex,
         span: selectedText,
     });
-
-
-    // Clean up the menu if it's part of the DOM
-    if (menu && menu.parentNode) {
-        menu.parentNode.removeChild(menu);
-    }
 }
 
 
-
-
-function remove_span(target_span, docIndex, menu) {
+function remove_span(target_span, docIndex) {
     //this removes the chosen span from the spans[docIndex] list and the relations[docIndex] list
     const docDiv = document.querySelector(`#dataContainer #doc${docIndex}`);
     const span_id = target_span.getAttribute('span-id');
@@ -839,80 +971,48 @@ function remove_span(target_span, docIndex, menu) {
         } 
         else i++; // Move to the next pair only if no merge happened
     }
-
-    // Clean up the menu if it's part of the DOM
-    if (menu && menu.parentNode) {
-        menu.parentNode.removeChild(menu);
-    }
 }    
 
 ///////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////
 //RELATIONS
-function enterRelationMode(span, docIndex) {
-    //remove head span border if it is there already for some reason
-    if (tool_state === 'relation_mode' && activeRelation.headElement) {
-        //activeRelation.headElement.style.border = '';
-        activeRelation.headElement.classList.remove('flashing-border');
-    }
-    
-    //add the head span border
-    span.classList.add('flashing-border');
-    activeRelation = { active: true, headElement: span, headIndex: docIndex };
-    tool_state = 'relation_mode';
-    
+function enter_relation_mode(span, docIndex, mode) {
+    //remove all span styles
+    remove_span_styles();
+    //set the active_span
+    active_span = {Element: span, Index: docIndex};
+    //set the tool state
+    tool_state = mode;
     // Update the current mode display
     document.getElementById('current_mode').innerText = tool_state;
-
-    // Update the tail span borders from the relations list
-    update_tail_span_styles(span, docIndex, 'enter');
+    // Update all the span border styles, will use tool_state to determine exact action
+    update_span_styles_on_entry(span, docIndex);
 }
 
 
-function exitRelationMode() {
-    //remove head span border style
-    if (activeRelation.headElement) {
-        activeRelation.headElement.classList.remove('flashing-border');
-    }
-    
-    //remove all tail span border styles
-    remove_tail_span_styles();
-
-    //reset the activeRelation object
-    activeRelation = { active: false, headElement: null, headIndex: null };
-
+function exit_relation_mode() {
+    //remove all span styles on exit
+    remove_span_styles();
+    //reset the active_span object
+    active_span = {Element: null, Index: null};
     // Update the tool_state and current mode display
     tool_state = 'span_mode';
     document.getElementById('current_mode').innerText = tool_state;
 }
 
 
-
-function add_relation_handler(event, docIndex) {
-    const tailId = event.target.getAttribute('span-id');
-    const headId = activeRelation.headElement.getAttribute('span-id');
-    showRelationTypeMenu(event, docIndex, headId, tailId, "add");
+function edit_relation_handler(event, docIndex, action) {
+    let tailId = event.target.getAttribute('span-id');
+    let headId = active_span.Element.getAttribute('span-id');
+    if (tool_state === 'rev_relation_mode') [headId, tailId] = [tailId, headId];   //swap head and tail
+    show_relation_menu(event, docIndex, headId, tailId, action);
 }
 
 
-
-function remove_relation_handler(event, docIndex) {
-    const tailId = event.target.getAttribute('span-id');
-    const headId = activeRelation.headElement.getAttribute('span-id');
-    showRelationTypeMenu(event, docIndex, headId, tailId, "rmv");
-}
-
-
-
-//check that a candidate relation has not already been added
-function relationAlreadyExists(docIndex, headId, tailId, type) {
-    return relations[docIndex].some(rel => rel.head === headId && rel.tail === tailId && rel.type === type);
-}
-
-
-function showRelationTypeMenu(event, docIndex, headId, tailId, action) {
+function show_relation_menu(event, docIndex, headId, tailId, action) {
     const menu = document.createElement('div');
+    menu.id = 'menu';
     menu.style.position = 'absolute';
     menu.style.left = `${event.clientX + window.scrollX}px`;
     menu.style.top = `${event.clientY + window.scrollY}px`;
@@ -934,17 +1034,20 @@ function showRelationTypeMenu(event, docIndex, headId, tailId, action) {
     }
 
     // Create menu items for filtered relation types
+    if (relationTypes.length === 0) return;
+
     relationTypes.forEach((type) => {
         const relItem = document.createElement('div');
-        relItem.textContent = action === "add" ? `Relate as ${type.name}` : `Remove relation: ${type.name}`;
+        if (action === 'add')       relItem.textContent = `Add relation: ${type.name}`;
+        else if (action === 'rmv')  relItem.textContent = `Rmv relation: ${type.name}`;
         relItem.style.backgroundColor = type.color;
 
         relItem.onclick = () => {
             if (action === "add") {
-                if (!relationAlreadyExists(docIndex, headId, tailId, type.name)) {
+                if (!relation_already_exists(docIndex, headId, tailId, type.name)) {
                     add_relation(docIndex, headId, tailId, type.name, type.color);
                 } else {
-                    show_relation_already_exists_msg(event.clientX + msg_offset_x, event.clientY + msg_offset_y);
+                    show_relation_already_exists_msg(event.clientX + window.scrollX + msg_offset_x, event.clientY + window.scrollY + msg_offset_y);
                 }
             } 
             else if (action === "rmv") {
@@ -959,8 +1062,14 @@ function showRelationTypeMenu(event, docIndex, headId, tailId, action) {
 
 
 
+//check that a candidate relation has not already been added
+function relation_already_exists(docIndex, headId, tailId, type) {
+    return relations[docIndex].some(rel => rel.head === headId && rel.tail === tailId && rel.type === type);
+}
 
-function show_relation_already_exists_msg(x,y) {
+
+
+function show_relation_already_exists_msg_old(x,y) {
     //show dissappearing popup msg that this relation has already been added
     let messageBox = document.getElementById('NoAddRelMsg');
     messageBox.style.position = 'fixed';
@@ -980,107 +1089,159 @@ function show_relation_already_exists_msg(x,y) {
     }, 2000);  //hide after this many ms
 }
 
+function show_relation_already_exists_msg(x,y) {
+    //show dissappearing popup msg that this relation has already been added
+    //tooltip_caution.style.position = 'fixed';
+    tooltip_caution.style.display = 'block';
+    tooltip_caution.style.left = `${x}px`; // Position near the click horizontally
+    tooltip_caution.style.top = `${y}px`; // Position near the click vertically
+    //tooltip_caution.style.backgroundColor = 'white';
+    //tooltip_caution.style.border = '2px dashed red';
+    //tooltip_caution.style.padding = '5px';
+    //tooltip_caution.style.zIndex = '1500';                
+    //tooltip_caution.style.color = 'red';
+    //tooltip_caution.style.fontWeight = 'bold';
+    //tooltip_caution.style.fontSize = '14px';
+    tooltip_caution.textContent = 'Relation Already Exists'
+
+    setTimeout(function() {
+        tooltip_caution.style.display = 'none';
+    }, 2000);  //hide after this many ms
+}
+
+
+
+function get_next_rel_id(docIndex) {
+    //find the highest id number and add 1
+    let max_id = 0;
+    relations[docIndex].forEach(rel => {
+        const match = rel.id.match(/^R\d+_(\d+)$/);
+        if (match) {
+            // Extract the value of x as an integer
+            const id = parseInt(match[1], 10);
+            if (!isNaN(id) && id > max_id)
+                max_id = id;
+        }
+    });
+
+    // Generate the next available ID by incrementing the highest found x
+    return `R${docIndex}_${max_id + 1}`;
+}
+
+
 
 function add_relation(docIndex, head_id, tail_id, type, color) {
-    const rel_id = `R${relationCounters[docIndex]++}`;
+    const rel_id = get_next_rel_id(docIndex);
 
     //doesn't use the color for now, may change this later
     relations[docIndex].push({
         id: rel_id,
-        type: type,
         head: head_id,
-        tail: tail_id
+        tail: tail_id,
+        type: type
     });
 
     //update the border for the new relation
-    updateBorderStyle(docIndex, tail_id, +1)
+    if (tool_state === 'relation_mode')          update_border_style(docIndex, tail_id, +1)
+    else if (tool_state === 'rev_relation_mode') update_border_style(docIndex, head_id, +1)
 }
 
 
 
-function remove_relation(docIndex, head_id, tail_id, rel_type) {
-    //confirm with user first
-    //const confirmAction = confirm(`Confirm to remove relation ${head_id +'_' + tail_id + '_' + rel_type} in doc ${docIndex}`);
-    //if (!confirmAction) {
-    //    // User clicked "Cancel"
-    //    event.preventDefault();
-    //    return;
-    //}
-
+function remove_relation(docIndex, head_id, tail_id, type) {
     //this removes the given head-tail pair and type (relation) from the relations[docIndex] list
-    const docDiv = document.querySelector(`#dataContainer #doc${docIndex}`);
+    
+    //Remove the relation from relations
+    relations[docIndex] = relations[docIndex].filter(relation => !(relation.head === head_id && relation.tail === tail_id && relation.type === type));
 
-    //Filter out the object with the specified tailId from relations
-    relations[docIndex] = relations[docIndex].filter(relation => !(relation.head === head_id && relation.tail === tail_id && relation.type === rel_type));
-
-    //update the border for the new relation
-    updateBorderStyle(docIndex, tail_id, -1)
+    //update the border for the removed relation
+    if (tool_state === 'relation_mode')          update_border_style(docIndex, tail_id, -1)
+    else if (tool_state === 'rev_relation_mode') update_border_style(docIndex, head_id, -1)
 }    
 
 
 
-//function to remove tail span styling on rel mode exit
-function remove_tail_span_styles() {
-    let elements = document.querySelectorAll('[class^="tail-border-"]');
 
+function remove_flashing_border() {
+    if (active_span.Element) {
+        active_span.Element.classList.forEach(cls => {
+            if (cls.includes('flashing-border')) {
+                active_span.Element.classList.remove(cls);
+            }
+        });
+    }
+}
+
+
+//function to remove tail span styling on rel mode exit
+function remove_span_styles() {
+    remove_flashing_border();
+    let elements = document.querySelectorAll('div[id^="doc"] > span[class*="border"]');
     // Loop through the NodeList and log each element
     elements.forEach(function(element) {
-         element.classList.remove('tail-border-1', 'tail-border-2', 'tail-border-3', 'tail-border-4');
+         element.classList = "";
     });
 }
 
 
-
-//function to update all tail span styles on entering relation mode
-function update_tail_span_styles(span, docIndex) {
-    const headId = span.getAttribute('span-id');
+//function to update all (head)tail span styles on entering (rev_)relation mode
+//it also updates the selected span border style
+function update_span_styles_on_entry(span, docIndex) {
+    const selected_span_id = span.getAttribute('span-id');
     const relationCounts = {};
-    
+
+    //update the selected span style
+    //remove all classes for this element
+    span.classList = "";
+    if (tool_state === 'relation_mode')             span.classList.add('red-flashing-border');
+    else if (tool_state === 'rev_relation_mode')    span.classList.add('black-flashing-border');
+
     // Collect all tail IDs for the given head ID
     relations[docIndex].forEach(relation => {
-        if (relation.head === headId) {
-            if (relationCounts[relation.tail]) {
+        if (tool_state === 'relation_mode' && relation.head === selected_span_id) {
+            if (relationCounts[relation.tail]) 
                 relationCounts[relation.tail]++;
-            } else {
+            else 
                 relationCounts[relation.tail] = 1;
-            }
+        }
+        else if (tool_state === 'rev_relation_mode' && relation.tail === selected_span_id) {
+            if (relationCounts[relation.head]) 
+                relationCounts[relation.head]++;
+            else 
+                relationCounts[relation.head] = 1;
         }
     });
 
     // Update the style for each tail span
-    Object.keys(relationCounts).forEach(tailId => {
-        const tailSpans = document.querySelectorAll(`#doc${docIndex} [span-id='${tailId}']`);
-        tailSpans.forEach(tailSpan => {
-            level = Math.min(4, relationCounts[tailId]);
-            tailSpan.classList.remove('tail-border-1', 'tail-border-2', 'tail-border-3', 'tail-border-4');
-            tailSpan.classList.add(`tail-border-${level}`);
-        });
+    Object.keys(relationCounts).forEach(span_id => {
+        const cand_span = document.querySelector(`#doc${docIndex} [span-id='${span_id}']`);
+        if (cand_span) {
+            level = Math.min(4, relationCounts[span_id]);
+            cand_span.classList = "";
+            if (tool_state === 'relation_mode')             cand_span.classList.add(`tail-border-${level}`);
+            else if (tool_state === 'rev_relation_mode')    cand_span.classList.add(`head-border-${level}`);
+        };
     });
-
 }
 
 
-function updateBorderStyle(docIndex, tail_id, delta) {
-    //update the border for the new relation
-    const tail_spans = document.querySelectorAll(`#doc${docIndex} [span-id='${tail_id}']`);
-    tail_spans.forEach(tail_span => {
-        let class_list = tail_span.classList;
+function update_border_style(docIndex, span_id, delta) {
+    //update the border for the new head/tail relation
+    const cand_span = document.querySelector(`#doc${docIndex} [span-id='${span_id}']`);
+    if (cand_span) {
+        let class_list = cand_span.classList;
         // Find the first class that starts with 'tail-border-'
         let level = 0;
-        let target_class = Array.from(class_list).find(cls => cls.startsWith('tail-border-'));
-        if (target_class) {
-             // Extract the part of the class string after 'tail-border-'
-             level = target_class.substring('tail-border-'.length);
-             level = parseInt(level,10);
-        }
+        let target_class = Array.from(class_list).find(cls => cls.includes('-border-'));
+        if (target_class) level = parseInt(target_class.match(/-border-(\d+)/)?.[1], 10);
         level += delta;
         level = Math.min(4, level);
 
-        tail_span.classList.remove('tail-border-1', 'tail-border-2', 'tail-border-3', 'tail-border-4');
-        tail_span.classList.add(`tail-border-${level}`);
-    });
+        cand_span.classList = "";
+        if (tool_state === 'relation_mode')             cand_span.classList.add(`tail-border-${level}`);
+        else if (tool_state === 'rev_relation_mode')    cand_span.classList.add(`head-border-${level}`);
+    };
 }
-
 ///////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////
