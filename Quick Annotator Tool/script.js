@@ -85,7 +85,7 @@ style.innerHTML = `
     100% { border-color: transparent; }
 }
 .red-flashing-border {
-    border: 4px dashed red;
+    border: 4px dashed red !important; 
     animation: red-flashing-border 0.5s linear infinite; /* Flashes 2x per second */
 }
 
@@ -95,19 +95,19 @@ style.innerHTML = `
     100% { border-color: transparent; }
 }
 .black-flashing-border {
-    border: 4px dashed black;
+    border: 4px dashed black !important;
     animation: black-flashing-border 0.5s linear infinite; /* Flashes 2x per second */
 }
 
-.tail-border-1 { border: 3px dashed black; }
-.tail-border-2 { border: 5px dashed black; }
-.tail-border-3 { border: 7px dashed black; }
-.tail-border-4 { border: 9px dashed black; }
+.tail-border-1 { border: 3px dashed black !important; }
+.tail-border-2 { border: 5px dashed black !important; }
+.tail-border-3 { border: 7px dashed black !important; }
+.tail-border-4 { border: 9px dashed black !important; }
 
-.head-border-1 { border: 3px dashed red; }
-.head-border-2 { border: 5px dashed red; }
-.head-border-3 { border: 7px dashed red; }
-.head-border-4 { border: 9px dashed red; }
+.head-border-1 { border: 3px dashed red !important; }
+.head-border-2 { border: 5px dashed red !important; }
+.head-border-3 { border: 7px dashed red !important; }
+.head-border-4 { border: 9px dashed red !important; }
 
 #current_mode {
    color: red;
@@ -128,6 +128,7 @@ div[id*="InputContainer"] {
 `; // Close the CSS string and statement properly
 
 document.head.appendChild(style);
+
 
 
 function delete_span_styles() {
@@ -164,6 +165,32 @@ function delete_span_styles() {
         //console.log('Updated <style> content after deletion.');
     }
 
+}
+
+
+
+//update the span styles from the schema
+function update_span_styles_from_schema() {
+    //clear the span_styles first
+    delete_span_styles();
+    
+    //now add new ones from the schema
+    // Find the <style> element
+    let styleElement = document.querySelector('style');
+    // Build CSS rules based on the schema
+    let newStyles = '';
+    schema['span_types'].forEach(type => {
+        const type_name = type['name'];
+        const type_color = type['color'];
+        newStyles += `\n
+            [span-type="${type_name}"] {\n
+                background-color: ${type_color};\n
+                border: 1px solid grey;\n
+            }\n`;
+    });
+
+    // Append new styles to the style element
+    styleElement.appendChild(document.createTextNode(newStyles));
 }
 
 
@@ -213,26 +240,6 @@ function add_instructions() {
 }
 
 
-//update the span styles from the schema
-function update_span_styles_from_schema() {
-    //clear the span_styles first
-    delete_span_styles();
-    
-    //now add new ones from the schema
-    // Find the <style> element
-    let styleElement = document.querySelector('style');
-    // Build CSS rules based on the schema
-    let newStyles = '';
-    schema['span_types'].forEach(type => {
-        const type_name = type['name'];
-        const type_color = type['color'];
-        newStyles += `\n[span-type="${type_name}"] {background-color: ${type_color};}\n`;
-    });
-
-    // Append new styles to the style element
-    styleElement.appendChild(document.createTextNode(newStyles));
-}
-
 
 function add_export_and_view_results_buttons() {
     //add the export and view results buttons
@@ -271,8 +278,11 @@ function add_tooltip_info() {
     tooltip.style.backgroundColor = '#333';
     tooltip.style.color = '#fff';
     tooltip.style.padding = '5px';
+    //tooltip.style.border = '2px solid red';
     tooltip.style.borderRadius = '5px';
     tooltip.style.fontSize = '12px';
+    //tooltip.style.fontWeight = 'bold';
+    tooltip.style.fontFamily = 'Arial, sans-serif';
     tooltip.style.display = 'none';
     tooltip.style.zIndex = '1000';
 
@@ -293,11 +303,13 @@ function add_tooltip_caution() {
     tooltip.style.backgroundColor = 'white'; // White text
     tooltip.style.color = 'red'; // Red text
     tooltip.style.padding = '5px';
-    tooltip.style.borderRadius = '5px';
+    tooltip.style.border = '2px solid red';
+    //tooltip.style.borderRadius = '5px';
     tooltip.style.display = 'none';
     tooltip.style.zIndex = '1500';
-    tooltip.style.fontWeight = 'bold';
     tooltip.style.fontSize = '14px';
+    tooltip.style.fontWeight = 'bold';
+    tooltip.style.fontFamily = 'Arial, sans-serif';
 
     const container = document.getElementById('RawInputContainer');
     container.parentNode.insertBefore(tooltip, container);
@@ -831,12 +843,16 @@ function show_span_menu(event, docIndex, range, action) {
     menu.style.border = '1px solid black';
     menu.style.padding = '5px';
     menu.style.zIndex = '1000';
+    menu.style.fontWeight = 'bold';
+    menu.style.fontSize = '14px';
+    menu.style.fontFamily = 'Arial, sans-serif';
 
     if (action === "add") {
         schema["span_types"].forEach((type) => {
             const item = document.createElement('div');
             item.textContent = `Annotate as ${type["name"]}`;
             item.style.backgroundColor = type["color"];
+            item.style.padding = '5px';
             item.onclick = () => {
                 add_span(docIndex, type["name"], type["color"], range);
                 document.body.removeChild(menu); // Close menu after selection
@@ -849,8 +865,8 @@ function show_span_menu(event, docIndex, range, action) {
         const item = document.createElement('div');
         item.textContent = 'Remove Span?';
         item.style.color = 'red';
-        item.style.fontWeight = 'bold';
-        item.style.fontSize = '14px';
+        item.style.padding = '5px';
+        menu.style.border = '2px solid red';
         //add the click listener
         item.onclick = () => {
             remove_span(target_span, docIndex);
@@ -862,27 +878,27 @@ function show_span_menu(event, docIndex, range, action) {
 }
 
 
-function get_next_span_id(docIndex) {
-    //find the highest id number and add 1
-    let max_id = 0;
-    spans[docIndex].forEach(span => {
-        const match = span.id.match(/^E\d+_(\d+)$/);
-        if (match) {
-            // Extract the value of x as an integer
-            const id = parseInt(match[1], 10);
-            if (!isNaN(id) && id > max_id)
-                max_id = id;
-        }
-    });
 
-    // Generate the next available ID by incrementing the highest found x
-    return `E${docIndex}_${max_id + 1}`;
+function get_next_cnt(list_of_dicts) {
+    // Extract all IDs using map by matching the last sequence of digits in the ID
+    //list_of_dicts is either the span list or relations list for the given docIndex
+    const ids = list_of_dicts.map(x => {
+        const match = x.id.match(/\d+$/);
+        return match ? parseInt(match[0], 10) : null;
+    }).filter(id => !isNaN(id));  // Filter out non-numeric values to account for potential parsing failures
+
+    // Find the maximum ID using Math.max, defaulting to 0 if the array is empty
+    const max_id = ids.length > 0 ? Math.max(...ids) : 0;
+
+    // Generate the next available ID by incrementing the highest found ID
+    return max_id + 1;
 }
 
 
 
 function add_span(docIndex, type, color, range) {
-    const spanId = get_next_span_id(docIndex);
+    const next_cnt = get_next_cnt(spans[docIndex]);
+    const span_id = `E${docIndex}_${next_cnt}`;
 
     //range.startContainer is the text node, its parent is the span holding it, we will split this parent span
     //NOTE: we have already checked that .startContainer and .endContainer are the same as we are not handling overlap selections
@@ -908,9 +924,8 @@ function add_span(docIndex, type, color, range) {
     // Create a new span for the selected text
     const newSpan = document.createElement('span');
     newSpan.setAttribute('type', 'annotated');
-    newSpan.setAttribute('span-id', spanId);
+    newSpan.setAttribute('span-id', span_id);
     newSpan.setAttribute('span-type', type);
-    //newSpan.style.backgroundColor = color;    //do not need as we are using styles with the selector on attribute span-id
     newSpan.textContent = selectedText;
 
     // Insert new spans into the DOM, replacing the original span
@@ -933,11 +948,11 @@ function add_span(docIndex, type, color, range) {
 
     // Update the annotations registry
     spans[docIndex].push({
-        id: spanId,
-        type: type,
-        start: absoluteStartIndex,
-        end: absoluteEndIndex,
-        span: selectedText,
+        id:     span_id,
+        type:   type,
+        start:  absoluteStartIndex,
+        end:    absoluteEndIndex,
+        span:   selectedText,
     });
 }
 
@@ -947,10 +962,10 @@ function remove_span(target_span, docIndex) {
     const docDiv = document.querySelector(`#dataContainer #doc${docIndex}`);
     const span_id = target_span.getAttribute('span-id');
 
-    //Filter out the object with the specified spanId from spans
+    //Filter out the object with the specified span_id from spans
     spans[docIndex] = spans[docIndex].filter(span => span.id !== span_id);
     
-    //Filter out the object with the specified spanId from relations
+    //Filter out the object with the specified span_id from relations
     relations[docIndex] = relations[docIndex].filter(relation => relation.head !== span_id && relation.tail !== span_id);
 
     //remove the span from the docDiv
@@ -972,6 +987,7 @@ function remove_span(target_span, docIndex) {
         else i++; // Move to the next pair only if no merge happened
     }
 }    
+
 
 ///////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////
@@ -1020,6 +1036,9 @@ function show_relation_menu(event, docIndex, headId, tailId, action) {
     menu.style.border = '1px solid black';
     menu.style.padding = '5px';
     menu.style.zIndex = '1001';
+    menu.style.fontWeight = 'bold';
+    menu.style.fontSize = '14px';
+    menu.style.fontFamily = 'Arial, sans-serif';
 
     // Filter relation types based on action
     let relationTypes = schema["relation_types"];
@@ -1037,12 +1056,13 @@ function show_relation_menu(event, docIndex, headId, tailId, action) {
     if (relationTypes.length === 0) return;
 
     relationTypes.forEach((type) => {
-        const relItem = document.createElement('div');
-        if (action === 'add')       relItem.textContent = `Add relation: ${type.name}`;
-        else if (action === 'rmv')  relItem.textContent = `Rmv relation: ${type.name}`;
-        relItem.style.backgroundColor = type.color;
+        const item = document.createElement('div');
+        if (action === 'add')       item.textContent = `Add relation: ${type.name}`;
+        else if (action === 'rmv')  item.textContent = `Rmv relation: ${type.name}`;
+        item.style.backgroundColor = type.color;
+        item.style.padding = '5px';
 
-        relItem.onclick = () => {
+        item.onclick = () => {
             if (action === "add") {
                 if (!relation_already_exists(docIndex, headId, tailId, type.name)) {
                     add_relation(docIndex, headId, tailId, type.name, type.color);
@@ -1055,7 +1075,7 @@ function show_relation_menu(event, docIndex, headId, tailId, action) {
             }
             document.body.removeChild(menu); // Close menu after selection
         };
-        menu.appendChild(relItem);
+        menu.appendChild(item);
     });
     document.body.appendChild(menu);
 }
@@ -1069,39 +1089,12 @@ function relation_already_exists(docIndex, headId, tailId, type) {
 
 
 
-function show_relation_already_exists_msg_old(x,y) {
-    //show dissappearing popup msg that this relation has already been added
-    let messageBox = document.getElementById('NoAddRelMsg');
-    messageBox.style.position = 'fixed';
-    messageBox.style.display = 'block';
-    messageBox.style.left = `${x}px`; // Position near the click horizontally
-    messageBox.style.top = `${y}px`; // Position near the click vertically
-    messageBox.style.backgroundColor = 'white';
-    messageBox.style.border = '2px dashed red';
-    messageBox.style.padding = '5px';
-    messageBox.style.zIndex = '1500';                
-    messageBox.style.color = 'red';
-    messageBox.style.fontWeight = 'bold';
-    messageBox.style.fontSize = '14px';
-
-    setTimeout(function() {
-        messageBox.style.display = 'none';
-    }, 2000);  //hide after this many ms
-}
-
 function show_relation_already_exists_msg(x,y) {
     //show dissappearing popup msg that this relation has already been added
     //tooltip_caution.style.position = 'fixed';
     tooltip_caution.style.display = 'block';
     tooltip_caution.style.left = `${x}px`; // Position near the click horizontally
     tooltip_caution.style.top = `${y}px`; // Position near the click vertically
-    //tooltip_caution.style.backgroundColor = 'white';
-    //tooltip_caution.style.border = '2px dashed red';
-    //tooltip_caution.style.padding = '5px';
-    //tooltip_caution.style.zIndex = '1500';                
-    //tooltip_caution.style.color = 'red';
-    //tooltip_caution.style.fontWeight = 'bold';
-    //tooltip_caution.style.fontSize = '14px';
     tooltip_caution.textContent = 'Relation Already Exists'
 
     setTimeout(function() {
@@ -1110,28 +1103,9 @@ function show_relation_already_exists_msg(x,y) {
 }
 
 
-
-function get_next_rel_id(docIndex) {
-    //find the highest id number and add 1
-    let max_id = 0;
-    relations[docIndex].forEach(rel => {
-        const match = rel.id.match(/^R\d+_(\d+)$/);
-        if (match) {
-            // Extract the value of x as an integer
-            const id = parseInt(match[1], 10);
-            if (!isNaN(id) && id > max_id)
-                max_id = id;
-        }
-    });
-
-    // Generate the next available ID by incrementing the highest found x
-    return `R${docIndex}_${max_id + 1}`;
-}
-
-
-
 function add_relation(docIndex, head_id, tail_id, type, color) {
-    const rel_id = get_next_rel_id(docIndex);
+    const next_cnt = get_next_cnt(relations[docIndex]);
+    const rel_id = `R${docIndex}_${next_cnt}`;
 
     //doesn't use the color for now, may change this later
     relations[docIndex].push({
