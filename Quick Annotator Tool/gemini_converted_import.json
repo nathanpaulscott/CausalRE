@@ -989,7 +989,7 @@
         "relation_types": [
             {
                 "name": "causal",
-                "color": "rgba(255, 87, 51, 0.3)"
+                "color": "rgba(255, 87, 50, 0.3)"
             }
         ]
     }

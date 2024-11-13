@@ -2,9 +2,6 @@
 ///////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////
 //TO DO
-//potentially add in a comment key to the spans/relations, each one being a list of dicts with keys 'text','datetime','person'
-//then add edit span functionality, where we left click on a span, it brings up the comments chain, we click on it to add to the chain, which brings up a text dialog allowing a comment ot be added, datetime is auto, person is also voluntary
-//similarly for the relations, add a comment key, then in relation_mode/rev_relation_mode if we doubleclick on a tail/head, it brings up the current relations menu, if we click on one of them, it brings up the comments chain, if we click on it it allows adding to the chain etc.  More complex than the span case.
 
 
 ///////////////////////////////////////////////////////////////////
