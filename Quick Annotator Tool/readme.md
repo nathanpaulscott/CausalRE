@@ -6,6 +6,8 @@ The tool is simple, you can load in a set of unannotated documents a sample is g
 
 If you have previously annotated data, you can just choose to import that, the sample file gives the required format. It is the same as the unannotated case with additional keys for spans and relations.
 
+NOTE: The tool currently doesn't support overlapping spans.
+
 ## Annotation
 You can then start annotating or modifying the annotation of each document
 
