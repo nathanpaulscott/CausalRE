@@ -2,7 +2,9 @@
 ///////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////
 //TO DO
-
+//potentially add in a comment key to the spans/relations, each one being a list of dicts with keys 'text','datetime','person'
+//then add edit span functionality, where we left click on a span, it brings up the comments chain, we click on it to add to the chain, which brings up a text dialog allowing a comment ot be added, datetime is auto, person is also voluntary
+//similarly for the relations, add a comment key, then in relation_mode/rev_relation_mode if we doubleclick on a tail/head, it brings up the current relations menu, if we click on one of them, it brings up the comments chain, if we click on it it allows adding to the chain etc.  More complex than the span case.
 
 
 ///////////////////////////////////////////////////////////////////
@@ -85,7 +87,7 @@ style.innerHTML = `
     100% { border-color: transparent; }
 }
 .red-flashing-border {
-    border: 4px dashed red !important; 
+    border: 4px dashed red;  // !important; 
     animation: red-flashing-border 0.5s linear infinite; /* Flashes 2x per second */
 }
 
@@ -95,7 +97,7 @@ style.innerHTML = `
     100% { border-color: transparent; }
 }
 .black-flashing-border {
-    border: 4px dashed black !important;
+    border: 4px dashed black;  // !important;
     animation: black-flashing-border 0.5s linear infinite; /* Flashes 2x per second */
 }
 
@@ -116,7 +118,7 @@ style.innerHTML = `
 }
 
 /* Adjust body padding to accommodate instruction div */
-body { padding-top: 30px; }
+body { padding-top: 50px; }
 
 
 div[id*="InputContainer"] {
@@ -189,8 +191,8 @@ function update_span_styles_from_schema() {
             }\n`;
     });
 
-    // Append new styles to the style element
-    styleElement.appendChild(document.createTextNode(newStyles));
+    //Append new styles to the top of the styles element, so it is least important
+    styleElement.insertBefore(document.createTextNode(newStyles), styleElement.firstChild);
 }
 
 
@@ -198,7 +200,8 @@ function add_instructions() {
     const instructions = document.createElement('div');
     instructions.id = 'topInstructions';
     instructions.style.position = 'fixed';
-    instructions.style.top = '0';
+    instructions.style.top = '0px';
+    instructions.style.left = '400px';
     instructions.style.width = '100%';
     instructions.style.backgroundColor = '#f9f9f9';
     instructions.style.padding = '10px';
@@ -217,18 +220,19 @@ function add_instructions() {
         <div id="instructions-content" style="display: none;">
             <br>
             <strong>Span Mode:</strong><br>
-            - <strong>Click and drag</strong> to select spans of text to annotate.<br>
-            - <strong>RightClick</strong> on any annotated span to remove that span.<br>
+            - <strong>Click and Drag</strong> to select spans of text to annotate.<br>
+            - <strong>Left-Click</strong> on any annotated span to edit the type.<br>
+            - <strong>Right-Click</strong> on any annotated span to remove that span.<br>
             <strong>Relation Mode:</strong><br>
-            - <strong>ctrl-click</strong> on any span to move to relation mode (selected span as head) and see the selected span's tail spans.<br>
-            - <strong>LeftClick</strong> on any span to add the relation with it as tail.<br>
-            - <strong>RightClick</strong> on any highlighted tail span to remove the relation to it.<br>
+            - <strong>Ctrl-Click</strong> on any span to move to relation mode (selected span as head) and see the selected span's tail spans.<br>
+            - <strong>Left-Click</strong> on any span to add the relation with it as tail.<br>
+            - <strong>Right-Click</strong> on any highlighted tail span to remove the relation to it.<br>
             <strong>Reverse Relation Mode:</strong><br>
-            - <strong>shift-click</strong> on any span to move to reverse relation mode (selected span as tail) and see the selected span's head spans.<br>
-            - <strong>LeftClick</strong> on any span to add the relation with it as head.<br>
-            - <strong>RightClick</strong> on any highlighted head span to remove the relation to it.<br>
+            - <strong>Shift-Click</strong> on any span to move to reverse relation mode (selected span as tail) and see the selected span's head spans.<br>
+            - <strong>Left-Click</strong> on any span to add the relation with it as head.<br>
+            - <strong>Right-Click</strong> on any highlighted head span to remove the relation to it.<br>
             <strong>Go Back to Span Mode:</strong><br>
-            - Press <strong>ESC</strong> or <strong>shift-click</strong> or <strong>ctrl-click</strong> on a non-span to go back to Span Mode.<br>
+            - Press <strong>ESC</strong> or <strong>Shift-Click</strong> or <strong>Ctrl-Click</strong> on a non-span to go back to Span Mode.<br>
         </div>
     `;
 
@@ -244,31 +248,45 @@ function add_instructions() {
 function add_export_and_view_results_buttons() {
     //add the export and view results buttons
     const buttonsContainer = document.createElement('div');
+    buttonsContainer.style.position = 'fixed';
+    buttonsContainer.style.backgroundColor = 'white';
+    buttonsContainer.style.width = '100%';
+    buttonsContainer.style.top = '0px';
+    buttonsContainer.style.padding = '10px';
+    buttonsContainer.style.textAlign = 'left';
+    buttonsContainer.style.fontSize = '14px';
+    buttonsContainer.style.fontFamily = 'Arial, sans-serif';
+    buttonsContainer.style.zIndex = '1000';
+    instructions.style.borderBottom = '1px solid #ddd';
 
     const statediv = document.createElement('div');
-    statediv.style.padding = '10px';
-    statediv.style.textAlign = 'left';
-    statediv.style.fontSize = '14px';
-    statediv.style.fontFamily = 'Arial, sans-serif';
-    statediv.style.zIndex = '1000';
+    statediv.style.padding = '0px';
     statediv.innerHTML = '<strong>Current Mode:</strong> <span id="current_mode">span_mode</span>';
     buttonsContainer.appendChild(statediv);
 
     const exportButton = document.createElement('button');
     exportButton.textContent = 'Export Data';
     exportButton.onclick = function() {export_data("export");};
-    exportButton.style.marginLeft = '10px';
+    exportButton.style.marginLeft = '0px';
+    exportButton.style.marginTop = '10px';
     buttonsContainer.appendChild(exportButton);
 
     const viewResultsButton = document.createElement('button');
     viewResultsButton.textContent = 'View Results';
     viewResultsButton.onclick = function() {export_data("view");};
-    viewResultsButton.style.marginLeft = '10px';
+    viewResultsButton.style.marginLeft = '5px';
+    viewResultsButton.style.marginTop = '10px';
     buttonsContainer.appendChild(viewResultsButton);
 
-    //add the topContainer to the topInstructions div
-    topContainer.appendChild(buttonsContainer);
+    //add the buttonsContainer to the topContainer div
+    const container = document.getElementById('topContainer');
+    //container.appendChild(buttonsContainer);
+    //const container = document.getElementById('instructions-header');
+    //container.appendChild(buttonsContainer);
+    //container.after(buttonsContainer);
+    container.prepend(buttonsContainer);
 }
+
 
 function add_tooltip_info() {
     // Create a tooltip element and add it to the document
@@ -430,7 +448,8 @@ document.getElementById('dataContainer').addEventListener('click', function(even
     //if plain left click do nothing in span mode, add relation in any of the relation modes
     else if (left_click) {
         //if in span_mode enter relation mode on plain left click
-        if (tool_state === 'span_mode') return;
+        if (tool_state === 'span_mode' && target.getAttribute('type') === "annotated")
+            edit_span_handler(event, docIndex, null, "edit");
         //if already in any of the relation modes, process add the selected span as a relation to add
         else if (tool_state !== 'span_mode' && target.getAttribute('type') !== "unannotated") {
             const spanId = target.getAttribute('span-id');
@@ -440,6 +459,8 @@ document.getElementById('dataContainer').addEventListener('click', function(even
             edit_relation_handler(event, docIndex, 'add');
             //console.log('processing candidate head/tail span');
         }
+        else 
+            return;
     }
 });
 
@@ -523,9 +544,10 @@ document.getElementById('dataContainer').addEventListener('mouseover', function(
 
     // Check if the hovered element is an annotated span
     if (target.tagName === 'SPAN' && target.getAttribute('type') === 'annotated') {
-        const spanId = target.getAttribute('span-id');
+        const span_id = target.getAttribute('span-id');
+        const span_type = target.getAttribute('span-type');
         // Display the tooltip with the content
-        tooltip_info.textContent = spanId;
+        tooltip_info.textContent = `${span_id} (${span_type})`;
         tooltip_info.style.display = 'block';
         // Position the tooltip near the mouse cursor
         tooltip_info.style.left = `${event.clientX + window.scrollX - msg_offset_x}px`;
@@ -573,8 +595,6 @@ function removeExistingMenus() {
     const existingMenus = document.querySelectorAll('div[id="menu"]');
     existingMenus.forEach(menu => menu.parentNode.removeChild(menu));
 }
-
-
 
 
 //utility to check we have clicked inside an acceptable div
@@ -678,6 +698,47 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 
+
+
+
+
+function checkOverlap(a, b) {
+    return a.start <= b.end && b.start <= a.end
+}
+
+function filterOverlappingAnnotations(annotations) {
+    removed = []
+    // Sort annotations by start, then by end in descending order to prioritize longer spans
+    annotations.sort((a, b) => a.start - b.start || b.end - a.end);
+    // Iterate through copied annotations and nullify shorter overlapping spans
+    for (let i = 0; i < annotations.length; i++) {
+        if (annotations[i] === null) continue; // Skip already nullified annotations
+        let longestSpan = annotations[i];
+        for (let j = i + 1; j < annotations.length && annotations[j].start <= longestSpan.end; j++) {
+            if (annotations[j] === null) continue;
+            if (checkOverlap(longestSpan, annotations[j])) {
+                // There is an overlap, check which one is longer
+                if (longestSpan.end - longestSpan.start < annotations[j].end - annotations[j].start) {
+                    // The j-th span is longer
+                    removed.push({ ...annotations[i] }); // Push a copy of the current span to removed
+                    annotations[i] = null; // Nullify the current span
+                    longestSpan = annotations[j]; // Update the longestSpan
+                    i = j - 1; // Move the outer loop's index to just before j
+                    break;
+                } else {
+                    // The i-th span is longer or they are equal, nullify the j-th span
+                    removed.push({ ...annotations[j] }); // Push a copy of the current span to removed
+                    annotations[j] = null;
+                }
+            }
+        }
+    }
+
+    //return the non null elements
+    return [annotations.filter(span => span !== null), removed];
+}
+
+
 function display_documents(option) {
     //this function loads in the raw_docs to the browser and loads the annotations if otpion is "load", otherwise it resets the annotations if option is "reset"
 
@@ -687,6 +748,8 @@ function display_documents(option) {
     //clear any existing contents
     container.innerHTML = '';
     
+    removed_all = [];
+
     //create new contents from raw_docs
     raw_docs.forEach((text, index) => {
         //make the header element for the doc
@@ -710,40 +773,56 @@ function display_documents(option) {
             //reset vars
             spans[index] = [];
             relations[index] = [];
-
             //add the text to the docdiv
             docDiv.innerHTML = `<span type="unannotated">${text}</span>`;
         }
         else if (option ==="load") {
-            //get the annotations
-            const annotations = spans[index]; // Get annotations for this document
+            //Sort annotations by start index to ensure proper text chunking
+            spans[index].sort((a, b) => a.start - b.start);
+            //Filter out overlapping annotations and keep the longest
+            //NOTE: currently I am not supporting overlapping spans, so I remove the shortest of any overlaps
+            //NOTE: currently I am not supporting overlapping spans, so I remove the shortest of any overlaps
+            //NOTE: currently I am not supporting overlapping spans, so I remove the shortest of any overlaps
+            let result = filterOverlappingAnnotations(spans[index]);
+            if (result[1].length > 0) removed_all = removed_all.concat(result[1]);
+            spans[index] = result[0];
+            // Filter relations to keep only those that involve valid annotation IDs
+            const validIds = new Set(spans[index].map(x => x.id));
+            relations[index] = relations[index].filter(x => 
+                validIds.has(x.head) && validIds.has(x.tail)
+            );
+            //NOTE: currently I am not supporting overlapping spans, so I remove the shortest of any overlaps
+            //NOTE: currently I am not supporting overlapping spans, so I remove the shortest of any overlaps
+            //NOTE: currently I am not supporting overlapping spans, so I remove the shortest of any overlaps
+
+            //DANGER
+            //This now modifies the spans in teh docDiv to show the annotated spans, it does not handle overlapping spans
+            //I have put code above to remove any overlapping spans, 
+            //but if you ever allow overlapping spans, you MUST modify this code so that it doesn't cause repeated text in teh docDiv
+            //DANGER
             let lastIndex = 0; // Track the last index of text processed
             let updatedInnerHTML = ''; // Build new HTML for the document
-            // Sort annotations by start index to ensure proper text chunking
-            annotations.sort((a, b) => a.start - b.start);
             // Iterate through each annotation and build updated inner HTML
-            annotations.forEach(annotation => {
+            spans[index].forEach(x => {
                 // Add unannotated text before this annotation
-                if (annotation.start > lastIndex) {
-                    updatedInnerHTML += `<span type="unannotated">${text.slice(lastIndex, annotation.start)}</span>`;
-                }
+                if (x.start > lastIndex) 
+                    updatedInnerHTML += `<span type="unannotated">${text.slice(lastIndex, x.start)}</span>`;
                 // Add annotated text
-                updatedInnerHTML += `<span type="annotated" span-id="${annotation.id}" span-type="${annotation.type}">${text.slice(annotation.start, annotation.end + 1)}</span>`;
-
-                // Update lastIndex to the end of this annotation
-                lastIndex = annotation.end + 1;
+                updatedInnerHTML += `<span type="annotated" span-id="${x.id}" span-type="${x.type}">${text.slice(x.start, x.end + 1)}</span>`;
+                lastIndex = x.end + 1;
             });
-
             // Add any remaining unannotated text after the last annotation
-            if (lastIndex < text.length) {
+            if (lastIndex < text.length)
                 updatedInnerHTML += `<span type="unannotated">${text.slice(lastIndex)}</span>`;
-            }
             // Set the new HTML to the docDiv
             docDiv.innerHTML = updatedInnerHTML;
         }
         //add to the container
         container.appendChild(docDiv);
     });
+
+    // Alert the removed spans
+    if (removed_all.length > 0) alert(`There were some overlapping spans removed, the longest of the overlapping were kept, the removed spans were.\n${JSON.stringify(removed_all, null, 2)}`);
 }
 
 
@@ -848,13 +927,29 @@ function show_span_menu(event, docIndex, range, action) {
     menu.style.fontFamily = 'Arial, sans-serif';
 
     if (action === "add") {
-        schema["span_types"].forEach((type) => {
+        schema["span_types"].forEach(x => {
             const item = document.createElement('div');
-            item.textContent = `Annotate as ${type["name"]}`;
-            item.style.backgroundColor = type["color"];
+            item.textContent = `Annotate as ${x["name"]}`;
+            item.style.backgroundColor = x["color"];
             item.style.padding = '5px';
             item.onclick = () => {
-                add_span(docIndex, type["name"], type["color"], range);
+                add_span(docIndex, x["name"], x["color"], range);
+                document.body.removeChild(menu); // Close menu after selection
+            }
+            menu.appendChild(item);
+        });
+    }
+    else if (action === "edit") {
+        const target_span = event.target;
+        const current_type = target_span.getAttribute('span-type');
+        const choice_types = schema["span_types"].filter(x => x.name !== current_type);
+        choice_types.forEach(x => {
+            const item = document.createElement('div');
+            item.textContent = `Set type as ${x["name"]}`;
+            item.style.backgroundColor = x["color"];
+            item.style.padding = '5px';
+            item.onclick = () => {
+                edit_span(target_span, docIndex, x["name"]);
                 document.body.removeChild(menu); // Close menu after selection
             }
             menu.appendChild(item);
@@ -957,20 +1052,39 @@ function add_span(docIndex, type, color, range) {
 }
 
 
+function edit_span(target_span, docIndex, type) {
+    //change the span type in the DOM
+    target_span.setAttribute('span-type', type);
+
+    //change the span type in the spans object
+    const span_id = target_span.getAttribute('span-id');
+    //find the selected span and edit it
+    for (const x of spans[docIndex]) {
+        if (x.id === span_id) {
+            x.type = type;
+            break;
+        }
+    }
+}
+
+
+
 function remove_span(target_span, docIndex) {
     //this removes the chosen span from the spans[docIndex] list and the relations[docIndex] list
     const docDiv = document.querySelector(`#dataContainer #doc${docIndex}`);
     const span_id = target_span.getAttribute('span-id');
 
-    //Filter out the object with the specified span_id from spans
+    //remove the selected span from spans
     spans[docIndex] = spans[docIndex].filter(span => span.id !== span_id);
-    
-    //Filter out the object with the specified span_id from relations
+    //remove any relation with the selected span and head or tail from relations
     relations[docIndex] = relations[docIndex].filter(relation => relation.head !== span_id && relation.tail !== span_id);
 
     //remove the span from the docDiv
-    //Step 1: Change the type attribute to "unannotated"
+    //Step 1: Change the type attribute to "unannotated" and remove attributes span-id and span-type
     target_span.setAttribute('type', 'unannotated');
+    target_span.removeAttribute('span-id');
+    target_span.removeAttribute('span-type');
+
     // Step 2: Merge all adjacent unannotated spans in the docDiv
     let i = 0;
     while (i < docDiv.children.length - 1) {
@@ -1004,6 +1118,8 @@ function enter_relation_mode(span, docIndex, mode) {
     document.getElementById('current_mode').innerText = tool_state;
     // Update all the span border styles, will use tool_state to determine exact action
     update_span_styles_on_entry(span, docIndex);
+    //remove all open menus
+    removeExistingMenus();
 }
 
 
@@ -1015,6 +1131,8 @@ function exit_relation_mode() {
     // Update the tool_state and current mode display
     tool_state = 'span_mode';
     document.getElementById('current_mode').innerText = tool_state;
+    //remove all open menus
+    removeExistingMenus();
 }
 
 
@@ -1044,12 +1162,8 @@ function show_relation_menu(event, docIndex, headId, tailId, action) {
     let relationTypes = schema["relation_types"];
     if (action === "rmv") {
         //filter the relation_types to only those that exist for this head-tail pair as only these can be removed
-        const existingRelations = relations[docIndex].filter(
-            relation => relation.head === headId && relation.tail === tailId
-        );
-        relationTypes = relationTypes.filter(type =>
-            existingRelations.some(relation => relation.type === type.name)
-        );
+        const existingRelations = relations[docIndex].filter(x => x.head === headId && x.tail === tailId);
+        relationTypes = relationTypes.filter(x => existingRelations.some(y => y.type === x.name));
     }
 
     // Create menu items for filtered relation types
