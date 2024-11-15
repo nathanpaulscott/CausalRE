@@ -2,6 +2,9 @@
 ///////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////
 //TO DO
+//potentially add in a comment key to the spans/relations, each one being a list of dicts with keys 'text','datetime','person'
+//then add edit span functionality, where we left click on a span, it brings up the comments chain, we click on it to add to the chain, which brings up a text dialog allowing a comment ot be added, datetime is auto, person is also voluntary
+//similarly for the relations, add a comment key, then in relation_mode/rev_relation_mode if we doubleclick on a tail/head, it brings up the current relations menu, if we click on one of them, it brings up the comments chain, if we click on it it allows adding to the chain etc.  More complex than the span case.
 
 
 ///////////////////////////////////////////////////////////////////
@@ -23,7 +26,7 @@ let active_span = {
 };
 let tool_state = 'span_mode'; // Possible values: 'span_mode', 'relation_mode'
 let mouseDownDocIndex = null;
-let input_format = 'min';
+let input_format = 'min';     //hard coded to min for now
 let instructions = add_instructions();
 
 //set the offset for the popup messages near the click point
@@ -123,6 +126,7 @@ div[id*="InputContainer"] {
     padding: 10px; /* Adds space between the border and the content inside the div */
     margin: 10px; /* Adds space outside the border */
 }
+
 
 `; // Close the CSS string and statement properly
 
@@ -277,10 +281,6 @@ function add_export_and_view_results_buttons() {
 
     //add the buttonsContainer to the topContainer div
     const container = document.getElementById('topContainer');
-    //container.appendChild(buttonsContainer);
-    //const container = document.getElementById('instructions-header');
-    //container.appendChild(buttonsContainer);
-    //container.after(buttonsContainer);
     container.prepend(buttonsContainer);
 }
 
@@ -301,9 +301,7 @@ function add_tooltip_info() {
     tooltip.style.display = 'none';
     tooltip.style.zIndex = '1000';
 
-    //const container = document.getElementById('RawInputContainer');
-    //container.insertAdjacentElement('beforestart', tooltip);
-    const container = document.getElementById('RawInputContainer');
+    const container = document.getElementById('InputContainer');
     container.parentNode.insertBefore(tooltip, container);
     
     return tooltip
@@ -326,7 +324,7 @@ function add_tooltip_caution() {
     tooltip.style.fontWeight = 'bold';
     tooltip.style.fontFamily = 'Arial, sans-serif';
 
-    const container = document.getElementById('RawInputContainer');
+    const container = document.getElementById('InputContainer');
     container.parentNode.insertBefore(tooltip, container);
 
     return tooltip
@@ -604,61 +602,44 @@ function get_parent_div_for_mouse_event(target) {
     return docDiv;
 }
 
+
+
+
+
+
+
+
+
+
 ///////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////
 //IMPORT/EXPORT
+function reset_vars() {
+    source_data =   {};
+    sources =       [];
+    offsets =       [];
+    raw_docs =      [];
+    spans =         [];
+    relations =     [];
+}
+
+
+
 document.addEventListener('DOMContentLoaded', function() {
     const fileInput = document.getElementById('fileInput');
-    const preannotatedInput = document.getElementById('PAfileInput');
     const topInstructions = document.getElementById('topInstructions');
 
     fileInput.addEventListener('change', function(event) {
-        //this selects the data import .json file and loads it into the raw_docs list and displays it on screen
-        const file = event.target.files[0];
-        if (!file) {
-            alert("No file selected.");
-            return;
-        }
-        const reader = new FileReader();
-        reader.onload = function(e) {
-            try {
-                let temp = JSON.parse(e.target.result);
-
-                if (input_format === 'min') {
-                    raw_docs = temp.raw_docs;
-                }
-                else if (format === 'full') {
-                    //This is for the more complex input case, not used for now
-                    raw_docs = temp.raw_docs.map(x => x.raw_doc);
-                    sources = temp.raw_docs.map(x => x.source);
-                    offsets = temp.raw_docs.map(x => x.offset);
-                    source_data = temp.source_data;
-                }
-
-                schema = temp.schema;
-                //update the span_styles from the schema
-                update_span_styles_from_schema();
-
-                //display the raw_docs on screen
-                display_documents("reset");
-            } catch (error) {
-                console.error("Error reading JSON: ", error);
-                alert("Failed to load JSON file. Please ensure the file is correctly formatted.");
-            }
-        };
-        reader.readAsText(file);
-        fileInput.value = ''; 
-    });
-    
-    preannotatedInput.addEventListener('change', function(event) {
-        //this selects the preannoated import .json file and loads it into the associated js vars and modifies the display on screen
+        //this selects the file import .json file and loads it into the associated js vars and modifies the display on screen
         //this file will have schema, raw text and spans and relations in it, the annotated data part is not used as that is just for human comprehension only
         const file = event.target.files[0];
         if (!file) {
             alert("No file selected.");
             return;
         }
+
+        reset_vars();
         const reader = new FileReader();
         reader.onload = function(e) {
             try {
@@ -675,27 +656,35 @@ document.addEventListener('DOMContentLoaded', function() {
                     offsets = temp.raw_docs.map(x => x.offset);
                     source_data = temp.source_data;
                 }
-
-                spans = temp.spans;
-                relations = temp.relations;
+                //load the schema
                 schema = temp.schema;
-                //update the span_styles from the schema
                 update_span_styles_from_schema();
-    
-                //display docs with annotations
-                display_documents("load");
-            } catch (error) {
-                console.error("Error reading JSON: ", error);
-                alert("Failed to load JSON file. Please ensure the file is correctly formatted.");
+
+                //load spans and relations and display docs
+                if ("spans" in temp && "relations" in temp && temp.spans.length === raw_docs.length && temp.relations.length === raw_docs.length) {
+                    //load the annotations if they are there
+                    spans = temp.spans;
+                    relations = temp.relations;
+                    display_documents("load");
+                }
+                
+                else if (!("spans" in temp) && !("relations" in temp)) {
+                    display_documents("reset");
+                }
+                else {
+                    alert('if you give annotations, you must give both spans and relations keys and they both need to be list of lists of objects with one outer list element per document')
+                    display_documents("reset");
+                }
+            } 
+            catch (error) {
+                alert('Failed to load JSON file.  See console for details');
+                console.log(`Failed to load JSON file. ${error}`);
             }
         };
         reader.readAsText(file);
-        preannotatedInput.value = ''; 
+        //fileInput.value = ''; 
     });
 });
-
-
-
 
 
 
