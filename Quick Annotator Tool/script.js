@@ -627,6 +627,7 @@ function reset_vars() {
     raw_docs =      [];
     spans =         [];
     relations =     [];
+    document.getElementById('dataContainer').innerHTML = '';
 }
 
 
