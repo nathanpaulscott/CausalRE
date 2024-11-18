@@ -2,9 +2,11 @@
 This is an html/css/js based single page app for quick annotation.  The focus is on efficiency of the annotation process, which is a repetitive human task.  Every mouse movement, mouse click, keyboard stroke and delay matters.  All data is stored in-memory and imported/exported in .json format.
 
 ## Imports
-The tool is simple, you can load in a set of unannotated documents a sample is given, it is a .json object with 2 keys (raw_docs, schema). The raw docs are a list of the documents to annotate, the schema is an object that defines the allowed span and relation types.
+The tool is simple, you can load in a set of unannotated or pre-annotated documents, samples are given.  
 
-If you have previously annotated data, you can just choose to import that, the sample file gives the required format. It is the same as the unannotated case with additional keys for spans and relations.
+The unannotated file file should be a .json object with 2 keys (raw_docs, schema). The raw docs are a list of the documents to annotate, the schema is an object that defines the allowed span and relation types.
+
+The pre-annotated file is the same as the unannotated case with additional keys for spans and relations.
 
 NOTE: The tool currently does not support overlapping spans.
 
