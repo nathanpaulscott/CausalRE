@@ -667,7 +667,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 update_span_styles_from_schema();
 
                 //load spans and relations and display docs
-                if ("spans" in temp && "relations" in temp && temp.spans.length === raw_docs.length && temp.relations.length === raw_docs.length) {
+                if ("spans" in temp && "relations" in temp && 
+                    temp.spans.length === raw_docs.length && 
+                    temp.relations.length === raw_docs.length) {
                     //load the annotations if they are there
                     spans = temp.spans;
                     relations = temp.relations;
@@ -678,7 +680,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     display_documents("reset");
                 }
                 else {
-                    alert('if you give annotations, you must give both spans and relations keys and they both need to be list of lists of objects with one outer list element per document')
+                    alert('if you give annotations, you must give both spans and relations keys and they both need to be list of lists of objects with one outer list element per document\nLoading as unannotated...')
                     display_documents("reset");
                 }
             } 
@@ -698,41 +700,113 @@ function checkOverlap(a, b) {
     return a.start <= b.end && b.start <= a.end
 }
 
-function filterOverlappingAnnotations(annotations) {
+
+
+function filterOverlappingSpans_old(spans) {
+    /*
+    This is the function to keep only the longest span if 2 spans overlap
+    input => list of span objects
+    */
     removed = []
-    // Sort annotations by start, then by end in descending order to prioritize longer spans
-    annotations.sort((a, b) => a.start - b.start || b.end - a.end);
-    // Iterate through copied annotations and nullify shorter overlapping spans
-    for (let i = 0; i < annotations.length; i++) {
-        if (annotations[i] === null) continue; // Skip already nullified annotations
-        let longestSpan = annotations[i];
-        for (let j = i + 1; j < annotations.length && annotations[j].start <= longestSpan.end; j++) {
-            if (annotations[j] === null) continue;
-            if (checkOverlap(longestSpan, annotations[j])) {
+    // Sort spans by start, then by end in descending order to prioritize longer spans
+    spans.sort((a, b) => a.start - b.start || b.end - a.end);
+    // Iterate through copied spans and nullify shorter overlapping spans
+    for (let i = 0; i < spans.length; i++) {
+        if (spans[i] === null) continue; // Skip already nullified spans
+        let longestSpan = spans[i];
+        for (let j = i + 1; j < spans.length && spans[j].start <= longestSpan.end; j++) {
+            if (spans[j] === null) continue;
+            if (checkOverlap(longestSpan, spans[j])) {
                 // There is an overlap, check which one is longer
-                if (longestSpan.end - longestSpan.start < annotations[j].end - annotations[j].start) {
+                if (longestSpan.end - longestSpan.start < spans[j].end - spans[j].start) {
                     // The j-th span is longer
-                    removed.push({ ...annotations[i] }); // Push a copy of the current span to removed
-                    annotations[i] = null; // Nullify the current span
-                    longestSpan = annotations[j]; // Update the longestSpan
+                    removed.push({ ...spans[i] }); // Push a copy of the current span to removed
+                    spans[i] = null; // Nullify the current span
+                    longestSpan = spans[j]; // Update the longestSpan
                     i = j - 1; // Move the outer loop's index to just before j
                     break;
                 } else {
                     // The i-th span is longer or they are equal, nullify the j-th span
-                    removed.push({ ...annotations[j] }); // Push a copy of the current span to removed
-                    annotations[j] = null;
+                    removed.push({ ...spans[j] }); // Push a copy of the current span to removed
+                    spans[j] = null;
                 }
             }
         }
     }
 
     //return the non null elements
-    return [annotations.filter(span => span !== null), removed];
+    return [spans.filter(span => span !== null), removed];
 }
 
 
+function filterOverlappingSpans(spans, relations) {
+    /*
+    This is the function to keep only the longest span if 2 spans overlap, but prioritize spans with relations
+    input => list of span objects
+    */
+
+    let removed = [];
+
+    // Create sets for quick lookup to see if a span is involved in any relations
+    const heads = new Set(relations.map(rel => rel.head));
+    const tails = new Set(relations.map(rel => rel.tail));
+    // Function to check if span is involved in any relation
+    const isInRelation = (spanId) => heads.has(spanId) || tails.has(spanId);
+
+    // Sort spans by start, then by end in descending order to prioritize longer spans
+    spans.sort((a, b) => a.start - b.start || b.end - a.end);
+    // Iterate through spans to resolve overlaps
+    for (let i = 0; i < spans.length; i++) {
+        if (spans[i] === null) continue;  // Skip already nullified spans
+        let longestSpan = spans[i];
+        for (let j = i + 1; j < spans.length && spans[j].start <= longestSpan.end; j++) {
+            if (spans[j] === null) continue;
+            if (checkOverlap(longestSpan, spans[j])) {
+                // Check involvement in relations
+                const inRelLongest = isInRelation(longestSpan.id);
+                const inRelCurrent = isInRelation(spans[j].id);
+
+                // Determine which span to keep
+                if (inRelLongest && !inRelCurrent) {
+                    // Keep longestSpan, remove current span
+                    removed.push({ ...spans[j] });
+                    spans[j] = null;
+                } else if (!inRelLongest && inRelCurrent) {
+                    // Keep current span, remove longestSpan
+                    removed.push({ ...longestSpan });
+                    spans[i] = null;
+                    longestSpan = spans[j];  // Update longestSpan as current span
+                    i = j - 1;  // Adjust loop index
+                    break;
+                } else {
+                    // Either both are in relations or neither, keep the longer span
+                    if (longestSpan.end - longestSpan.start < spans[j].end - spans[j].start) {
+                        // Current span is longer
+                        removed.push({ ...longestSpan });
+                        spans[i] = null;
+                        longestSpan = spans[j];  // Update longestSpan as current span
+                        i = j - 1;  // Adjust loop index
+                        break;
+                    } else {
+                        // Longest span is longer or they are equal in length
+                        removed.push({ ...spans[j] });
+                        spans[j] = null;
+                    }
+                }
+            }
+        }
+    }
+
+    // Filter out nullified spans to finalize the list
+    return [spans.filter(span => span !== null), removed];
+}
+
+
+
 function display_documents(option) {
-    //this function loads in the raw_docs to the browser and loads the annotations if otpion is "load", otherwise it resets the annotations if option is "reset"
+    /*
+    this function loads in the raw_docs to the browser and loads the annotations if otpion is "load", otherwise it resets the annotations if option is "reset"
+    */
 
     //this builds the div for each doc and displays it on the browser
     const container = document.getElementById('dataContainer');
@@ -775,10 +849,12 @@ function display_documents(option) {
             //NOTE: currently I am not supporting overlapping spans, so I remove the shortest of any overlaps
             //NOTE: currently I am not supporting overlapping spans, so I remove the shortest of any overlaps
             //NOTE: currently I am not supporting overlapping spans, so I remove the shortest of any overlaps
-            let result = filterOverlappingAnnotations(spans[index]);
-            if (result[1].length > 0) removed_all = removed_all.concat(result[1]);
+            let result = filterOverlappingSpans(spans[index], relations[index]);
+            if (result[1].length > 0) 
+                removed_all = removed_all.concat(result[1]);
+            //overwrite spans[index] with filtered results
             spans[index] = result[0];
-            // Filter relations to keep only those that involve valid annotation IDs
+            //apply filtered spans to relations
             const validIds = new Set(spans[index].map(x => x.id));
             relations[index] = relations[index].filter(x => 
                 validIds.has(x.head) && validIds.has(x.tail)
@@ -816,6 +892,9 @@ function display_documents(option) {
     // Alert the removed spans
     if (removed_all.length > 0) alert(`There were some overlapping spans removed, the longest of the overlapping were kept, the removed spans were.\n${JSON.stringify(removed_all, null, 2)}`);
 }
+
+
+
 
 
 function export_data(option) {
