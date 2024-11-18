@@ -890,7 +890,7 @@ function display_documents(option) {
     });
 
     // Alert the removed spans
-    if (removed_all.length > 0) alert(`There were some overlapping spans removed, the longest of the overlapping were kept, the removed spans were.\n${JSON.stringify(removed_all, null, 2)}`);
+    if (removed_all.length > 0) alert(`There were some overlapping spans removed, spans with raltions were prioritized then the longest of the overlapping were prioritized, the removed spans were.\n${JSON.stringify(removed_all, null, 2)}`);
 }
 
 
