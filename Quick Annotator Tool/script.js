@@ -235,7 +235,7 @@ function add_instructions() {
             <strong>Go Back to Span Mode:</strong><br>
             - Press <strong>ESC</strong> or <strong>Shift-Click</strong> or <strong>Ctrl-Click</strong> on a non-span to go back to Span Mode.<br>
             <br>
-            <strong>Ver: 5.2:</strong><br>
+            <strong>Ver: 5.3:</strong><br>
             - NOTE: span start and end are the actual character positions, meaning to python slice the span you need to add 1 to the end.<br>
         
         
