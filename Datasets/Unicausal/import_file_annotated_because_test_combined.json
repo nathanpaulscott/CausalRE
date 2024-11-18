@@ -1,0 +1,414 @@
+{
+    "raw_docs": [
+        "(Chatterbox would prefer not to invoke the phrase \"intellectual dishonesty,\" because it's pompous and falsely suggests that only intellectuals can be intellectually dishonest.",
+        "And because it published an editorial Feb. 22 taunting the rest of the press for not following it on the story--and still didn't mention the pardon--it scores an extra two points.",
+        "And besides, Rabinowitz's efforts on the Times ' behalf weren't really unethical, just puzzling, given the two newspapers' intense rivalry.",
+        "Because it has published three times since the initial omission, it scores an additional three points.",
+        "But the Scientific Method does not permit any tinkering with the Indis Index 's scoring procedures.",
+        "Chatterbox considered but rejected the idea of awarding Rabinowitz bonus points for having \"eventually convinced\" Broaddrick to grant an interview to the New York Times (as the Times reports in today's story).",
+        "Chatterbox feels certain that the Journal editorial page will provide some follow-up tomorrow to tonight's NBC broadcast of its own Broaddrick interview, which means that if the Journal editorial page continues to take no action it will be in the Indis Hall of Fame by Monday at the latest!",
+        "For her part, Rabinowitz explains to Chatterbox that her efforts on behalf of the Times were more indifferent than the Times made them sound.",
+        "For the purposes of this survey, the Wall Street Journal will be counted as a separate and distinct publication from the Journal 's editorial page, because, in essence, it is.",
+        "Here's how it works: Publications that refuse to acknowledge (even if to refute the importance of) highly significant but inconvenient facts in their news or opinion coverage of controversial events will score one point for the initial offense.",
+        "I passed this on to [ Times reporter] Felicity Barringer during our second day's interview chat.",
+        "She said she would if he called again.",
+        "The Journal editorial page gets one point for failing to note the pardon in its initial Op-Ed by Dorothy Rabinowitz on Feb. 19.",
+        "They will then score one point for every subsequent issue or broadcast or Internet posting after the first offense is noted by Chatterbox if they continue not to report said inconvenient fact--and an additional two points on days when the news organization runs a follow-up without making note of said inconvenient fact.",
+        "When Chatterbox asked the Journal 's DC bureau chief, Alan Murray, who exercised good judgment in not breaking the Broaddrick story (and--full disclosure-- is Chatterbox's former boss), to comment about a Journal employee's feeding sources to the Times , he replied: \"I don't really have any comment on what the edit page did. ",
+        "Which is what Journal news employees are instructed to say whenever the editorial page causes them cringing embarrassment."
+    ],
+    "spans": [
+        [
+            {
+                "id": "E_0_0",
+                "start": 85,
+                "end": 173,
+                "type": "event"
+            },
+            {
+                "id": "E_0_1",
+                "start": 1,
+                "end": 73,
+                "type": "event"
+            }
+        ],
+        [
+            {
+                "id": "E_1_0",
+                "start": 12,
+                "end": 146,
+                "type": "event"
+            },
+            {
+                "id": "E_1_1",
+                "start": 149,
+                "end": 177,
+                "type": "event"
+            },
+            {
+                "id": "E_1_2",
+                "start": 81,
+                "end": 109,
+                "type": "event"
+            },
+            {
+                "id": "E_1_3",
+                "start": 46,
+                "end": 75,
+                "type": "event"
+            }
+        ],
+        [
+            {
+                "id": "E_2_0",
+                "start": 103,
+                "end": 137,
+                "type": "event"
+            },
+            {
+                "id": "E_2_1",
+                "start": 13,
+                "end": 94,
+                "type": "event"
+            }
+        ],
+        [
+            {
+                "id": "E_3_0",
+                "start": 8,
+                "end": 62,
+                "type": "event"
+            },
+            {
+                "id": "E_3_1",
+                "start": 65,
+                "end": 100,
+                "type": "event"
+            }
+        ],
+        [
+            {
+                "id": "E_4_0",
+                "start": 4,
+                "end": 24,
+                "type": "event"
+            },
+            {
+                "id": "E_4_1",
+                "start": 42,
+                "end": 97,
+                "type": "event"
+            }
+        ],
+        [
+            {
+                "id": "E_5_0",
+                "start": 84,
+                "end": 207,
+                "type": "event"
+            },
+            {
+                "id": "E_5_1",
+                "start": 47,
+                "end": 78,
+                "type": "event"
+            }
+        ],
+        [
+            {
+                "id": "E_6_0",
+                "start": 174,
+                "end": 227,
+                "type": "event"
+            },
+            {
+                "id": "E_6_1",
+                "start": 229,
+                "end": 288,
+                "type": "event"
+            }
+        ],
+        [
+            {
+                "id": "E_7_0",
+                "start": 115,
+                "end": 123,
+                "type": "event"
+            },
+            {
+                "id": "E_7_1",
+                "start": 130,
+                "end": 139,
+                "type": "event"
+            }
+        ],
+        [
+            {
+                "id": "E_8_0",
+                "start": 169,
+                "end": 173,
+                "type": "event"
+            },
+            {
+                "id": "E_8_1",
+                "start": 0,
+                "end": 145,
+                "type": "event"
+            }
+        ],
+        [
+            {
+                "id": "E_9_0",
+                "start": 224,
+                "end": 242,
+                "type": "event"
+            },
+            {
+                "id": "E_9_1",
+                "start": 21,
+                "end": 218,
+                "type": "event"
+            }
+        ],
+        [
+            {
+                "id": "E_10_0",
+                "start": 64,
+                "end": 94,
+                "type": "event"
+            },
+            {
+                "id": "E_10_1",
+                "start": 0,
+                "end": 55,
+                "type": "event"
+            }
+        ],
+        [
+            {
+                "id": "E_11_0",
+                "start": 22,
+                "end": 36,
+                "type": "event"
+            },
+            {
+                "id": "E_11_1",
+                "start": 9,
+                "end": 17,
+                "type": "event"
+            }
+        ],
+        [
+            {
+                "id": "E_12_0",
+                "start": 46,
+                "end": 125,
+                "type": "event"
+            },
+            {
+                "id": "E_12_1",
+                "start": 0,
+                "end": 40,
+                "type": "event"
+            }
+        ],
+        [
+            {
+                "id": "E_13_0",
+                "start": 97,
+                "end": 136,
+                "type": "event"
+            },
+            {
+                "id": "E_13_1",
+                "start": 35,
+                "end": 89,
+                "type": "event"
+            },
+            {
+                "id": "E_13_2",
+                "start": 141,
+                "end": 190,
+                "type": "event"
+            },
+            {
+                "id": "E_13_3",
+                "start": 0,
+                "end": 136,
+                "type": "event"
+            },
+            {
+                "id": "E_13_4",
+                "start": 35,
+                "end": 136,
+                "type": "event"
+            },
+            {
+                "id": "E_13_5",
+                "start": 0,
+                "end": 29,
+                "type": "event"
+            }
+        ],
+        [
+            {
+                "id": "E_14_0",
+                "start": 5,
+                "end": 251,
+                "type": "event"
+            },
+            {
+                "id": "E_14_1",
+                "start": 255,
+                "end": 326,
+                "type": "event"
+            }
+        ],
+        [
+            {
+                "id": "E_15_0",
+                "start": 68,
+                "end": 85,
+                "type": "event"
+            },
+            {
+                "id": "E_15_1",
+                "start": 94,
+                "end": 120,
+                "type": "event"
+            }
+        ]
+    ],
+    "relations": [
+        [
+            {
+                "id": "R_0_0",
+                "head": "E_0_0",
+                "tail": "E_0_1",
+                "type": "causal"
+            }
+        ],
+        [
+            {
+                "id": "R_1_0",
+                "head": "E_1_0",
+                "tail": "E_1_1",
+                "type": "causal"
+            },
+            {
+                "id": "R_1_1",
+                "head": "E_1_2",
+                "tail": "E_1_3",
+                "type": "causal"
+            }
+        ],
+        [
+            {
+                "id": "R_2_0",
+                "head": "E_2_0",
+                "tail": "E_2_1",
+                "type": "causal"
+            }
+        ],
+        [
+            {
+                "id": "R_3_0",
+                "head": "E_3_0",
+                "tail": "E_3_1",
+                "type": "causal"
+            }
+        ],
+        [],
+        [
+            {
+                "id": "R_5_0",
+                "head": "E_5_0",
+                "tail": "E_5_1",
+                "type": "causal"
+            }
+        ],
+        [
+            {
+                "id": "R_6_0",
+                "head": "E_6_0",
+                "tail": "E_6_1",
+                "type": "causal"
+            }
+        ],
+        [
+            {
+                "id": "R_7_0",
+                "head": "E_7_0",
+                "tail": "E_7_1",
+                "type": "causal"
+            }
+        ],
+        [
+            {
+                "id": "R_8_0",
+                "head": "E_8_0",
+                "tail": "E_8_1",
+                "type": "causal"
+            }
+        ],
+        [
+            {
+                "id": "R_9_0",
+                "head": "E_9_0",
+                "tail": "E_9_1",
+                "type": "causal"
+            }
+        ],
+        [],
+        [],
+        [
+            {
+                "id": "R_12_0",
+                "head": "E_12_0",
+                "tail": "E_12_1",
+                "type": "causal"
+            }
+        ],
+        [
+            {
+                "id": "R_13_0",
+                "head": "E_13_2",
+                "tail": "E_13_3",
+                "type": "causal"
+            },
+            {
+                "id": "R_13_1",
+                "head": "E_13_4",
+                "tail": "E_13_5",
+                "type": "causal"
+            }
+        ],
+        [],
+        [
+            {
+                "id": "R_15_0",
+                "head": "E_15_0",
+                "tail": "E_15_1",
+                "type": "causal"
+            }
+        ]
+    ],
+    "schema": {
+        "span_types": [
+            {
+                "name": "state",
+                "color": "rgba(255, 87, 51, 0.3)"
+            },
+            {
+                "name": "event",
+                "color": "rgba(51, 255, 87, 0.3)"
+            }
+        ],
+        "relation_types": [
+            {
+                "name": "causal",
+                "color": "rgba(255, 87, 51, 0.3)"
+            }
+        ]
+    }
+}
