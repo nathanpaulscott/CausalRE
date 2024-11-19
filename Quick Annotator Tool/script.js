@@ -28,6 +28,8 @@ let tool_state = 'span_mode'; // Possible values: 'span_mode', 'relation_mode'
 let mouseDownDocIndex = null;
 let input_format = 'min';     //hard coded to min for now
 let instructions = add_instructions();
+let filename = '';
+let ver = 5.4;
 
 //set the offset for the popup messages near the click point
 let msg_offset_x = 40;
@@ -235,7 +237,7 @@ function add_instructions() {
             <strong>Go Back to Span Mode:</strong><br>
             - Press <strong>ESC</strong> or <strong>Shift-Click</strong> or <strong>Ctrl-Click</strong> on a non-span to go back to Span Mode.<br>
             <br>
-            <strong>Ver: 5.3:</strong><br>
+            <strong>Ver: ${ver}:</strong><br>
             - NOTE: span start and end are the actual character positions, meaning to python slice the span you need to add 1 to the end.<br>
         
         
@@ -640,10 +642,8 @@ document.addEventListener('DOMContentLoaded', function() {
         //this selects the file import .json file and loads it into the associated js vars and modifies the display on screen
         //this file will have schema, raw text and spans and relations in it, the annotated data part is not used as that is just for human comprehension only
         const file = event.target.files[0];
-        if (!file) {
-            alert("No file selected.");
-            return;
-        }
+        if (!file) return;
+        filename = file.name
 
         reset_vars();
         const reader = new FileReader();
@@ -923,11 +923,26 @@ function export_data(option) {
     else if (option === "export") {
         const jsonBlob = new Blob([JSON.stringify(out_data, null, 4)], {type: 'application/json'});
         const jsonLink = document.createElement('a');
-        jsonLink.download = generateTimestampedFilename('annotated_docs', 'json');
+        jsonLink.download = generateTimestampedFilename(extract_file_basename(filename), 'json');
         jsonLink.href = URL.createObjectURL(jsonBlob);
         jsonLink.click();
     }
 }
+
+
+function extract_file_basename(path) {
+    // Extract the last part of the path as the filename
+    const filename = path.split('/').pop();
+    // Remove the file extension
+    let baseName = filename.split('.').slice(0, -1).join('.') || filename;
+    // Regex to find the pattern \_annotated_d{8}-\d{6} (e.g., _annotated_12345678-123456)
+    const pattern = /_annotated_\d{8}-\d{6}$/;
+    // Remove the pattern from the base name if it exists
+    baseName = baseName.replace(pattern, '');
+    // Trim any trailing dots left after removing the pattern
+    return baseName.replace(/\.$/, '');
+}
+
 
 
 
@@ -942,7 +957,7 @@ function generateTimestampedFilename(baseFilename, extension) {
                       date.getMinutes().toString().padStart(2, '0') +
                       date.getSeconds().toString().padStart(2, '0');
     // Construct the full filename with timestamp inserted before the extension
-    return `${baseFilename}-${timestamp}.${extension}`;
+    return `${baseFilename}_annotated_${timestamp}.${extension}`;
 }
 
 
