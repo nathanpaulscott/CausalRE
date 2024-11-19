@@ -27,9 +27,9 @@ let active_span = {
 let tool_state = 'span_mode'; // Possible values: 'span_mode', 'relation_mode'
 let mouseDownDocIndex = null;
 let input_format = 'min';     //hard coded to min for now
-let instructions = add_instructions();
 let filename = '';
-let ver = 5.4;
+let app_ver = 5.4;
+let instructions = add_instructions();
 
 //set the offset for the popup messages near the click point
 let msg_offset_x = 40;
@@ -237,12 +237,9 @@ function add_instructions() {
             <strong>Go Back to Span Mode:</strong><br>
             - Press <strong>ESC</strong> or <strong>Shift-Click</strong> or <strong>Ctrl-Click</strong> on a non-span to go back to Span Mode.<br>
             <br>
-            <strong>Ver: ${ver}:</strong><br>
+            <strong>Ver: ${app_ver}:</strong><br>
             - NOTE: span start and end are the actual character positions, meaning to python slice the span you need to add 1 to the end.<br>
-        
-        
-        </div>
-    `;
+        </div>`;
 
     const topContainer = document.getElementById('topContainer');
     // Append the instructions div to 'topContainer'
