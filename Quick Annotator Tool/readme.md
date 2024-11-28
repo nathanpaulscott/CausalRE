@@ -18,6 +18,8 @@ data key contains a list of observations/documents, each observation is an objec
 - data[doc_idx].relations[rel_idx].head key contains the head span id from the spans list.   
 - data[doc_idx].relations[rel_idx].tail key contains the tail span id from the spans list.    
 - data[doc_idx].relations[rel_idx].type key contains the relation type (from the set of relation type names in schema.relations_types).   
+
+
 schema key contains 2 keys: 'span_types', 'relation_types'.    
 - schema.span_types[span_type_idx].name key contains the unique span type name.   
 - schema.span_types[span_type_idx].color key contains the span type color as hex or rgba.   
