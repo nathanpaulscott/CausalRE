@@ -11,108 +11,125 @@
 ///////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////
 //GLOBAL PARAMS
-//data storage vars
 let source_data = {};   //holds the dict of source data, each key is a source id and the value is the source text
-let sources = [];       //holds the source id for each doc
-let offsets = [];       //holds the offset for the doc in the source given by sources[docIndex]
-let raw_docs = [];      //holds the unannotated doc
-let spans = [];
-let relations = [];
+let data = [];      // holds the list of observations, each obs has keys: tokens, spans, relations and optionally source, offset
+let schema = {};
 
 //control vars
-let active_span = {
-    Element:    null, 
-    Index:      null
-};
+let active_span = {span_id: null, docIndex: null};
 let tool_state = 'span_mode'; // Possible values: 'span_mode', 'relation_mode'
 let mouseDownDocIndex = null;
 let input_format = 'min';     //hard coded to min for now
 let filename = '';
-let app_ver = 5.4;
-let instructions = add_instructions();
+let app_ver = 1;
+let doubleclick_flag = false;
 
 //set the offset for the popup messages near the click point
-let msg_offset_x = 40;
-let msg_offset_y = -40;
+const msg_offset_x = 40;
+const msg_offset_y = -40;
+const info_offset_x = -20;
+const info_offset_y = 20;
+
+/*
+import data format....
+{
+    'data': [
+        {
+            'tokens': [list of strings],
+            'spans': [
+                {
+                    'id': the span id,
+                    'start': the start token idx,
+                    'end': the end token idx + 1,
+                    'type': the span type
+                },...
+            ],
+            'relations': [
+                {
+                    'id': the relation id,
+                    'head': the head span id,
+                    'tail': the tail span id,
+                    'type': the span type
+                },...
+            ]
+        },
+        {next obs},
+        {next obs},...
+    ],
+    'schema': {same format as previously}
+}
+*/
 
 //make a default schema object
 schema = {
     "span_types":[
         {
             "name":"E_type1",
-            "color":"rgb(135,206,250)"
+            "color":"rgba(135,206,250, 0.3)"
         },
         {
             "name":"E_type2",
-            "color":"rgb(144,238,144)"
+            "color":"rgba(144,238,144, 0.3)"
         },
         {
             "name":"E_type3",
-            "color":"rgb(255,182,193)"
+            "color":"rgba(255,182,193, 0.3)"
         },
         {
             "name":"E_type4",
-            "color":"rgb(255,165,0)"
+            "color":"rgba(255,165,0, 0.3)"
         }
     ],
     "relation_types":[
         {
             "name":"R_type1",
-            "color": "rgb(135,206,250)"
+            "color": "rgba(135,206,250, 0.3)"
         },
         {
             "name":"R_type2",
-            "color": "rgb(144,238,144)"
+            "color": "rgba(144,238,144, 0.3)"
         },
         {
             "name":"R_type3",
-            "color": "rgb(255,182,193)"
+            "color": "rgba(255,182,193, 0.3)"
         },
         {
             "name":"R_type4",
-            "color": "rgb(255,165,0)"
+            "color": "rgba(255,165,0, 0.3)"
         }
     ]
 }
+
+//make the instructions msg
+const instructions_text = `
+<div id="instructions-header"><strong>INSTRUCTIONS</strong></div>
+<div id="instructions-content" style="display: none;">
+    <br>
+    <strong>Span Mode:</strong><br>
+    - <strong>Click and Drag</strong> to select spans of text to annotate.<br>
+    <strong>Relation Mode:</strong><br>
+    - <strong>Left-Click</strong> on any span to move to relation mode (selected span as head, flashing red) and see all tail spans (black border).<br>
+    - <strong>Right-Click</strong> on any span (while in relation mode) to add/remove the relation with that span as tail to the flashing head span.<br>
+    <strong>Reverse Relation Mode:</strong><br>
+    - <strong>Ctrl-Left-Click</strong> on any span to move to rev_relation mode (selected span as tail, flashing, black) and see all head spans (red border).<br>
+    - <strong>Right-Click</strong> on any span (while in rev_relation mode) to add/remove the relation with that span as head to the flashing tail span.<br>
+    <strong>Go Back to Span Mode:</strong><br>
+    - Press <strong>ESC</strong>
+    <br>
+    <strong>Ver: ${app_ver}:</strong><br>
+    - NOTE: span start is the actual start token idx, end is the actual end token idx + 1<br>
+</div>`;
+
 
 ///////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////
 //Modify html document
-
-// Inject CSS for flashing border animation
+///////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////
+//Inject CSS
 const style = document.createElement('style');
 style.innerHTML = `
-@keyframes red-flashing-border {
-    0% { border-color: transparent; }
-    50% { border-color: red; }
-    100% { border-color: transparent; }
-}
-.red-flashing-border {
-    border: 4px dashed red;  // !important; 
-    animation: red-flashing-border 0.5s linear infinite; /* Flashes 2x per second */
-}
-
-@keyframes black-flashing-border {
-    0% { border-color: transparent; }
-    50% { border-color: black; }
-    100% { border-color: transparent; }
-}
-.black-flashing-border {
-    border: 4px dashed black;  // !important;
-    animation: black-flashing-border 0.5s linear infinite; /* Flashes 2x per second */
-}
-
-.tail-border-1 { border: 3px dashed black !important; }
-.tail-border-2 { border: 5px dashed black !important; }
-.tail-border-3 { border: 7px dashed black !important; }
-.tail-border-4 { border: 9px dashed black !important; }
-
-.head-border-1 { border: 3px dashed red !important; }
-.head-border-2 { border: 5px dashed red !important; }
-.head-border-3 { border: 7px dashed red !important; }
-.head-border-4 { border: 9px dashed red !important; }
-
 #current_mode {
    color: red;
    font-weight: bold;
@@ -120,21 +137,264 @@ style.innerHTML = `
 }
 
 /* Adjust body padding to accommodate instruction div */
-body { padding-top: 50px; }
+body {
+    padding-top: 85px;
+    font-family: 'Arial', sans-serif;
+    font-size: 14px;
+}
 
+/*style for the doc header*/
+div[id^="header"] {
+    font-weight:    bold;
+    /*font-size:      12px;*/
+}
 
-div[id*="InputContainer"] {
-    border: 2px solid #000000; /* Sets a black border with a thickness of 2px */
-    padding: 10px; /* Adds space between the border and the content inside the div */
-    margin: 10px; /* Adds space outside the border */
+/*style for the doc div*/
+div[id^="doc"] {
+    display:        block;
+    max-width:      100%;
+    border:         1px solid #ccc;
+    padding:        10px;
+    max-height:     200px;
+    overflow-x:     auto;
+    overflow-y:     auto;
+    margin-bottom:  20px;
 }
 
 
+/*set the dafault span padding which spaces the words*/
+div[id^="doc"] > span {
+    /*font-size: 14px;*/
+    display: inline-block;
+    white-space: normal;
+    overflow-wrap: normal;
+
+    padding-left: 2px;      /*this affects the word spacing*/
+    padding-right: 2px;     /*this affects the word spacing*/
+    margin-top: 2px;
+    padding-top: 2px;
+    padding-bottom: 2px;
+    margin-bottom: 2px;
+}
+
+/*////////////////////////////////////////////////////*/
+/*////////////////////////////////////////////////////*/
+/*////////////////////////////////////////////////////*/
+/*for the tooltip*/
+div[id="tooltip_info"] {
+    position: absolute;
+    background-color: #333;
+    color: #fff;
+    padding: 5px;
+    /*border: 2px solid red;*/
+    border-radius: 5px;
+    font-size: 12px;
+    /*font-weight: bold;*/
+    font-family: Arial, sans-serif;
+    display: none;
+    z-index: 1000;
+}
+
+div[id="tooltip_caution"] {
+    position: absolute;
+    background-color: white;
+    color: red;
+    padding: 5px;
+    border: 2px solid red;
+    /*border-radius: 5px;*/
+    display: none;
+    z-index: 1500;
+    font-size: 14px;
+    font-weight: bold;
+    font-family: Arial, sans-serif;
+}
+
+div[id="topInstructions"] {
+    position:       fixed;
+    top:            0px;
+    left:           400px;
+    width:          100%;
+    background-color:   #f9f9f9;
+    padding:        10px;
+    text-align:      left;
+    font-size:       14px;
+    font-family:     Arial, sans-serif;
+    border-bottom:   1px solid #ddd;
+    z-index:         1000;
+    max-height:      30px;
+    overflow:       hidden;
+    cursor:         pointer;
+    transition:     max-height 0.3s ease-in-out;
+}
+
+div[id="import_container"] {
+    background-color:    white;
+    width:              100%;
+    position:           fixed;
+    top:                60px;
+    border-bottom:       2px solid grey;
+    padding:            10px 10px 10px 10px;
+    text-align:          left;
+    font-size:           14px;
+    font-family:         Arial, sans-serif;
+    z-index:             1000;
+}
+
+div[id="buttons_container"] {
+    position:       fixed;
+    background-color: white;
+    width:          100%;
+    top:            0px;
+    padding:        10px;
+    text-align:      left;
+    font-size:       14px;
+    font-family:     Arial, sans-serif;
+    z-index:         1000;
+}
+
+div[id="menu"] {
+    position:           absolute;
+    background-color:   white;
+    border: 1px solid   black;
+    padding:            5px;
+    z-index:            1000;
+    font-weight:        bold;
+    font-size:          14px;
+    font-family:        Arial, sans-serif;
+}
+div[id="menu"] > div {
+    background-color: rgba(221,221,221,1);
+    padding: 7px;
+}
+div[id="menu"] > div:hover {
+    padding: 5px;
+    border: 2px solid black;
+}
+
+
+/*////////////////////////////////////////////////////*/
+/*set the border styles for the annotated spans*/
+/*////////////////////////////////////////////////////*/
+div[id^="doc"] > span[span-boundary*="span"] {
+    border-top: 1px solid rgba(100,100,100,1);
+    border-bottom: 1px solid rgba(100,100,100,1);
+    padding-top: 1px;
+    padding-bottom: 1px;
+}
+div[id^="doc"] > span[span-boundary*="span-start"] {
+    border-left: 1px solid rgba(100,100,100,1);
+    padding-left: 1px;
+}
+div[id^="doc"] > span[span-boundary*="span-end"] {
+    border-right: 1px solid rgba(100,100,100,1);
+    padding-right: 1px;
+}
+div[id^="doc"] > span[span-boundary*="span-both"] {
+    border-left: 1px solid rgba(100,100,100,1);
+    border-right: 1px solid rgba(100,100,100,1);
+    padding-left: 1px;
+    padding-right: 1px;
+}
+
+/*////////////////////////////////////////////////////*/
+/*set the borders for the selected source relation*/
+/*////////////////////////////////////////////////////*/
+@keyframes red-flashing-border {
+    0%, 100% { border-color: red; }
+    50% { border-color: transparent; }
+}
+@keyframes black-flashing-border {
+    0%, 100% { border-color: black; }
+    50% { border-color: transparent; }
+}
+div[id^="doc"] > span[class*="red-flashborder"] { 
+    animation: red-flashing-border 0.5s linear infinite;
+}
+div[id^="doc"] > span[class*="black-flashborder"] { 
+    animation: black-flashing-border 0.5s linear infinite; 
+}
+div[id^="doc"] > span[class*="-flashborder"] {
+    border-style: solid;
+    border-width: 3px 0px 3px 0px;    /*top right bottom left*/
+    /*need this so the text doesn't move*/
+    margin-top: 1px;
+    padding-top: 0px;
+    padding-bottom: 0px;
+    margin-bottom: 1px;
+}
+div[id^="doc"] > span[class*="-flashborder-start"] {
+    border-width: 3px 0px 3px 2px;    /*top right bottom left*/
+    padding-left: 0px;      /*this affects the word spacing*/
+}
+div[id^="doc"] > span[class*="-flashborder-end"] {
+    border-width: 3px 2px 3px 0px;    /*top right bottom left*/
+    padding-right: 0px;      /*this affects the word spacing*/
+}
+div[id^="doc"] > span[class*="-flashborder-both"] {
+    border-width: 3px 2px 3px 2px;    /*top right bottom left*/
+    padding-left: 0px;      /*this affects the word spacing*/
+    padding-right: 0px;      /*this affects the word spacing*/
+}
+
+/*////////////////////////////////////////////////////*/
+/*set the borders of the other relations to the selected side*/
+/*////////////////////////////////////////////////////*/
+div[id^="doc"] > span[class*="head-border"]   { 
+    border-color: red; 
+}
+div[id^="doc"] > span[class*="tail-border"]   { 
+    border-color: black; 
+}
+div[id^="doc"] > span[class*="-border"]      { 
+    border-style: solid;
+    border-width: 3px 0px 3px 0px; 
+    /*need this so the text doesn't move*/
+    margin-top: 1px;
+    padding-top: 0px;
+    padding-bottom: 0px;
+    margin-bottom: 1px;
+}
+div[id^="doc"] > span[class*="-border-start"]      { 
+    border-width: 3px 0px 3px 2px; 
+    padding-left: 0px;
+}
+div[id^="doc"] > span[class*="-border-end"]      { 
+    border-width: 3px 2px 3px 0px; 
+    padding-right: 0px;
+}
+div[id^="doc"] > span[class*="-border-both"]      { 
+    border-width: 3px 2px 3px 2px; 
+    padding-left: 0px;
+    padding-right: 0px;
+}
+
 `; // Close the CSS string and statement properly
 
-document.head.appendChild(style);
 
 
+///////////////////////////////////////////
+//Define some generic functions
+///////////////////////////////////////////
+function hasSpanId(element) {
+    //to test if a span has an attribute, this is fast:
+    return element.hasAttribute("span-id");
+}
+
+//utility to check we have clicked inside an acceptable div
+function get_parent_div_for_mouse_event(target) {
+    // Use closest to find the parent div that has id that starts with 'doc'
+    let docDiv = target.closest('div[id^="doc"]');
+    if (!docDiv) return null; // No matching div found
+
+    //got to here so passed the check
+    return docDiv;
+}
+
+// Utility function to remove existing menus
+function remove_menus() {
+    const existingMenus = document.querySelectorAll('div[id="menu"]');
+    existingMenus.forEach(menu => menu.parentNode.removeChild(menu));
+}
 
 function delete_span_styles() {
     //delets all span_style from <style>...</style>
@@ -145,14 +405,14 @@ function delete_span_styles() {
     if (!sheet) return; // Skip if the stylesheet is not accessible
 
     // Access the rules in the stylesheet
-    const rules = sheet.cssRules || sheet.rules;
+    const rules = sheet.cssRules// || sheet.rules;
 
     // Iterate backwards to avoid index issues when deleting
     let rulesDeleted = false;
     for (let i = rules.length - 1; i >= 0; i--) {
         const rule = rules[i];
         // Check if the rule's selector starts with "[span-type="
-        if (rule.selectorText && rule.selectorText.startsWith('[span-type=')) {
+        if (rule.selectorText && rule.selectorText.startsWith('div[id^="doc"] > span[span-type~=')) {
             sheet.deleteRule(i); // Delete the rule
             //console.log(`Deleted rule: ${rule.selectorText}`);
             rulesDeleted = true;     
@@ -169,10 +429,7 @@ function delete_span_styles() {
         styleElement.textContent = updatedStyles;
         //console.log('Updated <style> content after deletion.');
     }
-
 }
-
-
 
 //update the span styles from the schema
 function update_span_styles_from_schema() {
@@ -187,60 +444,16 @@ function update_span_styles_from_schema() {
     schema['span_types'].forEach(type => {
         const type_name = type['name'];
         const type_color = type['color'];
-        newStyles += `\n
-            [span-type="${type_name}"] {\n
-                background-color: ${type_color};\n
-                border: 1px solid grey;\n
-            }\n`;
+        newStyles += `div[id^="doc"] > span[span-type~="${type_name}"] { background-color: ${type_color}; }\n`;
     });
-
     //Append new styles to the top of the styles element, so it is least important
     styleElement.insertBefore(document.createTextNode(newStyles), styleElement.firstChild);
 }
 
-
 function add_instructions() {
     const instructions = document.createElement('div');
     instructions.id = 'topInstructions';
-    instructions.style.position = 'fixed';
-    instructions.style.top = '0px';
-    instructions.style.left = '400px';
-    instructions.style.width = '100%';
-    instructions.style.backgroundColor = '#f9f9f9';
-    instructions.style.padding = '10px';
-    instructions.style.textAlign = 'left';
-    instructions.style.fontSize = '14px';
-    instructions.style.fontFamily = 'Arial, sans-serif';
-    instructions.style.borderBottom = '1px solid #ddd';
-    instructions.style.zIndex = '1000';
-    instructions.style.maxHeight = '30px'; // Initially collapsed
-    instructions.style.overflow = 'hidden';
-    instructions.style.cursor = 'pointer'; // Indicate hover effect
-    instructions.style.transition = 'max-height 0.3s ease-in-out';
-
-    instructions.innerHTML = `
-        <div id="instructions-header"><strong>INSTRUCTIONS</strong></div>
-        <div id="instructions-content" style="display: none;">
-            <br>
-            <strong>Span Mode:</strong><br>
-            - <strong>Click and Drag</strong> to select spans of text to annotate.<br>
-            - <strong>Left-Click</strong> on any annotated span to edit the type.<br>
-            - <strong>Right-Click</strong> on any annotated span to remove that span.<br>
-            <strong>Relation Mode:</strong><br>
-            - <strong>Ctrl-Click</strong> on any span to move to relation mode (selected span as head) and see the selected span's tail spans.<br>
-            - <strong>Left-Click</strong> on any span to add the relation with it as tail.<br>
-            - <strong>Right-Click</strong> on any highlighted tail span to remove the relation to it.<br>
-            <strong>Reverse Relation Mode:</strong><br>
-            - <strong>Shift-Click</strong> on any span to move to reverse relation mode (selected span as tail) and see the selected span's head spans.<br>
-            - <strong>Left-Click</strong> on any span to add the relation with it as head.<br>
-            - <strong>Right-Click</strong> on any highlighted head span to remove the relation to it.<br>
-            <strong>Go Back to Span Mode:</strong><br>
-            - Press <strong>ESC</strong> or <strong>Shift-Click</strong> or <strong>Ctrl-Click</strong> on a non-span to go back to Span Mode.<br>
-            <br>
-            <strong>Ver: ${app_ver}:</strong><br>
-            - NOTE: span start and end are the actual character positions, meaning to python slice the span you need to add 1 to the end.<br>
-        </div>`;
-
+    instructions.innerHTML = instructions_text;
     const topContainer = document.getElementById('topContainer');
     // Append the instructions div to 'topContainer'
     topContainer.appendChild(instructions);
@@ -248,21 +461,35 @@ function add_instructions() {
     return instructions
 }
 
+function add_import_button() {
+    // Get the container where the elements will be added
+    const importContainer = document.createElement('div');
+    importContainer.id = 'import_container';
+    
+    // Create and configure the label
+    const label = document.createElement('label');
+    label.setAttribute('for', 'fileInput');
+    label.textContent = 'Data Import';
+    label.style.marginRight = '10px'; // Style the label
 
+    // Create and configure the file input
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.id = 'fileInput';
+    fileInput.accept = '.json';
+
+    // Add label and file input to the container
+    importContainer.appendChild(label);
+    importContainer.appendChild(fileInput);
+
+    const container = document.getElementById('topContainer');
+    container.prepend(importContainer);
+}
 
 function add_export_and_view_results_buttons() {
     //add the export and view results buttons
     const buttonsContainer = document.createElement('div');
-    buttonsContainer.style.position = 'fixed';
-    buttonsContainer.style.backgroundColor = 'white';
-    buttonsContainer.style.width = '100%';
-    buttonsContainer.style.top = '0px';
-    buttonsContainer.style.padding = '10px';
-    buttonsContainer.style.textAlign = 'left';
-    buttonsContainer.style.fontSize = '14px';
-    buttonsContainer.style.fontFamily = 'Arial, sans-serif';
-    buttonsContainer.style.zIndex = '1000';
-    instructions.style.borderBottom = '1px solid #ddd';
+    buttonsContainer.id = 'buttons_container';
 
     const statediv = document.createElement('div');
     statediv.style.padding = '0px';
@@ -274,6 +501,7 @@ function add_export_and_view_results_buttons() {
     exportButton.onclick = function() {export_data("export");};
     exportButton.style.marginLeft = '0px';
     exportButton.style.marginTop = '10px';
+    exportButton.style.fontSize = '12px';
     buttonsContainer.appendChild(exportButton);
 
     const viewResultsButton = document.createElement('button');
@@ -281,6 +509,7 @@ function add_export_and_view_results_buttons() {
     viewResultsButton.onclick = function() {export_data("view");};
     viewResultsButton.style.marginLeft = '5px';
     viewResultsButton.style.marginTop = '10px';
+    viewResultsButton.style.fontSize = '12px';
     buttonsContainer.appendChild(viewResultsButton);
 
     //add the buttonsContainer to the topContainer div
@@ -288,55 +517,36 @@ function add_export_and_view_results_buttons() {
     container.prepend(buttonsContainer);
 }
 
-
 function add_tooltip_info() {
     // Create a tooltip element and add it to the document
     const tooltip = document.createElement('div');
     tooltip.id = 'tooltip_info';
-    tooltip.style.position = 'absolute';
-    tooltip.style.backgroundColor = '#333';
-    tooltip.style.color = '#fff';
-    tooltip.style.padding = '5px';
-    //tooltip.style.border = '2px solid red';
-    tooltip.style.borderRadius = '5px';
-    tooltip.style.fontSize = '12px';
-    //tooltip.style.fontWeight = 'bold';
-    tooltip.style.fontFamily = 'Arial, sans-serif';
-    tooltip.style.display = 'none';
-    tooltip.style.zIndex = '1000';
 
-    const container = document.getElementById('InputContainer');
+    const container = document.getElementById('dataContainer');
     container.parentNode.insertBefore(tooltip, container);
     
     return tooltip
 }
 
-
 function add_tooltip_caution() {
     // Create a tooltip element and add it to the document
     const tooltip = document.createElement('div');
     tooltip.id = 'tooltip_caution';
-    tooltip.style.position = 'absolute';
-    tooltip.style.backgroundColor = 'white'; // White text
-    tooltip.style.color = 'red'; // Red text
-    tooltip.style.padding = '5px';
-    tooltip.style.border = '2px solid red';
-    //tooltip.style.borderRadius = '5px';
-    tooltip.style.display = 'none';
-    tooltip.style.zIndex = '1500';
-    tooltip.style.fontSize = '14px';
-    tooltip.style.fontWeight = 'bold';
-    tooltip.style.fontFamily = 'Arial, sans-serif';
 
-    const container = document.getElementById('InputContainer');
+    const container = document.getElementById('dataContainer');
     container.parentNode.insertBefore(tooltip, container);
 
     return tooltip
 }
 
-
+//add the styles to the html doc
+document.head.appendChild(style);
 //add the span_styles from the schema
 update_span_styles_from_schema();
+//add instructions
+const instructions = add_instructions();
+//add the import button
+add_import_button();
 //add the export and view results buttons
 add_export_and_view_results_buttons();
 //add the tooltip info div
@@ -344,293 +554,602 @@ const tooltip_info = add_tooltip_info();
 //add the no add relation tooltip
 const tooltip_caution = add_tooltip_caution();
 
-
 ///////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////
-//LISTENERS AND GLOBAL FUNCTIONS
-// Add hover behavior to show/hide instructions
-document.getElementById('topInstructions').addEventListener('mouseenter', () => {
-    instructions.style.maxHeight = '300px';
-    document.getElementById('instructions-content').style.display = 'block';
-});
-
-document.getElementById('topInstructions').addEventListener('mouseleave', () => {
-    instructions.style.maxHeight = '30px';
-    document.getElementById('instructions-content').style.display = 'none';
-});
-
-
-//right click listener
-document.getElementById('dataContainer').addEventListener('contextmenu', function(event) {
-    // Prevent the default context menu from appearing
-    event.preventDefault();
-    
-    //get target
-    const target = event.target;
-
-    //close other open menus if we did not click on them
-    close_other_menus(target);
-
-    //check we clicked on a span
-    if (!target || target.tagName !== "SPAN") return;
-    
-    //check the parent div is an editable div
-    docDiv = get_parent_div_for_mouse_event(target);
-    if (!docDiv) return;
-    //all good so get the docDiv object and extract the docIndex
-    docIndex = parseInt(docDiv.id.replace('doc', ''));
-    
-    // check if the user clicked on an unannotated span, do nothing if so
-    if (target.getAttribute('type') === "unannotated") return;
-
-    //these are the processing cases.....
-    //here the clicked span type is "annotated" and we are in span_mode so remove it
-    if (tool_state === 'span_mode') 
-        edit_span_handler(event, docIndex, null, "rmv");
-    
-    //here the clicked span type is "annotated" and we are in relation_mode, so check if it is a tail span and remove it if so
-    else {  
-        const spanId = target.getAttribute('span-id');
-        //process relation if the clicked span is not the head and is in the same document
-        if (docIndex === active_span.Index && spanId !== active_span.Element.getAttribute('span-id'))
-            edit_relation_handler(event, docIndex, 'rmv');
-    }
-});
-
-
-
-
-//left click listener to handle span interactions and menu management
-document.getElementById('dataContainer').addEventListener('click', function(event) {
-    // Disable default Ctrl+Click and Shift+Click behaviors
-    if (event.ctrlKey || event.shiftKey) {
-        event.preventDefault(); // Prevent the default browser action
-        event.stopPropagation(); // Stop the event from propagating further
-    }
-    
-    //Determine the click type
-    let ctrl_left_click = event.button === 0 && event.ctrlKey && !event.shiftKey;
-    let shift_left_click = event.button === 0 && event.shiftKey && !event.ctrlKey;
-    let left_click = event.button === 0 && !(event.ctrlKey || event.shiftKey);
-    let ctrl_shift_left_click = event.button === 0 && event.ctrlKey && event.shiftKey;
-
-    // Ignore Ctrl+Shift+Click, treat it as a normal left-click
-    if (ctrl_shift_left_click) {
-       ctrl_left_click = false;
-       shift_left_click = false;
-    }   
-
-    //console.log('Left-click detected at:', event.clientX, event.clientY);
-    const target = event.target;
-    //close other open menus if we did not click on them
-    close_other_menus(target);
-    
-    //check we clicked on a span tag and it was not span that had type as unannotated, exit if so
-    //if (!target || target.tagName !== "SPAN" || target.getAttribute('type')  === "unannotated") return;
-    if (!target || target.tagName !== "SPAN") return;
-    //check the parent div is a docDiv, if not exit
-    let docDiv = get_parent_div_for_mouse_event(target);
-    if (!docDiv) return;
-    //all good so extract the docIndex
-    let docIndex = parseInt(docDiv.id.replace('doc', ''));
-    
-    //these are the processing cases.....
-    if ((ctrl_left_click || shift_left_click) && target.getAttribute('type') === "unannotated") 
-        exit_relation_mode();
-    //ctrl left click, so enter relation mode from whatever state we are in
-    else if (ctrl_left_click) 
-        enter_relation_mode(target, docIndex, 'relation_mode');
-    //shift left click, so enter reverse relation mode from whatever state we are in
-    else if (shift_left_click) 
-        enter_relation_mode(target, docIndex, 'rev_relation_mode');
-    //if plain left click do nothing in span mode, add relation in any of the relation modes
-    else if (left_click) {
-        //if in span_mode enter relation mode on plain left click
-        if (tool_state === 'span_mode' && target.getAttribute('type') === "annotated")
-            edit_span_handler(event, docIndex, null, "edit");
-        //if already in any of the relation modes, process add the selected span as a relation to add
-        else if (tool_state !== 'span_mode' && target.getAttribute('type') !== "unannotated") {
-            const spanId = target.getAttribute('span-id');
-            //check that the clicked span was not the same as the active_span span and is in the same docDiv, if not exit
-            if (docIndex !== active_span.Index || spanId === active_span.Element.getAttribute('span-id')) return;
-            //all good, we clicked on an acceptable candidate span in the same docDiv, so process the add relation
-            edit_relation_handler(event, docIndex, 'add');
-            //console.log('processing candidate head/tail span');
-        }
-        else 
-            return;
-    }
-});
-
-
-
-//add the exit all relation modes on esc button press event
-document.addEventListener('keydown', function(event) {
-    if (event.key === 'Escape' && (tool_state === 'relation_mode' || tool_state === 'rev_relation_mode')) 
-        exit_relation_mode();
-});
-
-
-
-document.getElementById('dataContainer').addEventListener('mousedown', function(event) {
-    // Disable default Ctrl+Click and Shift+Click behaviors
-    if (event.ctrlKey || event.shiftKey) {
-        event.preventDefault(); // Prevent the default browser action
-        event.stopPropagation(); // Stop the event from propagating further
-    }
-
-    let target = event.target;
-    
-    // Check if the tool state is span_mode
-    if (tool_state !== "span_mode") return;
-    // Check if the event is happening in a span and it is of type "unannotated"
-    if (target.tagName !== "SPAN" || target.getAttribute('type') !== "unannotated") return;
-    //check if the parent div is valid
-    let docDiv = get_parent_div_for_mouse_event(target);
-    if (!docDiv) return;
-    
-    //all good so get the doc index
-    mouseDownDocIndex = parseInt(docDiv.id.replace('doc', ''));
-});
-
-
-
-
-document.getElementById('dataContainer').addEventListener('mouseup', function(event) {
-    // Capture the mouseDownDocIndex to use within the timeout
-    let capturedMouseDownDocIndex = mouseDownDocIndex;
-    // Reset the global mousedown index as we have an upmouse
-    mouseDownDocIndex = null;
-    
-    let target = event.target;
-    
-    // Check if the tool state is span_mode
-    if (tool_state !== "span_mode") return;
-    // Check if the event is happening in a span and it is of type "unannotated"
-    if (target.tagName !== "SPAN" || target.getAttribute('type') !== "unannotated") return;
-    //check if the parent div is valid
-    let docDiv = get_parent_div_for_mouse_event(target);
-    if (!docDiv) return;
-    
-    //all good so extract the docIndex
-    let docIndex = parseInt(docDiv.id.replace('doc', ''));
-    
-    //check if mousedown and mouseup are in the same document and if the selection represents an actual drag (non-zero length)
-    if (capturedMouseDownDocIndex !== docIndex) return;
-
-    //got an aceptable mouseup, so process it
-    setTimeout(() => {
-        const selection = window.getSelection();
-        // Check if the selection range has more than zero length (implies dragging)
-        if (selection.isCollapsed || selection.toString().length == 0) return;
-        
-        //got a click and drag so get the range and span of text
-        const range = selection.getRangeAt(0);
-        
-        //check that the mousedown and up where in the same unannotated span tag, if not do not process as they would be overlapping spans
-        if (range.startContainer !== range.endContainer) return;
-        
-        //got to here so all good, now annotate the span
-        edit_span_handler(event, docIndex, range, "add");
-    }, 50);    //50ms timeout
-});
-
-
-
-document.getElementById('dataContainer').addEventListener('mouseover', function(event) {
-    const target = event.target;
-
-    // Check if the hovered element is an annotated span
-    if (target.tagName === 'SPAN' && target.getAttribute('type') === 'annotated') {
-        const span_id = target.getAttribute('span-id');
-        const span_type = target.getAttribute('span-type');
-        // Display the tooltip with the content
-        tooltip_info.textContent = `${span_id} (${span_type})`;
-        tooltip_info.style.display = 'block';
-        // Position the tooltip near the mouse cursor
-        tooltip_info.style.left = `${event.clientX + window.scrollX - msg_offset_x}px`;
-        tooltip_info.style.top = `${event.clientY + window.scrollY + msg_offset_y}px`;
-    }
-});
-
-
-document.getElementById('dataContainer').addEventListener('mousemove', function(event) {
-    // Move the tooltip along with the mouse
-    if (tooltip_info.style.display === 'block') {
-        tooltip_info.style.left = `${event.clientX + window.scrollX - msg_offset_x}px`;
-        tooltip_info.style.top = `${event.clientY + window.scrollY + msg_offset_y}px`;
-    }
-});
-
-
-document.getElementById('dataContainer').addEventListener('mouseout', function(event) {
-    const target = event.target;
-    // Hide the tooltip when the mouse leaves an annotated span
-    if (target.tagName === 'SPAN' && target.getAttribute('type') === 'annotated') {
-        tooltip_info.style.display = 'none';
-    }
-});
-
-
-
-//utility to close all open menus if the target is not within it
-function close_other_menus(target) {
-    //const openMenus = document.querySelectorAll('div[style*="position: absolute"]');
-    const existingMenus = document.querySelectorAll('div[id="menu"]');
-    // Close any open menu if clicked outside of it
-    if (existingMenus.length > 0) {
-        existingMenus.forEach(menu => {
-            if (!menu.contains(target)) {
-                document.body.removeChild(menu);
-            }
+//SPANS
+///////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////
+//incoming handler
+///////////////////////////////////////////////////////////////////
+function edit_span_handler(event, docIndex, selected_span_tags, action) {
+    //make give the span type menu
+    if (action==='add')
+        show_span_menu_add(event, docIndex, selected_span_tags);
+    else
+        show_span_menu_choose(event, 'Choose Span: ').then(span_id => {
+            show_span_menu_edit(event, docIndex, span_id);
         });
+}
+
+///////////////////////////////////////////////
+//menus
+///////////////////////////////////////////////
+function show_span_menu_add(event, docIndex, selected_span_tags) {
+    const menu = document.createElement('div');
+    menu.id = 'menu';
+    menu.style.left = `${event.clientX + window.scrollX}px`;
+    menu.style.top = `${event.clientY + window.scrollY}px`;
+
+    schema["span_types"].forEach(span_type => {
+        const item = document.createElement('div');
+        item.textContent = `Annotate as ${span_type["name"]}`;
+        item.style.backgroundColor = span_type["color"];
+        item.onclick = () => {
+            add_span(docIndex, span_type["name"], selected_span_tags);
+            document.body.removeChild(menu); // Close menu after selection
+        }
+        menu.appendChild(item);
+    });
+
+    document.body.appendChild(menu);
+}
+
+function show_span_menu_choose(event, msg) {
+    return new Promise((resolve, reject) => {
+        const menu = document.createElement('div');
+        menu.id = 'menu';
+        menu.style.left = `${event.clientX + window.scrollX}px`;
+        menu.style.top = `${event.clientY + window.scrollY}px`;
+
+        const target_span = event.target;
+        const current_ids = target_span.getAttribute('span-id').split(' ');
+        if (current_ids.length === 1) {
+            resolve(current_ids[0]); // If there is only one id, resolve it immediately
+            return;
+        }
+        //otherwise show the menu to select an id
+        current_ids.forEach(id => {
+            const item = document.createElement('div');
+            item.textContent = `${msg}: ${id}`;
+            item.onclick = () => {
+                document.body.removeChild(menu); // Close menu after selection
+                resolve(id); // Resolve the promise with the chosen id
+            };
+            menu.appendChild(item);
+        });
+        document.body.appendChild(menu);
+    });
+}
+
+function show_span_menu_edit(event, docIndex, span_id) {
+    //get the start and end idx of the chosen span
+    const selected_span_tags = find_span_tags_by_span_id(docIndex, span_id);
+    let span_start = parseInt(selected_span_tags[0].getAttribute('token-id'));
+    let span_end = parseInt(selected_span_tags[selected_span_tags.length-1].getAttribute('token-id')) + 1;    //to make it python list style
+
+    const menu = document.createElement('div');
+    menu.id = 'menu';
+    menu.style.left = `${event.clientX + window.scrollX}px`;
+    menu.style.top = `${event.clientY + window.scrollY}px`;
+
+    /////////////////////////////////////
+    // Remove button for deleting the span
+    /////////////////////////////////////
+    const removeButton = document.createElement('button');
+    removeButton.textContent = 'Remove Span';
+    removeButton.style.margin = '5px';
+    removeButton.style.color = 'red';
+    removeButton.style.fontWeight = 'bold';
+    removeButton.style.display = 'block';
+    removeButton.onclick = () => {
+        //set the start/end to -1 to signal delete span
+        edit_span(docIndex, current_type, -1, -1, selected_span_tags, span_id);
+        document.body.removeChild(menu);
+    };
+
+    /////////////////////////////////////
+    // Input fields for start and end indices
+    /////////////////////////////////////
+    const createInputField = (labelText, initialValue, onChangeCallback) => {
+        const container = document.createElement('div');
+
+        const input = document.createElement('input');
+        input.type = 'number';
+        input.style.width = '50px'; // Set a specific width
+        input.setAttribute('max', '100000000');
+        input.setAttribute('min', '0');
+        input.value = initialValue;
+
+        const label = document.createElement('span');
+        label.textContent = labelText;
+
+        container.appendChild(label);
+        container.appendChild(input);
+        container.onclick = (e) => {
+            e.stopPropagation(); // Prevent the menu from closing when interacting with the input
+            input.focus();
+        };
+
+        input.onchange = onChangeCallback;
+        return container;
+    };
+    //make the input handlers
+    const startInputField = createInputField("Start: ", span_start, () => {
+        span_start = parseInt(startInputField.querySelector('input').value);
+    });
+    const endInputField = createInputField("End: ", span_end, () => {
+        span_end = parseInt(endInputField.querySelector('input').value);
+    });
+
+    /////////////////////////////////////
+    // Apply button for confirming changes
+    /////////////////////////////////////
+    const applyButton = document.createElement('button');
+    applyButton.textContent = 'Apply Start/End';
+    applyButton.style.margin = '5px';
+    applyButton.style.display = 'block';
+    applyButton.style.fontWeight = 'bold';
+    applyButton.onclick = () => {
+        span_start = parseInt(startInputField.querySelector('input').value);
+        span_end = parseInt(endInputField.querySelector('input').value);
+        edit_span(docIndex, current_type, span_start, span_end, selected_span_tags, span_id);
+        document.body.removeChild(menu);
+    };
+
+    menu.appendChild(removeButton);
+    menu.appendChild(startInputField);
+    menu.appendChild(endInputField);
+    menu.appendChild(applyButton);
+
+    /////////////////////////////////////
+    //make the type menu
+    /////////////////////////////////////
+    const target_span = event.target;
+    //get current span_id idx
+    let idx = target_span.getAttribute('span-id').split(' ').indexOf(span_id);
+    //get current span type
+    const current_type = target_span.getAttribute('span-type').split(' ')[idx];
+    // Filter out span types that are already assigned to the current span  
+    const choice_types = schema["span_types"].filter(x => !current_type.includes(x.name));
+    choice_types.forEach(type => {
+        const item = document.createElement('div');
+        item.textContent = `Change to: ${type["name"]}`;
+        item.style.backgroundColor = type["color"];
+        item.onclick = () => {
+            edit_span(docIndex, type["name"], span_start, span_end, selected_span_tags, span_id);
+            document.body.removeChild(menu); // Close menu after selection
+        }
+        menu.appendChild(item);
+    });
+
+    //add the menu div to the dom
+    document.body.appendChild(menu);
+}
+
+/////////////////////////////////////////////////////
+//add/edit span functions
+/////////////////////////////////////////////////////
+function add_span(docIndex, new_type, selected_span_tags) {
+    // Get the next count to create a unique span ID
+    const next_cnt = get_next_cnt(data[docIndex].spans);
+    const new_span_id = `E${docIndex}_${next_cnt}`;
+
+    //update the dom
+    add_to_span_tags(selected_span_tags, new_span_id, new_type);
+
+    //update the data structure
+    //Collect text from all spans
+    let selected_text = [];
+    selected_span_tags.forEach((selected_span_tag, idx) => {selected_text.push(selected_span_tag.textContent);});
+    selected_text = selected_text.join(' ');
+    //Get token-id attributes for start and end of the selection
+    let start = parseInt(selected_span_tags[0].getAttribute('token-id'));
+    let end = parseInt(selected_span_tags[selected_span_tags.length - 1].getAttribute('token-id')) + 1;
+    // Append new span entry to the data structure
+    add_span_to_spans(docIndex, new_type, start, end, new_span_id, selected_text);
+}
+
+function edit_span(docIndex, type, new_start, new_end, current_span_tags, span_id) {
+    //new_start/end are the python style bounds (i.e real end + 1)
+    //validate the start and end
+    if (!validate_boundary(new_start, new_end)) return;
+    //check for the delete signal
+    let edit_flag = true;
+    if (new_start === -1 && new_end === -1) edit_flag = false;
+    //update in the dom
+    const positions = get_current_positions(current_span_tags, span_id);
+    if (!positions) return;
+    //remove the old span range
+    remove_from_span_tags(current_span_tags, positions);
+    //update in data[docIndex].spans
+    remove_span_from_spans(docIndex, span_id);
+    
+    //edit_flag is true so we have to add back to spans
+    if (edit_flag) {
+        //get the new range of spans
+        const new_spans = find_span_tags_by_start_end(docIndex, new_start, new_end);
+        //add them to the dom
+        add_to_span_tags(new_spans, span_id, type);
+        //Collect text from all spans
+        let new_text = [];
+        new_spans.forEach((new_span, idx) => {
+            new_text.push(new_span.textContent);
+        });
+        new_text = new_text.join(' ');
+        add_span_to_spans(docIndex, type, new_start, new_end, span_id, new_text);
+    }
+    //edit_flag is false so we are removing the span, so we have to remove it from the relations
+    else {   
+        remove_span_from_relations(docIndex, span_id);
     }
 }
 
+/////////////////////////////////////////////////////////////////
+//helper functions for add/edit spans
+/////////////////////////////////////////////////////////////////
+function validate_boundary(start, end) {
+    if (isNaN(start) || isNaN(end)) return false;
+    if (start != -1 && end != -1 && start >= end) return false;
+    return true;
+}
 
-// Utility function to remove existing menus
-function removeExistingMenus() {
-    const existingMenus = document.querySelectorAll('div[id="menu"]');
-    existingMenus.forEach(menu => menu.parentNode.removeChild(menu));
+function get_next_cnt(spans) {
+    /*
+     Extract all IDs using map by matching the last sequence of digits in the ID
+    list_of_dicts is either the span list or relations list for the given docIndex
+    */
+    const ids = spans.map(x => {
+        const match = x.id.match(/\d+$/);
+        return match ? parseInt(match[0]) : null;
+    }).filter(id => !isNaN(id));  // Filter out non-numeric values to account for potential parsing failures
+    // Find the maximum ID using Math.max, defaulting to 0 if the array is empty
+    const max_id = ids.length > 0 ? Math.max(...ids) : 0;
+    // Generate the next available ID by incrementing the highest found ID
+    return max_id + 1;
+}
+
+function find_span_tags_by_span_id(docIndex, span_id) {
+    /*
+    this finds all the child span tags containing the given span_id
+    */
+    const docDiv = document.getElementById(`doc${docIndex}`);
+    return Array.from(docDiv.children).filter(tag => 
+        tag.tagName === 'SPAN' && 
+        tag.getAttribute('span-id')?.split(' ').includes(span_id)
+    );
+}
+
+function find_span_tags_by_start_end(docIndex, start, end) {
+    /*
+    this finds the span tags between start/end including start, NOT inluding end (python style)
+    */
+    const docDiv = document.getElementById(`doc${docIndex}`);
+    return Array.from(docDiv.children).filter(tag => 
+        tag.tagName === 'SPAN' && 
+        parseInt(tag.getAttribute('token-id')) >= start && 
+        parseInt(tag.getAttribute('token-id')) < end
+    );
+}
+
+function get_current_positions(selected_span_tags, span_id) {
+    /*
+    Find the index of the given span_id in each selected_span_tag 'span-id' attribute
+    */
+    const positions = [];
+    selected_span_tags.forEach(selected_span_tag => {
+        const ids = selected_span_tag.getAttribute('span-id').split(' ');
+        positions.push(ids.indexOf(span_id));
+    });
+    return positions;
+}
+
+function remove_from_span_tags(selected_span_tags, positions) {
+    /*
+    remove the attributes at the given positions from teh given span tags, 
+    each position in positions corresponds to each span tag in selected_span_tags
+    */
+    selected_span_tags.forEach((selected_span_tag, index) => {
+        // Extract and modify the span-id attribute
+        let spanIds = selected_span_tag.getAttribute('span-id').split(' ');
+        if (positions[index] < spanIds.length) {
+            spanIds.splice(positions[index], 1); // Remove the id at the specified position
+            if (spanIds.length === 0) 
+                selected_span_tag.removeAttribute('span-id'); // Remove attribute if empty
+            else 
+                selected_span_tag.setAttribute('span-id', spanIds.join(' ')); // Set the modified list back as the attribute
+        }
+        // Extract and modify the span-type attribute
+        let spanTypes = selected_span_tag.getAttribute('span-type').split(' ');
+        if (positions[index] < spanTypes.length) {
+            spanTypes.splice(positions[index], 1); // Remove the type at the specified position
+            if (spanTypes.length === 0) 
+                selected_span_tag.removeAttribute('span-type'); // Remove attribute if empty
+            else 
+                selected_span_tag.setAttribute('span-type', spanTypes.join(' ')); // Set the modified list back as the attribute
+        }
+        // Extract and modify the span-boundary attribute
+        let spanBoundaries = selected_span_tag.getAttribute('span-boundary').split(' ');
+        if (positions[index] < spanBoundaries.length) {
+            spanBoundaries.splice(positions[index], 1); // Remove the type at the specified position
+            if (spanBoundaries.length === 0) 
+                selected_span_tag.removeAttribute('span-boundary'); // Remove attribute if empty
+            else 
+                selected_span_tag.setAttribute('span-boundary', spanBoundaries.join(' ')); // Set the modified list back as the attribute
+        }
+    });
+}
+
+function add_to_span_tags(selected_span_tags, new_span_id, new_type) {
+    /*
+    add new span_id and type to the given span tags
+    the attributes for span-id, span-type and span-boundary are appended with the new values
+    */
+    selected_span_tags.forEach((selected_span_tag, idx) => {
+        //update the span-id
+        const current_span_id = selected_span_tag.getAttribute('span-id');
+        if (current_span_id) 
+            selected_span_tag.setAttribute('span-id', `${current_span_id} ${new_span_id}`);
+        else 
+            selected_span_tag.setAttribute('span-id', new_span_id);
+
+        //update the span-type
+        const current_span_type = selected_span_tag.getAttribute('span-type');
+        if (current_span_type) 
+            selected_span_tag.setAttribute('span-type', `${current_span_type} ${new_type}`);
+        else 
+            selected_span_tag.setAttribute('span-type', new_type);
+
+        //update the span-boundary, NOTE: using relative idx here
+        const current_text = selected_span_tag.getAttribute('span-boundary');
+        if (current_text) 
+            selected_span_tag.setAttribute('span-boundary', `${current_text} span${get_boundary_text(idx, 0, selected_span_tags.length)}`);
+        else
+            selected_span_tag.setAttribute('span-boundary', `span${get_boundary_text(idx, 0, selected_span_tags.length)}`);
+    });
+}
+
+function get_boundary_text(token_id, start, end) {
+    /*
+    gets the boundary text based on the python list style start, end values and the current token_id
+    all inputs should be integer
+    */
+    const real_start = start;
+    const real_end = end - 1;
+    let text = '';
+    if (token_id === real_start && token_id === real_end) text ='-both';
+    else if (token_id === real_start) text ='-start';
+    else if (token_id === real_end) text ='-end';
+    return text;
+}
+
+function remove_span_from_spans(docIndex, span_id) {
+    /*
+    Filter the spans array to remove the span with the matching span_id
+    */
+    data[docIndex].spans = data[docIndex].spans.filter(
+        span => span.id !== span_id
+    );
 }
 
 
-//utility to check we have clicked inside an acceptable div
-function get_parent_div_for_mouse_event(target) {
-    // Use closest to find the parent div that has id that starts with 'doc'
-    let docDiv = target.closest('div[id^="doc"]');
-    if (!docDiv) return null; // No matching div found
-
-    //got to here so passed the check
-    return docDiv;
+function remove_span_from_relations(docIndex, span_id) {
+    /*
+    Filter the spans array to remove the span with the matching span_id
+    */
+    data[docIndex].relations = data[docIndex].relations.filter(relation => 
+        relation.head !== span_id && 
+        relation.tail !== span_id
+    );
 }
 
 
+function add_span_to_spans(docIndex, type, start, end, span_id, new_text) {
+    // Append new span entry to the data structure
+    data[docIndex].spans.push({
+        id: span_id,
+        type: type,
+        start: start,
+        end: end,
+        span: new_text,
+    });
+}
+
+///////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////
+//RELATIONS
+///////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////
+////////////////////////////////
+//enter exit and handker code
+////////////////////////////////
+function enter_relation_mode(event, docIndex, mode) {
+    //get the user choice and set the active_span
+    show_span_menu_choose(event, 'Choose Span: ').then(span_id => {
+        //set the tool state
+        tool_state = mode;
+        //Update the current mode display
+        document.getElementById('current_mode').innerText = tool_state;
+        //set the active span
+        active_span = {span_id: span_id, docIndex: docIndex};
+        // Update all the span border styles, will use tool_state to determine exact action
+        update_border_classes(docIndex, span_id);
+        //remove all open menus
+        remove_menus();
+    });
+}
 
 
+function exit_relation_mode() {
+    //remove all span styles on exit
+    remove_border_classes();
+    //reset the active_span object
+    active_span = {span_id: null, docIndex: null};
+    // Update the tool_state and current mode display
+    tool_state = 'span_mode';
+    document.getElementById('current_mode').innerText = tool_state;
+    //remove all open menus
+    remove_menus();
+}
 
 
+function edit_relation_handler(event, docIndex) {
+    let headId = active_span.span_id;
+    let tailId;
+    //get the user choice for the span
+    show_span_menu_choose(event, 'Choose Span: ').then(selected_span_id => {
+        //set the tailId
+        tailId = selected_span_id;
+        //validity check
+        if (tailId === headId) return;
+        //reverse head and tail if in rev_relation_mode 
+        if (tool_state === 'rev_relation_mode') [headId, tailId] = [tailId, headId];
+        //show the relation type choice menu
+        show_relation_menu(event, docIndex, headId, tailId);
+    });
+}
+
+////////////////////////////////
+//relation menus
+////////////////////////////////
+function show_relation_menu(event, docIndex, headId, tailId) {
+    const menu = document.createElement('div');
+    menu.id = 'menu';
+    menu.style.left = `${event.clientX + window.scrollX}px`;
+    menu.style.top = `${event.clientY + window.scrollY}px`;
+
+    const relationTypes = schema["relation_types"];
+    relationTypes.forEach((type) => {
+        const rel_exists = relation_exists(docIndex, headId, tailId, type.name);
+        const text = rel_exists ? 'Rmv Relation:' : 'Add Relation:';
+        const item = document.createElement('div');
+        item.textContent = `${text} ${type.name}`;
+        item.style.backgroundColor = type.color;
+        item.style.padding = '5px';
+        item.onclick = () => {
+            if (rel_exists) remove_relation(docIndex, headId, tailId, type.name);
+            else add_relation(docIndex, headId, tailId, type.name, type.color);
+            document.body.removeChild(menu); // Close menu after selection
+        };
+        menu.appendChild(item);
+    });
+    document.body.appendChild(menu);
+}
+
+//check that a candidate relation has not already been added
+function relation_exists(docIndex, headId, tailId, type) {
+    return data[docIndex].relations.some(rel => 
+        rel.head === headId && 
+        rel.tail === tailId && 
+        rel.type === type
+    );
+}
+
+////////////////////////////////
+//realtion add/rmv code
+////////////////////////////////
+function add_relation(docIndex, head_id, tail_id, type, color) {
+    /* adds relation to relations and updates the border style if in rel mode */
+    const next_cnt = get_next_cnt(data[docIndex].relations);
+    const rel_id = `R${docIndex}_${next_cnt}`;
+    //update the data structure, doesn't use the color for now, may change this later
+    data[docIndex].relations.push({
+        id: rel_id,
+        head: head_id,
+        tail: tail_id,
+        type: type
+    });
+    if (tool_state === 'relation_mode') update_border_classes(docIndex, head_id);
+    else if (tool_state === 'rev_relation_mode') update_border_classes(docIndex, tail_id);
+}
+
+function remove_relation(docIndex, head_id, tail_id, type) {
+    /* this removes the given head-tail pair and type (relation) from the data[docIndex].relations list */
+    //Remove the relation from the data structure
+    data[docIndex].relations = data[docIndex].relations.filter(relation => 
+        !(relation.head === head_id && 
+        relation.tail === tail_id && 
+        relation.type === type)
+    );
+    if (tool_state === 'relation_mode') update_border_classes(docIndex, head_id);
+    else if (tool_state === 'rev_relation_mode') update_border_classes(docIndex, tail_id);   
+} 
+
+////////////////////////////////////////////
+//border class updaing code for relations
+//////////////////////////////////////////
+function remove_border_classes() {
+    /* remove all source and target border classes */
+    let tags = document.querySelectorAll('div[id^="doc"] > span[class*="border"]');
+    tags.forEach(tag => {
+        tag.classList = "";
+    });
+}
+
+function update_border_classes(docIndex, source_span_id) {
+    /*
+    function to update all (head)tail span styles on entering (rev_)relation mode
+    it also updates the selected span border style
+    */
+    //remove all span styles
+    remove_border_classes();
+    //set the source span flashing border
+    update_source_border_class(docIndex, source_span_id);
+    //update the border class of the target spans
+    update_target_border_classes(docIndex, source_span_id);
+}
 
 
+function update_source_border_class(docIndex, source_span_id) {
+    /*
+    update the source border class
+    */
+    let tags = find_span_tags_by_span_id(docIndex, source_span_id);
+    tags.forEach((tag, idx) => {
+        if (tag) {
+            const boundary_text = get_boundary_text(idx, 0, tags.length);    //using relative token idx here
+            tag.classList = "";    //reset the classList
+            if (tool_state === 'relation_mode') tag.classList.add(`red-flashborder${boundary_text}`);
+            else if (tool_state === 'rev_relation_mode') tag.classList.add(`black-flashborder${boundary_text}`);
+        }
+    });
+}
 
+function update_target_border_classes(docIndex, source_span_id) {
+    /*
+    update the target border classes for the targets of the given source span
+    */
+    data[docIndex].relations.forEach(relation => {
+        if (tool_state === 'relation_mode' && relation.head === source_span_id) update_target_border_class(docIndex, relation.tail);
+        else if (tool_state === 'rev_relation_mode' && relation.tail === source_span_id) update_target_border_class(docIndex, relation.head);
+    });
+}
 
+function update_target_border_class(docIndex, target_span_id) {
+    /*
+    update the border class for the given target span id
+    */
+    let tags = find_span_tags_by_span_id(docIndex, target_span_id);
+    tags.forEach((tag, idx) => {
+        if (tag) {
+            const boundary_text = get_boundary_text(idx, 0, tags.length);    //using relative token idx here
+            tag.classList = "";
+            if (tool_state === 'relation_mode') tag.classList.add(`tail-border${boundary_text}`);
+            else if (tool_state === 'rev_relation_mode') tag.classList.add(`head-border${boundary_text}`);
+        };
+    });
+}
+
+///////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////
 //IMPORT/EXPORT
-function reset_vars() {
-    source_data =   {};
-    sources =       [];
-    offsets =       [];
-    raw_docs =      [];
-    spans =         [];
-    relations =     [];
-    document.getElementById('dataContainer').innerHTML = '';
-}
-
-
-
+///////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////
 document.addEventListener('DOMContentLoaded', function() {
     const fileInput = document.getElementById('fileInput');
     const topInstructions = document.getElementById('topInstructions');
@@ -645,277 +1164,172 @@ document.addEventListener('DOMContentLoaded', function() {
         reset_vars();
         const reader = new FileReader();
         reader.onload = function(e) {
+            let result;
             try {
-                //read in the json list to the schema object
-                let temp = JSON.parse(e.target.result);
-
-                if (input_format === 'min') {
-                    raw_docs = temp.raw_docs;
-                }
-                else if (format === 'full') {
-                    //This is for the more complex input case, not used for now
-                    raw_docs = temp.raw_docs.map(x => x.raw_doc);
-                    sources = temp.raw_docs.map(x => x.source);
-                    offsets = temp.raw_docs.map(x => x.offset);
-                    source_data = temp.source_data;
-                }
-                //load the schema
-                schema = temp.schema;
-                update_span_styles_from_schema();
-
-                //load spans and relations and display docs
-                if ("spans" in temp && "relations" in temp && 
-                    temp.spans.length === raw_docs.length && 
-                    temp.relations.length === raw_docs.length) {
-                    //load the annotations if they are there
-                    spans = temp.spans;
-                    relations = temp.relations;
-                    display_documents("load");
-                }
-                
-                else if (!("spans" in temp) && !("relations" in temp)) {
-                    display_documents("reset");
-                }
-                else {
-                    alert('if you give annotations, you must give both spans and relations keys and they both need to be list of lists of objects with one outer list element per document\nLoading as unannotated...')
-                    display_documents("reset");
-                }
+                result = JSON.parse(e.target.result);      //read in the json list to the schema object
             } 
             catch (error) {
-                alert('Failed to load JSON file.  See console for details');
-                console.log(`Failed to load JSON file. ${error}`);
+                alert('There was an error reading your json.\nSee console.log for details...')
+                console.error(`Json reading error details: ${error}`);
+                return;
+            } 
+            finally {
+                fileInput.value = '';      // Reset the file input after processing to allow reloading the same file
             }
+
+            if (!verifyData(result, input_format)) return;    //verify format
+            
+            //load the data structure
+            data = result.data;
+            schema = result.schema;
+            if (input_format === 'full') source_data = result.source_data;
+            
+            //update the styles from schema and display the data
+            update_span_styles_from_schema();
+            display_data();
         };
         reader.readAsText(file);
-        //fileInput.value = ''; 
     });
 });
 
-
-
-function checkOverlap(a, b) {
-    return a.start <= b.end && b.start <= a.end
+function reset_vars() {
+    source_data =   {};
+    data = [];
+    schema = {};
+    document.getElementById('dataContainer').innerHTML = '';
 }
 
-
-
-function filterOverlappingSpans_old(spans) {
+function verifyData(import_data, input_format) {
     /*
-    This is the function to keep only the longest span if 2 spans overlap
-    input => list of span objects
-    */
-    removed = []
-    // Sort spans by start, then by end in descending order to prioritize longer spans
-    spans.sort((a, b) => a.start - b.start || b.end - a.end);
-    // Iterate through copied spans and nullify shorter overlapping spans
-    for (let i = 0; i < spans.length; i++) {
-        if (spans[i] === null) continue; // Skip already nullified spans
-        let longestSpan = spans[i];
-        for (let j = i + 1; j < spans.length && spans[j].start <= longestSpan.end; j++) {
-            if (spans[j] === null) continue;
-            if (checkOverlap(longestSpan, spans[j])) {
-                // There is an overlap, check which one is longer
-                if (longestSpan.end - longestSpan.start < spans[j].end - spans[j].start) {
-                    // The j-th span is longer
-                    removed.push({ ...spans[i] }); // Push a copy of the current span to removed
-                    spans[i] = null; // Nullify the current span
-                    longestSpan = spans[j]; // Update the longestSpan
-                    i = j - 1; // Move the outer loop's index to just before j
-                    break;
-                } else {
-                    // The i-th span is longer or they are equal, nullify the j-th span
-                    removed.push({ ...spans[j] }); // Push a copy of the current span to removed
-                    spans[j] = null;
-                }
-            }
-        }
-    }
-
-    //return the non null elements
-    return [spans.filter(span => span !== null), removed];
-}
-
-
-function filterOverlappingSpans(spans, relations) {
-    /*
-    This is the function to keep only the longest span if 2 spans overlap, but prioritize spans with relations
-    input => list of span objects
+    verifies all the required keys are in teh imported data
     */
 
-    let removed = [];
-
-    // Create sets for quick lookup to see if a span is involved in any relations
-    const heads = new Set(relations.map(rel => rel.head));
-    const tails = new Set(relations.map(rel => rel.tail));
-    // Function to check if span is involved in any relation
-    const isInRelation = (spanId) => heads.has(spanId) || tails.has(spanId);
-
-    // Sort spans by start, then by end in descending order to prioritize longer spans
-    spans.sort((a, b) => a.start - b.start || b.end - a.end);
-    // Iterate through spans to resolve overlaps
-    for (let i = 0; i < spans.length; i++) {
-        if (spans[i] === null) continue;  // Skip already nullified spans
-        let longestSpan = spans[i];
-        for (let j = i + 1; j < spans.length && spans[j].start <= longestSpan.end; j++) {
-            if (spans[j] === null) continue;
-            if (checkOverlap(longestSpan, spans[j])) {
-                // Check involvement in relations
-                const inRelLongest = isInRelation(longestSpan.id);
-                const inRelCurrent = isInRelation(spans[j].id);
-
-                // Determine which span to keep
-                if (inRelLongest && !inRelCurrent) {
-                    // Keep longestSpan, remove current span
-                    removed.push({ ...spans[j] });
-                    spans[j] = null;
-                } else if (!inRelLongest && inRelCurrent) {
-                    // Keep current span, remove longestSpan
-                    removed.push({ ...longestSpan });
-                    spans[i] = null;
-                    longestSpan = spans[j];  // Update longestSpan as current span
-                    i = j - 1;  // Adjust loop index
-                    break;
-                } else {
-                    // Either both are in relations or neither, keep the longer span
-                    if (longestSpan.end - longestSpan.start < spans[j].end - spans[j].start) {
-                        // Current span is longer
-                        removed.push({ ...longestSpan });
-                        spans[i] = null;
-                        longestSpan = spans[j];  // Update longestSpan as current span
-                        i = j - 1;  // Adjust loop index
-                        break;
-                    } else {
-                        // Longest span is longer or they are equal in length
-                        removed.push({ ...spans[j] });
-                        spans[j] = null;
-                    }
-                }
-            }
+    let errors = [];
+    let requiredKeys = ['data', 'schema'];
+    requiredKeys.forEach(key => {
+        if (!(key in import_data)) {
+            errors.push(`Missing primary key '${key}' in imported data`);
         }
-    }
-
-    // Filter out nullified spans to finalize the list
-    return [spans.filter(span => span !== null), removed];
-}
-
-
-
-function display_documents(option) {
-    /*
-    this function loads in the raw_docs to the browser and loads the annotations if otpion is "load", otherwise it resets the annotations if option is "reset"
-    */
-
-    //this builds the div for each doc and displays it on the browser
-    const container = document.getElementById('dataContainer');
-    
-    //clear any existing contents
-    container.innerHTML = '';
-    
-    removed_all = [];
-
-    //create new contents from raw_docs
-    raw_docs.forEach((text, index) => {
-        //make the header element for the doc
-        const header = document.createElement('div');
-        header.textContent = `id: doc${index}`;
-        header.style.fontWeight = 'bold';
-        header.style.fontSize = '12px';
-        container.appendChild(header);
-
-        //make the div to hold the document and fill it
-        const docDiv = document.createElement('div');
-        docDiv.id = `doc${index}`;
-        docDiv.style.border = '1px solid #ccc';
-        docDiv.style.padding = '10px';
-        docDiv.style.lineHeight = '20px';
-        docDiv.style.maxHeight = '200px';
-        docDiv.style.overflowY = 'auto';
-        docDiv.style.marginBottom = '20px';
-
-        if (option === "reset") {
-            //reset vars
-            spans[index] = [];
-            relations[index] = [];
-            //add the text to the docdiv
-            docDiv.innerHTML = `<span type="unannotated">${text}</span>`;
-        }
-        else if (option ==="load") {
-            //Sort annotations by start index to ensure proper text chunking
-            spans[index].sort((a, b) => a.start - b.start);
-            //Filter out overlapping annotations and keep the longest
-            //NOTE: currently I am not supporting overlapping spans, so I remove the shortest of any overlaps
-            //NOTE: currently I am not supporting overlapping spans, so I remove the shortest of any overlaps
-            //NOTE: currently I am not supporting overlapping spans, so I remove the shortest of any overlaps
-            let result = filterOverlappingSpans(spans[index], relations[index]);
-            if (result[1].length > 0) 
-                removed_all = removed_all.concat(result[1]);
-            //overwrite spans[index] with filtered results
-            spans[index] = result[0];
-            //apply filtered spans to relations
-            const validIds = new Set(spans[index].map(x => x.id));
-            relations[index] = relations[index].filter(x => 
-                validIds.has(x.head) && validIds.has(x.tail)
-            );
-            //NOTE: currently I am not supporting overlapping spans, so I remove the shortest of any overlaps
-            //NOTE: currently I am not supporting overlapping spans, so I remove the shortest of any overlaps
-            //NOTE: currently I am not supporting overlapping spans, so I remove the shortest of any overlaps
-
-            //DANGER
-            //This now modifies the spans in teh docDiv to show the annotated spans, it does not handle overlapping spans
-            //I have put code above to remove any overlapping spans, 
-            //but if you ever allow overlapping spans, you MUST modify this code so that it doesn't cause repeated text in teh docDiv
-            //DANGER
-            let lastIndex = 0; // Track the last index of text processed
-            let updatedInnerHTML = ''; // Build new HTML for the document
-            // Iterate through each annotation and build updated inner HTML
-            spans[index].forEach(x => {
-                // Add unannotated text before this annotation
-                if (x.start > lastIndex) 
-                    updatedInnerHTML += `<span type="unannotated">${text.slice(lastIndex, x.start)}</span>`;
-                // Add annotated text
-                updatedInnerHTML += `<span type="annotated" span-id="${x.id}" span-type="${x.type}">${text.slice(x.start, x.end + 1)}</span>`;
-                lastIndex = x.end + 1;
-            });
-            // Add any remaining unannotated text after the last annotation
-            if (lastIndex < text.length)
-                updatedInnerHTML += `<span type="unannotated">${text.slice(lastIndex)}</span>`;
-            // Set the new HTML to the docDiv
-            docDiv.innerHTML = updatedInnerHTML;
-        }
-        //add to the container
-        container.appendChild(docDiv);
     });
 
-    // Alert the removed spans
-    if (removed_all.length > 0) alert(`There were some overlapping spans removed, spans with raltions were prioritized then the longest of the overlapping were prioritized, the removed spans were.\n${JSON.stringify(removed_all, null, 2)}`);
+    if (!Array.isArray(import_data.data)) 
+        errors.push("Provided data needs to be a list of objects.");
+    else {
+        requiredKeys = ['tokens', 'spans', 'relations'];
+        if (input_format === 'full') 
+            requiredKeys.push('source', 'offset');
+        import_data.data.forEach((obs, idx) => {
+            requiredKeys.forEach(key => {
+                if (!(key in obs)) 
+                    errors.push(`Missing key '${key}' in document: ${idx}`);
+            });
+        });
+    }
+
+    if (errors.length) {
+        console.error(errors.join("\n"));
+        return false;
+    }
+    return true;
 }
 
+function display_data() {
+    /*
+    This function loads in the data to the browser and loads the annotations if they are there.
+    No need to pass data as it is a global 
+    */
+    const container = document.getElementById('dataContainer');
+    container.innerHTML = ''; // Clear any existing contents
 
+    // Create new contents from data
+    data.forEach((obs, doc_id) => {
+        //add the doc header text
+        const header = document.createElement('div');
+        header.id = `header${doc_id}`;
+        header.textContent = `Document ID: doc${doc_id}`;
+        container.appendChild(header);
 
+        //add the docDiv
+        const docDiv = document.createElement('div');
+        docDiv.id = `doc${doc_id}`;
+        container.appendChild(docDiv);
 
+        //Adding tokens as individual span tags to docDiv
+        obs.tokens.forEach((token, token_id) => {
+            const tokenSpan = document.createElement('span');
+            tokenSpan.textContent = token;
+            tokenSpan.setAttribute('token-id', `${token_id}`); // Set custom attribute for token ID
+            docDiv.appendChild(tokenSpan);
+        });
+
+        //update the span tags with the span annotations
+        obs.spans.forEach(span => {
+            update_span_tags(docDiv, span);
+        });
+    });
+}
+
+function update_span_tags(docDiv, span) {
+    /*
+    for the given span (object from data[docIndex].spans), update the attributes in the appropritate span tags
+    */
+    const new_span_start = parseInt(span.start);
+    const new_span_end = parseInt(span.end);
+    const new_span_type = span.type;
+    const new_span_id = span.id;
+    for (let token_id = new_span_start; token_id < new_span_end; token_id++) {    //note the new_span_end is the real end + 1
+        //get the span tag to update
+        const span_tag = docDiv.querySelector(`[token-id="${token_id}"]`);
+        //update span tag attributes
+        if (!span_tag) {
+            console.log(`span_tag with token-id = ${token_id} is missing from the DOM, serious error....`)
+            return;
+        }
+        const new_boundary_text = `span${get_boundary_text(token_id, new_span_start, new_span_end)}`;
+        //read from span_tag
+        let current_span_id = span_tag.getAttribute('span-id');
+        let current_span_type = span_tag.getAttribute('span-type');
+        let current_span_boundary = span_tag.getAttribute('span-boundary');
+        //append if there already is data
+        if (current_span_id) {
+            current_span_id += ' ' + new_span_id;
+            current_span_type += ' ' + new_span_type;
+            current_span_boundary += ' ' + new_boundary_text;
+        } 
+        //set if there no existing data
+        else {        
+            current_span_id = new_span_id;
+            current_span_type = new_span_type;
+            current_span_boundary = new_boundary_text;
+        }
+        //write back to the span_tag
+        span_tag.setAttribute('span-id', current_span_id);
+        span_tag.setAttribute('span-type', current_span_type);
+        span_tag.setAttribute('span-boundary', current_span_boundary);
+    }
+}
 
 function export_data(option) {
     //option is either "view" or "export"
     //function to view the annotation data in a separate tab
     let annotated_docs = [];
-    raw_docs.forEach((_, index) => {
-        const docDiv = document.getElementById(`doc${index}`);
-        //annotated_data.push(docDiv.innerHTML);
-        converted_text = convertInnerHTML(docDiv, option);
-        annotated_docs.push(converted_text);
+    data = data.map(obs => {
+        const docDiv = document.getElementById(`doc${data.indexOf(obs)}`);
+        //update the span text in each span
+        update_span_text(obs);
+        //add annotated text and reorder keys
+        let annotated_text = convertInnerHTML(docDiv, option);
+        return reorderObsKeys(obs, annotated_text);
     });
 
     const out_data = {
-        raw_docs: raw_docs,
-        annotated_docs: annotated_docs,
-        spans: spans,
-        relations: relations,
+        data: data,
         schema: schema
     };
 
     if (option === "view") {
         const newWindow = window.open("", "_blank");
-        newWindow.document.write(`<pre>${JSON.stringify(out_data, null, 4)}</pre>`);
+        newWindow.document.write(`<pre>${JSON.stringify(out_data, no_indent_specifier, 4)}</pre>`);
     }
     else if (option === "export") {
         const jsonBlob = new Blob([JSON.stringify(out_data, null, 4)], {type: 'application/json'});
@@ -923,9 +1337,42 @@ function export_data(option) {
         jsonLink.download = generateTimestampedFilename(extract_file_basename(filename), 'json');
         jsonLink.href = URL.createObjectURL(jsonBlob);
         jsonLink.click();
+        document.body.removeChild(jsonLink); // Clean up
     }
 }
 
+function reorderObsKeys(obs, annotated_text) {
+    // This function reorders the keys of an observation to ensure a specific order
+    return {
+        tokens:         obs.tokens,
+        annotated_text: annotated_text,
+        spans:          obs.spans,
+        relations:      obs.relations
+    };
+}
+
+function update_span_text(obs) {
+    /*
+    updates the span text (in the .span key) in the spans object
+    */
+    obs.spans.forEach((span) => {
+        const start = parseInt(span.start);   
+        const end = parseInt(span.end);   
+        span.span = obs.tokens.slice(start, end).join(' ');
+    });
+}
+
+function no_indent_specifier(key, value) {
+    /*
+    this ensure that the given keys do not have indents for the view operation
+    */
+    const no_indent_keys = ['tokens'];
+    if (no_indent_keys.includes(key)) {
+            // Convert array to a JSON string, then replace double quotes with single quotes
+            return JSON.stringify(value).replace(/"/g, "'");
+    }
+    return value;
+}
 
 function extract_file_basename(path) {
     // Extract the last part of the path as the filename
@@ -939,9 +1386,6 @@ function extract_file_basename(path) {
     // Trim any trailing dots left after removing the pattern
     return baseName.replace(/\.$/, '');
 }
-
-
-
 
 //utility function to add a timestampt to a filename
 function generateTimestampedFilename(baseFilename, extension) {
@@ -957,462 +1401,303 @@ function generateTimestampedFilename(baseFilename, extension) {
     return `${baseFilename}_annotated_${timestamp}.${extension}`;
 }
 
+function find_new_ids(string1, string2) {
+    if (string1 === null) string1 = '';
+    if (string2 === null) string2 = '';
+    const set1 = new Set(string1.trim().split(' '));
+    const set2 = new Set(string2.trim().split(' '));
+    // Find new members: items in set2 not in set1
+    const new_ids = Array.from(set2).filter(item => !set1.has(item));
+    return new_ids;
+}
 
+function find_lost_ids(string1, string2) {
+    if (string1 === null) string1 = '';
+    if (string2 === null) string2 = '';
+    const set1 = new Set(string1.trim().split(' '));
+    const set2 = new Set(string2.trim().split(' '));
+    // Find removed members: items in set1 not in set2
+    const lost_ids = Array.from(set1).filter(item => !set2.has(item));
+    return lost_ids;
+}
 
-//utility function to convert the innerHTML annotated text to somehting more human readbale for export
 function convertInnerHTML(div, type) {
+    /*
+    utility function to convert the innerHTML annotated text to something more human readable for export
+    basically, it takes the tokens list, joins them to a string, then puts tags aroudn each annotated span, the tag is the span_id
+    */
     if (!div) return ''; // Return empty if the div is not found
 
     let result = '';
     const children = Array.from(div.childNodes);
-    children.forEach(child => {
-        // Processs the span children of the doc div
+    children.forEach((child, idx) => {
+        // Process the span children of the doc div
+        result += ' ';
         if (child.nodeType === Node.ELEMENT_NODE && child.tagName === 'SPAN') {
-            if (child.getAttribute('type') === 'unannotated') {
-                // Just append the text of unannotated spans
-                result += child.innerText;
-            } 
-            else if (child.getAttribute('type') === 'annotated') {
-                // Wrap annotated span text with tags from span-id
-                const data_id = child.getAttribute('span-id');
-                if (type === "export") 
-                    result += `<${data_id}>${child.innerText}</${data_id}>`;
-                else if (type === "view") 
-                    result += `&lt;${data_id}&gt;${child.innerText}&lt;/${data_id}&gt;`;
+            if (!hasSpanId(child)) {   //Just append the text of unannotated spans
+                result += `${child.innerText}`;
+            } else {    //Wrap annotated span text with tags from span-id
+                const span_id = child.getAttribute('span-id');
+                // Process new IDs
+                let prev_span_id = '';   //set to default (no span-id)
+                if (idx > 0 && hasSpanId(children[idx-1]))   //if the prev exists and had a span-id read it
+                    prev_span_id = children[idx-1].getAttribute('span-id');
+                let new_ids = find_new_ids(prev_span_id, span_id);
+                new_ids.forEach(new_id => {
+                    if (type === "export") {
+                        result += `<${new_id}>`; // open tag
+                    } else if (type === "view") {
+                        result += `&lt;${new_id}&gt;`; // open tag for view in HTML entities
+                    }
+                });
+
+                // Append text
+                result += `${child.innerText}`;
+
+                // Process lost IDs
+                let next_span_id = '';
+                if (idx < children.length && hasSpanId(children[idx+1])) 
+                    next_span_id = children[idx+1].getAttribute('span-id');
+                let lost_ids = find_lost_ids(span_id, next_span_id);
+                lost_ids.forEach(lost_id => {
+                    if (type === "export") {
+                        result += `</${lost_id}>`; // Close tag
+                    } else if (type === "view") {
+                        result += `&lt;/${lost_id}&gt;`; // Close tag for view in HTML entities
+                    }
+                });
             }
         }
     });
-    return result;
+    return result.trim(); // Trim the result to remove extra spaces
 }
 
 ///////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////
-//SPANS
-function edit_span_handler(event, docIndex, range, action) {
-    //make give the span type menu
-    show_span_menu(event, docIndex, range, action);
-}
-
-
-function show_span_menu(event, docIndex, range, action) {
-    const menu = document.createElement('div');
-    menu.id = 'menu';
-    menu.style.position = 'absolute';
-    menu.style.left = `${event.clientX + window.scrollX}px`;
-    menu.style.top = `${event.clientY + window.scrollY}px`;
-    menu.style.backgroundColor = 'white';
-    menu.style.border = '1px solid black';
-    menu.style.padding = '5px';
-    menu.style.zIndex = '1000';
-    menu.style.fontWeight = 'bold';
-    menu.style.fontSize = '14px';
-    menu.style.fontFamily = 'Arial, sans-serif';
-
-    if (action === "add") {
-        schema["span_types"].forEach(x => {
-            const item = document.createElement('div');
-            item.textContent = `Annotate as ${x["name"]}`;
-            item.style.backgroundColor = x["color"];
-            item.style.padding = '5px';
-            item.onclick = () => {
-                add_span(docIndex, x["name"], x["color"], range);
-                document.body.removeChild(menu); // Close menu after selection
-            }
-            menu.appendChild(item);
-        });
-    }
-    else if (action === "edit") {
-        const target_span = event.target;
-        const current_type = target_span.getAttribute('span-type');
-        const choice_types = schema["span_types"].filter(x => x.name !== current_type);
-        choice_types.forEach(x => {
-            const item = document.createElement('div');
-            item.textContent = `Set type as ${x["name"]}`;
-            item.style.backgroundColor = x["color"];
-            item.style.padding = '5px';
-            item.onclick = () => {
-                edit_span(target_span, docIndex, x["name"]);
-                document.body.removeChild(menu); // Close menu after selection
-            }
-            menu.appendChild(item);
-        });
-    }
-    else if (action === "rmv") {
-        const target_span = event.target; 
-        const item = document.createElement('div');
-        item.textContent = 'Remove Span?';
-        item.style.color = 'red';
-        item.style.padding = '5px';
-        menu.style.border = '2px solid red';
-        //add the click listener
-        item.onclick = () => {
-            remove_span(target_span, docIndex);
-            document.body.removeChild(menu); // Close menu after selection
-        }
-        menu.appendChild(item);
-    }
-    document.body.appendChild(menu);
-}
-
-
-
-function get_next_cnt(list_of_dicts) {
-    // Extract all IDs using map by matching the last sequence of digits in the ID
-    //list_of_dicts is either the span list or relations list for the given docIndex
-    const ids = list_of_dicts.map(x => {
-        const match = x.id.match(/\d+$/);
-        return match ? parseInt(match[0], 10) : null;
-    }).filter(id => !isNaN(id));  // Filter out non-numeric values to account for potential parsing failures
-
-    // Find the maximum ID using Math.max, defaulting to 0 if the array is empty
-    const max_id = ids.length > 0 ? Math.max(...ids) : 0;
-
-    // Generate the next available ID by incrementing the highest found ID
-    return max_id + 1;
-}
-
-
-
-function add_span(docIndex, type, color, range) {
-    const next_cnt = get_next_cnt(spans[docIndex]);
-    const span_id = `E${docIndex}_${next_cnt}`;
-
-    //range.startContainer is the text node, its parent is the span holding it, we will split this parent span
-    //NOTE: we have already checked that .startContainer and .endContainer are the same as we are not handling overlap selections
-
-    const originalSpan = range.startContainer.parentNode;
-    const startOffset = range.startOffset;
-    const endOffset = range.endOffset;
-
-    // Split the text into before, selected, and after segments
-    const fullText = originalSpan.textContent;
-    const textBefore = fullText.substring(0, startOffset);
-    const textAfter = fullText.substring(endOffset);
-    const selectedText = range.toString();
-
-    // Create spans for the text before and after the selected text
-    const beforeSpan = document.createElement('span');
-    beforeSpan.setAttribute('type', 'unannotated');
-    beforeSpan.textContent = textBefore;
-    const afterSpan = document.createElement('span');
-    afterSpan.setAttribute('type', 'unannotated');
-    afterSpan.textContent = textAfter;
-
-    // Create a new span for the selected text
-    const newSpan = document.createElement('span');
-    newSpan.setAttribute('type', 'annotated');
-    newSpan.setAttribute('span-id', span_id);
-    newSpan.setAttribute('span-type', type);
-    newSpan.textContent = selectedText;
-
-    // Insert new spans into the DOM, replacing the original span
-    originalSpan.parentNode.insertBefore(beforeSpan, originalSpan);
-    originalSpan.parentNode.insertBefore(newSpan, originalSpan);
-    originalSpan.parentNode.insertBefore(afterSpan, originalSpan);
-    originalSpan.parentNode.removeChild(originalSpan);
-
-    // Calculate the absolute start index by summing lengths of all previous sibling's text
-    //This is critical as without this the span start/end are not absolute for the doc
-    let absoluteOffset = 0;
-    let currentNode = beforeSpan.previousSibling;
-    while (currentNode) {
-        absoluteOffset += currentNode.textContent.length;
-        currentNode = currentNode.previousSibling;
-    }
-    // make the absolute indices
-    let absoluteStartIndex = absoluteOffset + startOffset;
-    let absoluteEndIndex = absoluteOffset + endOffset - 1;        //remove one to make it consistent with python indexing
-
-    // Update the annotations registry
-    spans[docIndex].push({
-        id:     span_id,
-        type:   type,
-        start:  absoluteStartIndex,
-        end:    absoluteEndIndex,
-        span:   selectedText,
-    });
-}
-
-
-function edit_span(target_span, docIndex, type) {
-    //change the span type in the DOM
-    target_span.setAttribute('span-type', type);
-
-    //change the span type in the spans object
-    const span_id = target_span.getAttribute('span-id');
-    //find the selected span and edit it
-    for (const x of spans[docIndex]) {
-        if (x.id === span_id) {
-            x.type = type;
-            break;
-        }
-    }
-}
-
-
-
-function remove_span(target_span, docIndex) {
-    //this removes the chosen span from the spans[docIndex] list and the relations[docIndex] list
-    const docDiv = document.querySelector(`#dataContainer #doc${docIndex}`);
-    const span_id = target_span.getAttribute('span-id');
-
-    //remove the selected span from spans
-    spans[docIndex] = spans[docIndex].filter(span => span.id !== span_id);
-    //remove any relation with the selected span and head or tail from relations
-    relations[docIndex] = relations[docIndex].filter(relation => relation.head !== span_id && relation.tail !== span_id);
-
-    //remove the span from the docDiv
-    //Step 1: Change the type attribute to "unannotated" and remove attributes span-id and span-type
-    target_span.setAttribute('type', 'unannotated');
-    target_span.removeAttribute('span-id');
-    target_span.removeAttribute('span-type');
-
-    // Step 2: Merge all adjacent unannotated spans in the docDiv
-    let i = 0;
-    while (i < docDiv.children.length - 1) {
-        const currentSpan = docDiv.children[i];
-        const nextSpan = docDiv.children[i + 1];
-
-        // Check if both current and next spans are "unannotated"
-        if (currentSpan.getAttribute('type') === 'unannotated' && nextSpan.getAttribute('type') === 'unannotated') {
-            // Merge the text content of the next span into the current span
-            currentSpan.textContent += nextSpan.textContent;
-            // Remove the next span from the DOM
-            nextSpan.remove();
-        } 
-        else i++; // Move to the next pair only if no merge happened
-    }
-}    
-
-
+//LISTENERS AND GLOBAL FUNCTIONS
 ///////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////
-//RELATIONS
-function enter_relation_mode(span, docIndex, mode) {
-    //remove all span styles
-    remove_span_styles();
-    //set the active_span
-    active_span = {Element: span, Index: docIndex};
-    //set the tool state
-    tool_state = mode;
-    // Update the current mode display
-    document.getElementById('current_mode').innerText = tool_state;
-    // Update all the span border styles, will use tool_state to determine exact action
-    update_span_styles_on_entry(span, docIndex);
-    //remove all open menus
-    removeExistingMenus();
-}
+// Add hover behavior to show/hide instructions
+document.getElementById('topInstructions').addEventListener('mouseenter', () => {
+    instructions.style.maxHeight = '300px';
+    document.getElementById('instructions-content').style.display = 'block';
+});
 
+document.getElementById('topInstructions').addEventListener('mouseleave', () => {
+    instructions.style.maxHeight = '30px';
+    document.getElementById('instructions-content').style.display = 'none';
+});
 
-function exit_relation_mode() {
-    //remove all span styles on exit
-    remove_span_styles();
-    //reset the active_span object
-    active_span = {Element: null, Index: null};
-    // Update the tool_state and current mode display
-    tool_state = 'span_mode';
-    document.getElementById('current_mode').innerText = tool_state;
-    //remove all open menus
-    removeExistingMenus();
-}
-
-
-function edit_relation_handler(event, docIndex, action) {
-    let tailId = event.target.getAttribute('span-id');
-    let headId = active_span.Element.getAttribute('span-id');
-    if (tool_state === 'rev_relation_mode') [headId, tailId] = [tailId, headId];   //swap head and tail
-    show_relation_menu(event, docIndex, headId, tailId, action);
-}
-
-
-function show_relation_menu(event, docIndex, headId, tailId, action) {
-    const menu = document.createElement('div');
-    menu.id = 'menu';
-    menu.style.position = 'absolute';
-    menu.style.left = `${event.clientX + window.scrollX}px`;
-    menu.style.top = `${event.clientY + window.scrollY}px`;
-    menu.style.backgroundColor = 'white';
-    menu.style.border = '1px solid black';
-    menu.style.padding = '5px';
-    menu.style.zIndex = '1001';
-    menu.style.fontWeight = 'bold';
-    menu.style.fontSize = '14px';
-    menu.style.fontFamily = 'Arial, sans-serif';
-
-    // Filter relation types based on action
-    let relationTypes = schema["relation_types"];
-    if (action === "rmv") {
-        //filter the relation_types to only those that exist for this head-tail pair as only these can be removed
-        const existingRelations = relations[docIndex].filter(x => x.head === headId && x.tail === tailId);
-        relationTypes = relationTypes.filter(x => existingRelations.some(y => y.type === x.name));
-    }
-
-    // Create menu items for filtered relation types
-    if (relationTypes.length === 0) return;
-
-    relationTypes.forEach((type) => {
-        const item = document.createElement('div');
-        if (action === 'add')       item.textContent = `Add relation: ${type.name}`;
-        else if (action === 'rmv')  item.textContent = `Rmv relation: ${type.name}`;
-        item.style.backgroundColor = type.color;
-        item.style.padding = '5px';
-
-        item.onclick = () => {
-            if (action === "add") {
-                if (!relation_already_exists(docIndex, headId, tailId, type.name)) {
-                    add_relation(docIndex, headId, tailId, type.name, type.color);
-                } else {
-                    show_relation_already_exists_msg(event.clientX + window.scrollX + msg_offset_x, event.clientY + window.scrollY + msg_offset_y);
-                }
-            } 
-            else if (action === "rmv") {
-                remove_relation(docIndex, headId, tailId, type.name);
-            }
-            document.body.removeChild(menu); // Close menu after selection
-        };
-        menu.appendChild(item);
-    });
-    document.body.appendChild(menu);
-}
-
-
-
-//check that a candidate relation has not already been added
-function relation_already_exists(docIndex, headId, tailId, type) {
-    return relations[docIndex].some(rel => rel.head === headId && rel.tail === tailId && rel.type === type);
-}
-
-
-
-function show_relation_already_exists_msg(x,y) {
-    //show dissappearing popup msg that this relation has already been added
-    //tooltip_caution.style.position = 'fixed';
-    tooltip_caution.style.display = 'block';
-    tooltip_caution.style.left = `${x}px`; // Position near the click horizontally
-    tooltip_caution.style.top = `${y}px`; // Position near the click vertically
-    tooltip_caution.textContent = 'Relation Already Exists'
-
-    setTimeout(function() {
-        tooltip_caution.style.display = 'none';
-    }, 2000);  //hide after this many ms
-}
-
-
-function add_relation(docIndex, head_id, tail_id, type, color) {
-    const next_cnt = get_next_cnt(relations[docIndex]);
-    const rel_id = `R${docIndex}_${next_cnt}`;
-
-    //doesn't use the color for now, may change this later
-    relations[docIndex].push({
-        id: rel_id,
-        head: head_id,
-        tail: tail_id,
-        type: type
-    });
-
-    //update the border for the new relation
-    if (tool_state === 'relation_mode')          update_border_style(docIndex, tail_id, +1)
-    else if (tool_state === 'rev_relation_mode') update_border_style(docIndex, head_id, +1)
-}
-
-
-
-function remove_relation(docIndex, head_id, tail_id, type) {
-    //this removes the given head-tail pair and type (relation) from the relations[docIndex] list
+//right click listener
+document.getElementById('dataContainer').addEventListener('contextmenu', function(event) {
+    // Prevent the default context menu from appearing
+    event.preventDefault();
     
-    //Remove the relation from relations
-    relations[docIndex] = relations[docIndex].filter(relation => !(relation.head === head_id && relation.tail === tail_id && relation.type === type));
+    //close other open menus if we did not click on them
+    remove_menus();
+    //get target
+    const target = event.target;
+    //check we clicked on a span
+    if (!target || target.tagName !== "SPAN" || !hasSpanId(target)) return;
+    //check the parent div is an editable div
+    docDiv = get_parent_div_for_mouse_event(target);
+    if (!docDiv) return;
+    //all good so get the docDiv object and extract the docIndex
+    docIndex = parseInt(docDiv.id.replace('doc', ''));
+    //these are the processing cases.....
+    if (tool_state === 'span_mode') 
+        edit_span_handler(event, docIndex, null, "edit");                                           //here the right-clicked span type is annotated and we are in span_mode so edit it
+    else if (tool_state !== 'span_mode' && docIndex === active_span.docIndex) 
+        edit_relation_handler(event, docIndex);    //here the right-clicked span type is annotated and we are in a relation_mode, so edit the relation, validity checks will be done later
+});
 
-    //update the border for the removed relation
-    if (tool_state === 'relation_mode')          update_border_style(docIndex, tail_id, -1)
-    else if (tool_state === 'rev_relation_mode') update_border_style(docIndex, head_id, -1)
-}    
-
-
-
-
-function remove_flashing_border() {
-    if (active_span.Element) {
-        active_span.Element.classList.forEach(cls => {
-            if (cls.includes('flashing-border')) {
-                active_span.Element.classList.remove(cls);
-            }
-        });
+//left click listener to handle span interactions and menu management
+document.getElementById('dataContainer').addEventListener('click', function(event) {
+    // Disable default Ctrl+Click and Shift+Click behaviors
+    if (event.ctrlKey || event.shiftKey) {
+        event.preventDefault(); // Prevent the default browser action
+        event.stopPropagation(); // Stop the event from propagating further
     }
+    //Determine the click type
+    let ctrl_left_click = event.button === 0 && event.ctrlKey && !event.shiftKey;
+    let shift_left_click = event.button === 0 && event.shiftKey && !event.ctrlKey;
+    let left_click = event.button === 0 && !(event.ctrlKey || event.shiftKey);
+
+    //close other open menus if we did not click on them
+    remove_menus();
+
+    //console.log('Left-click detected at:', event.clientX, event.clientY);
+    const target = event.target;
+    //check we clicked on a span tag
+    if (!target || target.tagName !== "SPAN" || !hasSpanId(target)) return;
+    //check the parent div is a docDiv, if not exit
+    let docDiv = get_parent_div_for_mouse_event(target);
+    if (!docDiv) return;
+    //all good so extract the docIndex
+    let docIndex = parseInt(docDiv.id.replace('doc', ''));
+
+    //these are the processing cases.....
+    if (left_click) enter_relation_mode(event, docIndex, 'relation_mode');                  //if plain left click enter relation mode if not already there and choose a new head
+    else if (ctrl_left_click) enter_relation_mode(event, docIndex, 'rev_relation_mode');    //go to rev-rel mode on ctrl-left clikc on a valid tail
+});
+
+//add the exit all relation modes on esc button press event
+document.addEventListener('keydown', function(event) {
+    if (event.key === 'Escape'){
+        remove_menus();
+        clearSelection();
+        if (tool_state === 'relation_mode' || tool_state === 'rev_relation_mode') 
+            exit_relation_mode();
+    }
+});
+
+document.getElementById('dataContainer').addEventListener('dblclick', function(event) {
+    event.preventDefault();
+    event.stopImmediatePropagation(); // Optional: stop further event propagation
+    clearSelection(); // Function call to clear any current text selections
+    doubleclick_flag = true;
+    return;
+});
+
+document.getElementById('dataContainer').addEventListener('mousedown', function(event) {
+    //disable doubleclick
+    if (doubleclick_flag) {
+        event.preventDefault();
+        event.stopImmediatePropagation(); // Optional: stop further event propagation
+        clearSelection(); // Function call to clear any current text selections
+        return; 
+    }
+
+    // Disable default Ctrl+Click and Shift+Click behaviors
+    if (event.ctrlKey || event.shiftKey) {
+        event.preventDefault(); // Prevent the default browser action
+        event.stopPropagation(); // Stop the event from propagating further
+    }
+
+    let target = event.target;
+    // Check if the tool state is span_mode
+    if (tool_state !== "span_mode") return;
+    // Check if the event is happening in a span
+    if (target.tagName !== "SPAN") return; 
+    //check if the parent div is valid
+    let docDiv = get_parent_div_for_mouse_event(target);
+    if (!docDiv) return;
+    //all good so get the doc index
+    mouseDownDocIndex = parseInt(docDiv.id.replace('doc', ''));
+});
+
+document.getElementById('dataContainer').addEventListener('mouseup', function(event) {
+    //disable doubleclick
+    if (doubleclick_flag) {
+        doubleclick_flag = false;
+        event.preventDefault();
+        event.stopImmediatePropagation(); // Optional: stop further event propagation
+        clearSelection(); // Function call to clear any current text selections
+        return; 
+    }
+
+    // Capture the mouseDownDocIndex to use within the timeout
+    let capturedMouseDownDocIndex = mouseDownDocIndex;
+    // Reset the global mousedown index as we have an upmouse
+    mouseDownDocIndex = null;
+
+    let target = event.target;    //target is the span that the mouse was released on
+    // Check if the tool state is span_mode
+    if (tool_state !== "span_mode") return;
+    //check if the parent div is valid
+    let docDiv = get_parent_div_for_mouse_event(target);
+    if (!docDiv) return;
+    //all good so extract the docIndex
+    const docIndex = parseInt(docDiv.id.replace('doc', ''));
+    const docDiv_id = `doc${docIndex}`
+    //check if mousedown and mouseup are in the same document and if the selection represents an actual drag (non-zero length)
+    if (capturedMouseDownDocIndex !== docIndex) return;
+
+    // Timeout to handle mouse up processing
+    setTimeout(() => {
+        const selection = window.getSelection();
+        // Check if the selection range has more than zero length (implies dragging)
+        if (selection.isCollapsed || selection.toString().trim().length === 0) return;
+        // Check if selection spans multiple nodes and gather all spans involved
+        let range = selection.getRangeAt(0);
+        let startContainer = range.startContainer;
+        let endContainer = range.endContainer;
+
+        //Check if the start/end containers are text nodes and assign their parent, otherwise assign the container itself
+        let start = -1;
+        if (startContainer.nodeType === Node.TEXT_NODE) start = startContainer.parentNode.getAttribute('token-id');
+        else start = startContainer.getAttribute('token-id');
+        let end = -1;
+        if (endContainer.nodeType === Node.TEXT_NODE) end = endContainer.parentNode.getAttribute('token-id');
+        else end = endContainer.getAttribute('token-id');
+        start = parseInt(start);
+        end = parseInt(end) + 1;   //to make it python list style
+        // Extract all spans between start and end spans if they are different
+        let spans = find_span_tags_by_start_end(docIndex, start, end);
+        //process the selected tokens
+        edit_span_handler(event, docIndex, spans, "add");
+        // Clear the selection after processing
+        selection.removeAllRanges();
+    }, 50);    //50ms timeout
+});
+
+document.getElementById('dataContainer').addEventListener('mouseover', function(event) {
+    const target = event.target;
+    // Check if the hovered element is an annotated span
+    if (target.tagName === 'SPAN' && hasSpanId(target)) {
+        tooltip_info.style.display = 'block';
+        //Position the tooltip near the mouse cursor
+        tooltip_info.style.left = `${event.clientX + window.scrollX - info_offset_x}px`;
+        tooltip_info.style.top = `${event.clientY + window.scrollY + info_offset_y}px`;
+        //Display the tooltip with the content
+        tooltip_info.innerHTML = get_info_text(target, true);
+    }
+});
+
+document.getElementById('dataContainer').addEventListener('mousemove', function(event) {
+    // Move the tooltip along with the mouse
+    if (tooltip_info.style.display === 'block') {
+        tooltip_info.style.left = `${event.clientX + window.scrollX - info_offset_x}px`;
+        tooltip_info.style.top = `${event.clientY + window.scrollY + info_offset_y}px`;
+    }
+});
+
+document.getElementById('dataContainer').addEventListener('mouseout', function(event) {
+    const target = event.target;
+    // Hide the tooltip when the mouse leaves an annotated span
+    if (target.tagName === 'SPAN' && hasSpanId(target)) {
+        tooltip_info.style.display = 'none';
+    }
+});
+
+// Utility function to clear text selection
+function clearSelection() {
+    if (window.getSelection) {
+        if (window.getSelection().empty) window.getSelection().empty();   //chrome
+        else if (window.getSelection().removeAllRanges) window.getSelection().removeAllRanges();  //firefox
+    } 
+    else if (document.selection) document.selection.empty();   //IE
 }
 
-
-//function to remove tail span styling on rel mode exit
-function remove_span_styles() {
-    remove_flashing_border();
-    let elements = document.querySelectorAll('div[id^="doc"] > span[class*="border"]');
-    // Loop through the NodeList and log each element
-    elements.forEach(function(element) {
-         element.classList = "";
-    });
+//helper function for info display
+function get_info_text(target, split=true) {
+    const id_text = target.getAttribute('span-id');
+    const type_text = target.getAttribute('span-type');
+    let info_text = `${id_text} (${type_text})`;
+    if (split===true) {
+        // Split the values by spaces
+        const spanIds = id_text.split(" ");
+        const spanTypes = type_text.split(" ");
+        // Create a string that combines each span-id with its corresponding span-type
+        info_text = spanIds.map((id, index) => {
+            const type = spanTypes[index] || 'not-found'; 
+            return `${id} (${type})`;
+        }).join("<br>");
+    }
+    return info_text
 }
-
-
-//function to update all (head)tail span styles on entering (rev_)relation mode
-//it also updates the selected span border style
-function update_span_styles_on_entry(span, docIndex) {
-    const selected_span_id = span.getAttribute('span-id');
-    const relationCounts = {};
-
-    //update the selected span style
-    //remove all classes for this element
-    span.classList = "";
-    if (tool_state === 'relation_mode')             span.classList.add('red-flashing-border');
-    else if (tool_state === 'rev_relation_mode')    span.classList.add('black-flashing-border');
-
-    // Collect all tail IDs for the given head ID
-    relations[docIndex].forEach(relation => {
-        if (tool_state === 'relation_mode' && relation.head === selected_span_id) {
-            if (relationCounts[relation.tail]) 
-                relationCounts[relation.tail]++;
-            else 
-                relationCounts[relation.tail] = 1;
-        }
-        else if (tool_state === 'rev_relation_mode' && relation.tail === selected_span_id) {
-            if (relationCounts[relation.head]) 
-                relationCounts[relation.head]++;
-            else 
-                relationCounts[relation.head] = 1;
-        }
-    });
-
-    // Update the style for each tail span
-    Object.keys(relationCounts).forEach(span_id => {
-        const cand_span = document.querySelector(`#doc${docIndex} [span-id='${span_id}']`);
-        if (cand_span) {
-            level = Math.min(4, relationCounts[span_id]);
-            cand_span.classList = "";
-            if (tool_state === 'relation_mode')             cand_span.classList.add(`tail-border-${level}`);
-            else if (tool_state === 'rev_relation_mode')    cand_span.classList.add(`head-border-${level}`);
-        };
-    });
-}
-
-
-function update_border_style(docIndex, span_id, delta) {
-    //update the border for the new head/tail relation
-    const cand_span = document.querySelector(`#doc${docIndex} [span-id='${span_id}']`);
-    if (cand_span) {
-        let class_list = cand_span.classList;
-        // Find the first class that starts with 'tail-border-'
-        let level = 0;
-        let target_class = Array.from(class_list).find(cls => cls.includes('-border-'));
-        if (target_class) level = parseInt(target_class.match(/-border-(\d+)/)?.[1], 10);
-        level += delta;
-        level = Math.min(4, level);
-
-        cand_span.classList = "";
-        if (tool_state === 'relation_mode')             cand_span.classList.add(`tail-border-${level}`);
-        else if (tool_state === 'rev_relation_mode')    cand_span.classList.add(`head-border-${level}`);
-    };
-}
-///////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////
