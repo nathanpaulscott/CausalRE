@@ -6,6 +6,8 @@ The tool is simple, you can load in a set of unannotated or pre-annotated docume
 
 The json format is as follows:   
 An object with 2 keys: 'data', 'schema'.   
+
+
 data key contains a list of observations/documents, each observation is an object with 3 keys: 'tokens', 'spans', 'relations'.   
 - data[doc_idx].tokens key contains a list of strings, one string per word token.   
 - data[doc_idx].spans key contains a list of spans, each span is an object with 4 keys: 'id', 'start', 'end', 'type'.   
