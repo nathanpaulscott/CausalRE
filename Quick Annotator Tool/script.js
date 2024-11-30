@@ -23,6 +23,8 @@ let input_format = 'min';     //hard coded to min for now
 let filename = '';
 let app_ver = 1;
 let doubleclick_flag = false;
+const span_id_prefix = 'E';    // new spans will have id => `${span_id_prefix}${next_count}`
+const relation_id_prefix = 'R';   // new relations will have id => `${relation_id_prefix}${next_count}`
 
 //set the offset for the popup messages near the click point
 const msg_offset_x = 40;
@@ -385,7 +387,6 @@ function get_parent_div_for_mouse_event(target) {
     // Use closest to find the parent div that has id that starts with 'doc'
     let docDiv = target.closest('div[id^="doc"]');
     if (!docDiv) return null; // No matching div found
-
     //got to here so passed the check
     return docDiv;
 }
@@ -727,13 +728,14 @@ function show_span_menu_edit(event, docIndex, span_id) {
     document.body.appendChild(menu);
 }
 
+
+
 /////////////////////////////////////////////////////
 //add/edit span functions
 /////////////////////////////////////////////////////
 function add_span(docIndex, new_type, selected_span_tags) {
     // Get the next count to create a unique span ID
-    const next_cnt = get_next_cnt(data[docIndex].spans);
-    const new_span_id = `E${docIndex}_${next_cnt}`;
+    const new_span_id = `${span_id_prefix}${get_next_cnt(data[docIndex].spans)}`;
 
     //update the dom
     add_to_span_tags(selected_span_tags, new_span_id, new_type);
@@ -794,12 +796,12 @@ function validate_boundary(start, end) {
     return true;
 }
 
-function get_next_cnt(spans) {
+function get_next_cnt(items) {
     /*
      Extract all IDs using map by matching the last sequence of digits in the ID
     list_of_dicts is either the span list or relations list for the given docIndex
     */
-    const ids = spans.map(x => {
+    const ids = items.map(x => {
         const match = x.id.match(/\d+$/);
         return match ? parseInt(match[0]) : null;
     }).filter(id => !isNaN(id));  // Filter out non-numeric values to account for potential parsing failures
@@ -1052,8 +1054,7 @@ function relation_exists(docIndex, headId, tailId, type) {
 ////////////////////////////////
 function add_relation(docIndex, head_id, tail_id, type, color) {
     /* adds relation to relations and updates the border style if in rel mode */
-    const next_cnt = get_next_cnt(data[docIndex].relations);
-    const rel_id = `R${docIndex}_${next_cnt}`;
+    const rel_id = `${relation_id_prefix}${get_next_cnt(data[docIndex].relations)}`;
     //update the data structure, doesn't use the color for now, may change this later
     data[docIndex].relations.push({
         id: rel_id,
@@ -1318,7 +1319,8 @@ function export_data(option) {
         //update the span text in each span
         update_span_text(obs);
         //add annotated text and reorder keys
-        let annotated_text = convertInnerHTML(docDiv, option);
+        //let annotated_text = convertInnerHTML(docDiv, option);
+        let annotated_text = make_annotated_text(obs, option);
         return reorderObsKeys(obs, annotated_text);
     });
 
@@ -1358,7 +1360,7 @@ function update_span_text(obs) {
     obs.spans.forEach((span) => {
         const start = parseInt(span.start);   
         const end = parseInt(span.end);   
-        span.span = obs.tokens.slice(start, end).join(' ');
+        span.span = obs.tokens.slice(start, end).join(' ').trim();
     });
 }
 
@@ -1421,57 +1423,38 @@ function find_lost_ids(string1, string2) {
     return lost_ids;
 }
 
-function convertInnerHTML(div, type) {
+function make_annotated_text(obs, type) {
     /*
-    utility function to convert the innerHTML annotated text to something more human readable for export
-    basically, it takes the tokens list, joins them to a string, then puts tags aroudn each annotated span, the tag is the span_id
+    utility function to add span tags around the annotated spans for the human to understand
     */
-    if (!div) return ''; // Return empty if the div is not found
+    let tokens = obs.tokens.slice(); // Create a copy of the tokens to work with
+    const tags = new Array(tokens.length).fill(null); // Initialize tags array of the same length as tokens, filled with null
 
-    let result = '';
-    const children = Array.from(div.childNodes);
-    children.forEach((child, idx) => {
-        // Process the span children of the doc div
-        result += ' ';
-        if (child.nodeType === Node.ELEMENT_NODE && child.tagName === 'SPAN') {
-            if (!hasSpanId(child)) {   //Just append the text of unannotated spans
-                result += `${child.innerText}`;
-            } else {    //Wrap annotated span text with tags from span-id
-                const span_id = child.getAttribute('span-id');
-                // Process new IDs
-                let prev_span_id = '';   //set to default (no span-id)
-                if (idx > 0 && hasSpanId(children[idx-1]))   //if the prev exists and had a span-id read it
-                    prev_span_id = children[idx-1].getAttribute('span-id');
-                let new_ids = find_new_ids(prev_span_id, span_id);
-                new_ids.forEach(new_id => {
-                    if (type === "export") {
-                        result += `<${new_id}>`; // open tag
-                    } else if (type === "view") {
-                        result += `&lt;${new_id}&gt;`; // open tag for view in HTML entities
-                    }
-                });
-
-                // Append text
-                result += `${child.innerText}`;
-
-                // Process lost IDs
-                let next_span_id = '';
-                if (idx < children.length && hasSpanId(children[idx+1])) 
-                    next_span_id = children[idx+1].getAttribute('span-id');
-                let lost_ids = find_lost_ids(span_id, next_span_id);
-                lost_ids.forEach(lost_id => {
-                    if (type === "export") {
-                        result += `</${lost_id}>`; // Close tag
-                    } else if (type === "view") {
-                        result += `&lt;/${lost_id}&gt;`; // Close tag for view in HTML entities
-                    }
-                });
-            }
+    //fill the tags array from obs.spans
+    obs.spans.forEach(span => {
+        let start = parseInt(span.start);
+        let end = parseInt(span.end);
+        if (type === "export") {
+            tags[start] = `<${span.id}>`;
+            tags[end] = `</${span.id}>`;
+        } 
+        else if (type === "view") {
+            tags[start] = `&lt;${span.id}&gt;`;
+            tags[end] = `&lt;/${span.id}&gt;`;
         }
     });
-    return result.trim(); // Trim the result to remove extra spaces
-}
 
+    //merge the tags with the tokens
+    let shift = 0; // This will track the shift in index due to the tags being inserted
+    tags.forEach((tag, idx) => {
+        if (tag != null) {
+            tokens.splice(idx + shift, 0, tag);
+            shift += 1;
+        }
+    });
+ 
+    return tokens.join(' ').trim();
+}
 ///////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////
