@@ -798,16 +798,13 @@ function validate_boundary(start, end) {
 
 function get_next_cnt(items) {
     /*
-     Extract all IDs using map by matching the last sequence of digits in the ID
-    list_of_dicts is either the span list or relations list for the given docIndex
+    get the next integer for the items list.  Looks at all the entries and thier last digits and finds the max and returns max+1
     */
     const ids = items.map(x => {
         const match = x.id.match(/\d+$/);
         return match ? parseInt(match[0]) : null;
-    }).filter(id => !isNaN(id));  // Filter out non-numeric values to account for potential parsing failures
-    // Find the maximum ID using Math.max, defaulting to 0 if the array is empty
-    const max_id = ids.length > 0 ? Math.max(...ids) : 0;
-    // Generate the next available ID by incrementing the highest found ID
+    }).filter(id => id != null);
+    const max_id = ids.length > 0 ? Math.max(...ids) : -1;
     return max_id + 1;
 }
 
