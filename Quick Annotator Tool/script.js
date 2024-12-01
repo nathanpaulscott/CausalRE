@@ -1,15 +1,6 @@
 ///////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////
-//TO DO
-//potentially add in a comment key to the spans/relations, each one being a list of dicts with keys 'text','datetime','person'
-//then add edit span functionality, where we left click on a span, it brings up the comments chain, we click on it to add to the chain, which brings up a text dialog allowing a comment ot be added, datetime is auto, person is also voluntary
-//similarly for the relations, add a comment key, then in relation_mode/rev_relation_mode if we doubleclick on a tail/head, it brings up the current relations menu, if we click on one of them, it brings up the comments chain, if we click on it it allows adding to the chain etc.  More complex than the span case.
-
-
-///////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////
 //GLOBAL PARAMS
 let source_data = {};   //holds the dict of source data, each key is a source id and the value is the source text
 let data = [];      // holds the list of observations, each obs has keys: tokens, spans, relations and optionally source, offset
@@ -109,6 +100,7 @@ const instructions_text = `
     <br>
     <strong>Span Mode:</strong><br>
     - <strong>Click and Drag</strong> to select spans of text to annotate.<br>
+    - <strong>RIght-Click</strong> on any span (while in span_mode) to edit/remove the span.<br>
     <strong>Relation Mode:</strong><br>
     - <strong>Left-Click</strong> on any span to move to relation mode (selected span as head, flashing red) and see all tail spans (black border).<br>
     - <strong>Right-Click</strong> on any span (while in relation mode) to add/remove the relation with that span as tail to the flashing head span.<br>
@@ -120,6 +112,7 @@ const instructions_text = `
     <br>
     <strong>Ver: ${app_ver}:</strong><br>
     - NOTE: span start is the actual start token idx, end is the actual end token idx + 1<br>
+    - NOTE: overlapping spans are supported<br>
 </div>`;
 
 
