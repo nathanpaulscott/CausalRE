@@ -1,0 +1,62 @@
+#####################################################################
+#Directory Paths
+#####################################################################
+log_dir: logs                               #location of the log file folder
+model_path: "none"                          #pretrained model path => Use "none" if no pretrained model is being used
+data_path: "data/sample data.json"          #the dataset file
+#####################################################################
+#General Configs
+#####################################################################
+#Model Configuration
+#####################################################################
+model_name: bert-base-uncased           #name of the flair or hf model, eg 'microsoft/deberta-v3-base' or 'bert-base-uncased'
+model_source: HF                        #HF/flair => HF for hugging face models, flair for flair models.  NOTE: I have implemented the pooling with the HF option.
+
+subtoken_pooling: none                  #first/last/first_last/mean/maxpool(HF only)/none(HF only).  none will disable subtoken pooling, only supported by HF.  NOTE: first_last will double the hidden dim, but the projection layer will pull it back to normal
+#subtoken_pooling: first_last               #first/last/first_last/mean/maxpool(HF only)/none(HF only).  none will disable subtoken pooling, only supported by HF.  NOTE: first_last will double the hidden dim, but the projection layer will pull it back to normal
+
+shuffle_train: false                    #always be true, except for debugging
+fine_tune: true                         #whether to allow fine tuning of the transformer encoder params (eg. bert), should leave as true
+hidden_size: 768                        #hidden size of the bert based encoder
+dropout: 0.1                            #standard model dropout
+ffn_ratio: 4                              #I think the mult factor for the Feed Forward blocks
+freeze_token_rep: false                 #to do with thte optimizer
+max_seq_len: 130                        #word token limit, this will generally affect the model speed, so keep it as low as possible.  I have this in just a  a protection fro very long sequences coming in
+max_span_width: 12                      #max span width in word tokens (10-12 for NER, 40+ for long span event detection)
+scorer: dot                             #used in the final ent and rel scoring after pruning the graph
+
+#span rep config
+#span_mode: firstlast                    #firstlast_grapher, firstlast, spert, nathan, attentionpooling... used to configure the method used to generate the span reps from the token reps
+span_mode: spert                       #firstlast_grapher, firstlast, spert, nathan, attentionpooling... used to configure the method used to generate the span reps from the token reps
+#span_mode: nathan                      #firstlast_grapher, firstlast, spert, nathan, attentionpooling... used to configure the method used to generate the span reps from the token reps
+#span_mode: attentionpooling            #firstlast_grapher, firstlast, spert, nathan, attentionpooling... used to configure the method used to generate the span reps from the token reps
+
+width_embedding_size: 200               #hidden size of the span width embedding
+#attention pooling config
+use_span_pos_encoding: False            #use span pos encoding in additon to full seq pos encoding for attention pooling
+#graph transformer config
+num_heads: 4                            #used by the graph transformer layer 
+num_transformer_layers: 2               #used by the graph transformer layer
+#####################################################################
+#Training Parameters
+#####################################################################
+num_steps: 30000                        #how many batches to run through the system, the tot batches is going to be much smaller, so it just repeats the batches
+train_batch_size: 2                     #num obs per train batch
+eval_batch_size: 2                      #num obs per val/test batch
+eval_every: 5000                        #eval every 5000 batches I guess
+warmup_ratio: 0.1                       #probably tied to the learning rate reduction, they let it run for a while before starting to reduce it
+scheduler_type: cosine                  #not sure what the cosine scheduler is
+save_total_limit: 20                    #not sure
+#####################################################################
+#Learning Rate and weight decay Configuration
+#####################################################################
+lr_encoder: 1e-5                        #this is the learning rate used for the bert encoder
+lr_others: 5e-5                         #this is the learnign rate used for all other weights other than the encoder
+#####################################################################
+#Advanced Training Settings
+#####################################################################
+
+
+
+
+
