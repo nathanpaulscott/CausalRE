@@ -16,35 +16,36 @@ min_neg_sample_limit: 100               #the lower limit of neg cases selected p
 #####################################################################
 model_name: bert-base-uncased           #name of the flair or hf model, eg 'microsoft/deberta-v3-base' or 'bert-base-uncased'
 model_source: HF                        #HF/flair => HF for hugging face models, flair for flair models.  NOTE: I have implemented the pooling with the HF option.
-
+###############
 use_prompt: true                        #whether to use prompting of the span and rel types to generate span_type_reps and rel_type_reps
 subtoken_pooling: none                  #first/last/first_last/mean/maxpool(HF only)/none(HF only).  none will disable subtoken pooling, only supported by HF.  NOTE: first_last will double the hidden dim, but the projection layer will pull it back to normal
-#subtoken_pooling: first_last               #first/last/first_last/mean/maxpool(HF only)/none(HF only).  none will disable subtoken pooling, only supported by HF.  NOTE: first_last will double the hidden dim, but the projection layer will pull it back to normal
-
+#subtoken_pooling: first_last           #first/last/first_last/mean/maxpool(HF only)/none(HF only).  none will disable subtoken pooling, only supported by HF.  NOTE: first_last will double the hidden dim, but the projection layer will pull it back to normal
 shuffle_train: false                    #always be true, except for debugging
 freeze_encoder: true                    #whether to allow fine tuning of the transformer encoder params (eg. bert), should leave as true
 hidden_size: 768                        #hidden size of the bert based encoder
 dropout: 0.1                            #standard model dropout
-ffn_ratio: 4                              #I think the mult factor for the Feed Forward blocks
-freeze_token_rep: false                 #to do with thte optimizer
+ffn_ratio: 4                            #FFN hidden expansion factor
 max_seq_len: 130                        #word token limit, this will generally affect the model speed, so keep it as low as possible.  I have this in just a  a protection fro very long sequences coming in
 max_span_width: 12                      #max span width in word tokens (10-12 for NER, 40+ for long span event detection)
 scorer: dot                             #used in the final ent and rel scoring after pruning the graph
-
+###############
 #span rep config
-#span_mode: firstlast                    #firstlast_grapher, firstlast, spert, nathan, attentionpooling... used to configure the method used to generate the span reps from the token reps
-span_mode: spert                       #firstlast_grapher, firstlast, spert, nathan, attentionpooling... used to configure the method used to generate the span reps from the token reps
+###############
+#span_mode: firstlast                   #firstlast_grapher, firstlast, spert, nathan, attentionpooling... used to configure the method used to generate the span reps from the token reps
+span_mode: spert                        #firstlast_grapher, firstlast, spert, nathan, attentionpooling... used to configure the method used to generate the span reps from the token reps
 #span_mode: nathan                      #firstlast_grapher, firstlast, spert, nathan, attentionpooling... used to configure the method used to generate the span reps from the token reps
 #span_mode: attentionpooling            #firstlast_grapher, firstlast, spert, nathan, attentionpooling... used to configure the method used to generate the span reps from the token reps
-
+###############
 width_embedding_size: 200               #hidden size of the span width embedding
-#attention pooling config
 use_span_pos_encoding: False            #use span pos encoding in additon to full seq pos encoding for attention pooling
+###############
 #graph transformer config
+###############
 num_heads: 4                            #used by the graph transformer layer 
 num_transformer_layers: 2               #used by the graph transformer layer
-
+###############
 #span filtering params                  #these are from graphER for choosing the spans per obs for the initial graph, I will keep them for now, but will probably change the calc later
+###############
 #NOTE: a key point here is limiting the number of spans for the initial graph as the number of rels is quadratically dependent on this number
 #Also note that we have forced the pos cases to be at the top of the list (see span filtering score calcs, that is from graphER, but I also implemente somehting similar, it is kind of important to guide the model, at least initially)
 span_force_pos: true                    #whether to force pos spans to +inf in the span filtering score calc ensuring pos cases are included in the initial graph (a form of teacher forcing)
@@ -52,22 +53,20 @@ rel_force_pos: false                    #whether to force pos rels to +inf in th
 pos_force_step_limit: none              #whether to turn off positive case forcing at some point in the training process, none => means never, 10 means after 10 batches, 45 means after 45 batches etc..
 max_top_k_spans: 54                     #max number of spans to choose per obs for the initial graph, if the seq len goes below this, then that is the limit
 add_top_k_spans: 10                     #add to the result of the min(seq_len, max_top_k_spans) calc
+
 #####################################################################
 #Training Parameters
 #####################################################################
-num_steps: 30000                        #how many batches to run through the system, the tot batches is going to be much smaller, so it just repeats the batches
+num_steps: 30000                        #how many batches to run through the system, the total batches in the dataset is going to be much smaller, so it just repeats the batches
 train_batch_size: 2                     #num obs per train batch
 eval_batch_size: 2                      #num obs per val/test batch
 eval_every: 5000                        #eval every 5000 batches I guess
 warmup_ratio: 0.1                       #probably tied to the learning rate reduction, they let it run for a while before starting to reduce it
 scheduler_type: cosine                  #not sure what the cosine scheduler is
 save_total_limit: 20                    #not sure
+lr_encoder: 1e-5                        #this is the learning rate used for the tranformer encoder
+lr_others: 5e-5                         #this is the learning rate used for all other weights other than the transformer encoder
 
-#####################################################################
-#Learning Rate and weight decay Configuration
-#####################################################################
-lr_encoder: 1e-5                        #this is the learning rate used for the bert encoder
-lr_others: 5e-5                         #this is the learnign rate used for all other weights other than the encoder
 #####################################################################
 #Advanced Training Settings
 #####################################################################
