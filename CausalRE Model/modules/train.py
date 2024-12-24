@@ -239,7 +239,7 @@ class Trainer:
 
             #NATHAN: this is the core of it, running the data x through the model
             with torch.cuda.amp.autocast(dtype=torch.float16):    #forcing data to half precision
-                loss = model(x)
+                loss = model(x, step)
 
             if torch.isnan(loss).any():
                 print("Warning: NaN loss detected")

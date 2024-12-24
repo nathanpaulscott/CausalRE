@@ -24,7 +24,7 @@ class First_n_Last_graphER(nn.Module):
     outputs:
         span_reps, a tensor of shape (batch, num_spans, hidden) where num_spans = seq_len*max_span_width
     
-    NOTE: span_ids with start, end = 0,0 are processed nromally, but the reps will be ignored later by the span_mask
+    NOTE: span_ids with start, end = 0,0 are processed nromally, but the reps will be ignored later by the span_masks
    '''
     def __init__(self, 
                  max_span_width, 
@@ -49,23 +49,30 @@ class First_n_Last_graphER(nn.Module):
         pass
 
 
-    def forward(self, token_reps, span_ids, pooling, **kwargs):
+    def forward(self, token_reps, span_ids, span_masks, pooling, **kwargs):
         '''
         token_reps is of shape  (batch, seq_len, hidden)    where seq_len is w_seq_len for word token aligned token_reps
-        span_ids is of shape    (batch, num_spans, 2) where num_spans = w_seq_len*max_span_width, w or sw alignment follows pooling
+        span_ids is of shape    (batch, num_spans, 2)       where num_spans = w_seq_len*max_span_width, values in last dim are w/sw aligned based on pooling
+        span_masks is of shape   (batch, num_spans)          where num_spans = w_seq_len*max_span_width
         Because when they generate all possible spans they just generate all spans from width 1 to max_span_width for each start idx, even when the end idx is out of the max_seq_len, they just mask those as invalid spans 
         So that view statement at the end will work ok, it just kind of associates the max_span_width spans with each start token idx in a way
         '''
         if not pooling:
             raise Exception('graphER span generation only works for the pooled cases')
+
+        #Zero out invalid indices - they'll get token_reps[0], which will be ignored later
+        span_ids = span_ids * span_masks
+
         #run the token_reps through a simple FFN for the start and end token
         #it actually does nothing, but further mix the token embeddings around
         #is this really neccessary?
-        start_rep = self.project_start(token_reps)
-        end_rep = self.project_end(token_reps)
+        start_token_reps = self.project_start(token_reps)
+        start_ids = span_ids[:, :, 0]
+        end_token_reps = self.project_end(token_reps)
+        end_ids = span_ids[:, :, 1] - 1
         #extract the start rep and end rep out of token_reps
-        start_span_rep = extract_rep(start_rep, span_ids[:, :, 0])
-        end_span_rep = extract_rep(end_rep, span_ids[:, :, 1] - 1)
+        start_span_rep = extract_rep(start_token_reps, ids=start_ids)
+        end_span_rep = extract_rep(end_token_reps, ids=end_ids)
         #make the span reps
         span_reps = torch.cat([start_span_rep, end_span_rep], dim=-1)
         span_reps = self.relu(span_reps)
@@ -87,7 +94,7 @@ class First_n_Last(nn.Module):
             where num_spans = word_token_seq_len*max_span_width
             NOTE: if token_reps are sw aligned, seq_len is sw_token_seq_len!!!  Remember that
 
-    NOTE: span_ids with start, end = 0,0 are processed normally, but the reps will be ignored later by the span_mask
+    NOTE: span_ids with start, end = 0,0 are processed normally, but the reps will be ignored later by the span_masks
    '''
     def __init__(self, max_span_width, hidden_size, **kwargs):
         super().__init__()
@@ -101,14 +108,15 @@ class First_n_Last(nn.Module):
         init.constant_(self.out_project.bias, 0)
 
 
-    def forward(self, token_reps, span_ids, pooling, **kwargs):
+    def forward(self, token_reps, span_ids, span_masks, pooling, **kwargs):
         '''
         token_reps is of shape  (batch, seq_len, hidden)    => w_seq_len for word token aligned, or sw_seq_len for sw token aligned, it matters!!
-        span_ids is of shape    (batch, num_spans, 2) where num_spans = w_seq_len*max_span_width, w or sw alignment follows pooling
+        span_ids is of shape    (batch, num_spans, 2)       where num_spans = w_seq_len*max_span_width, values in last dim are w/sw aligned based on pooling
+        span_masks is of shape   (batch, num_spans)          where num_spans = w_seq_len*max_span_width
         pooling is true if we are word token aligned, false if we are sw token aligned
         '''
         #extract the start and end span reps
-        span_reps = extract_span_reps(token_reps, span_ids, pooling, mode='start_end')     
+        span_reps = extract_span_reps(token_reps, span_ids, span_masks, pooling, mode='start_end')     
         span_reps = self.out_project(span_reps)
         return span_reps   #shape (batch, num_spans, hidden)
 
@@ -128,7 +136,7 @@ class Spert(nn.Module):
     outputs:
         span_reps, a tensor of shape (batch, num_spans, hidden) where num_spans = seq_len*max_span_width
 
-    NOTE: span_ids with start, end = 0,0 are processed nromally, but the reps will be ignored later by the span_mask
+    NOTE: span_ids with start, end = 0,0 are processed nromally, but the reps will be ignored later by the span_masks
     '''    
     def __init__(self, 
                  max_span_width, 
@@ -155,11 +163,11 @@ class Spert(nn.Module):
         init.constant_(self.out_project.bias, 0)
 
 
-    def forward(self, token_reps, span_ids, pooling, cls_reps=None, span_widths=None, **kwargs):
+    def forward(self, token_reps, span_ids, span_masks, pooling, cls_reps=None, span_widths=None, **kwargs):
         '''
         token_reps: (batch, seq_len, hidden)
-        span_ids: (batch, num_spans, 2)     #word/sw token aligned depends on pooling
-        w_span_ids: (batch, num_spans, 2)     #word token aligned
+        span_ids is of shape    (batch, num_spans, 2)       where num_spans = w_seq_len*max_span_width, values in last dim are w/sw aligned based on pooling
+        span_masks is of shape   (batch, num_spans)          where num_spans = w_seq_len*max_span_width
         pooling => true if w token aligned
         cls_reps: (batch, hidden)
         span_widths => the span word token widths used for width embeddings
@@ -167,7 +175,7 @@ class Spert(nn.Module):
         batch, num_spans, _ = span_ids.shape
         # Get maxpooled span representations
         #NOTE: always takes w_span_ids here, jsut send the w2sw_map if we have no pooling
-        span_maxpool_reps = extract_span_reps(token_reps, span_ids, pooling, mode='maxpool')
+        span_maxpool_reps = extract_span_reps(token_reps, span_ids, span_masks, pooling, mode='maxpool')
         # Get width embeddings
         width_emb = self.width_embeddings(span_widths)
         # Combine components
@@ -195,7 +203,7 @@ class Nathan_v1(nn.Module):
     - width embedding rep
     - cls token rep if cls_flag is True
 
-    NOTE: span_ids with start, end = 0,0 are processed normally, but the reps will be ignored later by the span_mask
+    NOTE: span_ids with start, end = 0,0 are processed normally, but the reps will be ignored later by the span_masks
     '''    
     def __init__(self, 
                  max_span_width, 
@@ -227,11 +235,11 @@ class Nathan_v1(nn.Module):
         init.constant_(self.out_project.bias, 0)
 
 
-    def forward(self, token_reps, span_ids, pooling, cls_reps=None, span_widths=None, **kwargs):
+    def forward(self, token_reps, span_ids, span_masks, pooling, cls_reps=None, span_widths=None, **kwargs):
         '''
         token_reps: (batch, seq_len, hidden)
-        span_ids: (batch, num_spans, 2)     #word/sw token aligned depends on pooling
-        w_span_ids: (batch, num_spans, 2)     #word token aligned
+        span_ids is of shape    (batch, num_spans, 2)       where num_spans = w_seq_len*max_span_width, values in last dim are w/sw aligned based on pooling
+        span_masks is of shape   (batch, num_spans)          where num_spans = w_seq_len*max_span_width
         pooling => true if w token aligned
         cls_reps: (batch, hidden)
         span_widths => the span word token widths used for width embeddings
@@ -245,7 +253,7 @@ class Nathan_v1(nn.Module):
         '''
         batch, num_spans, _ = span_ids.shape
         #extract the span_reps as start + inner_maxpool + end
-        span_reps = extract_span_reps(token_reps, span_ids, pooling, mode='start_inner_maxpool_end')
+        span_reps = extract_span_reps(token_reps, span_ids, span_masks, pooling, mode='start_inner_maxpool_end')
         # Get width embeddings
         width_emb = self.width_embeddings(span_widths)
         #Combine Components
@@ -300,11 +308,12 @@ class AttentionPooling(nn.Module):
         init.xavier_normal_(self.dummy_query)
 
 
-    def forward(self, token_reps, span_ids, pooling, **kwargs):
+    def forward(self, token_reps, span_ids, span_masks, pooling, **kwargs):
         '''
         Args:
             token_reps: (batch, max_batch_seq_len, hidden)    #sw or word token aligned
-            span_ids: (batch, num_spans, 2)                   #same alignment as token_reps
+            span_ids is of shape    (batch, num_spans, 2)       where num_spans = w_seq_len*max_span_width, values in last dim are w/sw aligned based on pooling
+            span_masks is of shape   (batch, num_spans)          where num_spans = w_seq_len*max_span_width
             pooling if word token alinged or not
             
         Returns:
@@ -321,13 +330,12 @@ class AttentionPooling(nn.Module):
         token_reps = self.seq_pos_encoder(token_reps)
         
         all_span_reps = []
-        print(self.dummy_query)
         for obs_id in range(batch):
             span_reps = []
             for span_id in range(num_spans):
                 start, end = span_ids[obs_id, span_id]
                 # Handle invalid spans
-                if end - start == 0:
+                if span_masks[obs_id, span_id] == 0:
                     span_reps.append(torch.zeros(hidden, device=token_reps.device))
                     continue
                 # Extract span tokens (already batch first)
@@ -350,6 +358,113 @@ class AttentionPooling(nn.Module):
         return output   # (batch, num_spans, hidden)
     
 
+
+
+class AttentionPooling_vectorized_old(nn.Module):
+    '''
+    KEEP THIS VERSION FOR NOW, NOT SURE IF IT IS BETTER OR NOT, DECIDE LATER
+    I have tried to verify why this gives differetn results to the non-vectorised version and am not able,
+    it may be ok, may be a problem, I suggest you need to write your own mha code for verification of what is going on
+    to do later, I tried the key padding mask as boolean and float with -inf, got the same results, which are different to the loop case
+    '''
+    def __init__(self, 
+                max_seq_len,      #in word tokens for pooling sw tokens for no pooling
+                max_span_width,  #in word tokens for pooling sw tokens for no pooling
+                hidden_size, 
+                ffn_ratio=4, 
+                num_heads=4, 
+                dropout=0.1, 
+                use_span_pos_encoding=False,
+                **kwargs):
+        super().__init__()
+        self.hidden_size = hidden_size
+        self.use_span_pos_encoding = use_span_pos_encoding
+
+        # Attention pooling block: dummy query attends to span tokens
+        self.attn = nn.MultiheadAttention(hidden_size, num_heads, dropout=dropout, batch_first=True)
+        self.norm = nn.LayerNorm(hidden_size)
+        self.ffn = FFNProjectionLayer(hidden_size, ffn_ratio=ffn_ratio, dropout=dropout)
+        # Learnable query vector for attention pooling block
+        self.dummy_query = nn.Parameter(torch.randn(1, 1, hidden_size))
+        # Positional encodings for full sequence and span-internal positions
+        self.seq_pos_encoder = PositionalEncoding(hidden_size, dropout, max_seq_len)
+        if use_span_pos_encoding:
+            self.span_pos_encoder = PositionalEncoding(hidden_size, dropout, max_span_width)
+        
+        self.init_weights()
+
+    def init_weights(self):
+        # Init dummy query
+        init.xavier_normal_(self.dummy_query)
+
+    def forward(self, token_reps, span_ids, span_masks, pooling, **kwargs):
+        '''
+        Args:
+            token_reps: (batch, max_batch_seq_len, hidden)    #sw or word token aligned
+            span_ids is of shape    (batch, num_spans, 2)       where num_spans = w_seq_len*max_span_width, values in last dim are w/sw aligned based on pooling
+            span_masks is of shape   (batch, num_spans)          where num_spans = w_seq_len*max_span_width
+            pooling if word token alinged or not
+            
+        Returns:
+            span_reps: (batch, num_spans, hidden)
+
+        token_reps are either w token aligned or sw_token aligned
+        - if they are sw_token aligned, the span_ids passed are also sw_token aligned and masked
+        - if they are word token aligned, the span_ids passed are also word token aligned and masked
+
+        NOTE: I have checked this and it gives different results to the older loop style code, but the code is good
+        without re-writing the mha code myself and getting into it, I just do not know, but the way it is done here is ok
+        '''
+        batch_size, seq_len, hidden = token_reps.shape
+        batch_size, num_spans, _ = span_ids.shape
+        # Add positional encodings to full sequence
+        token_reps = self.seq_pos_encoder(token_reps)
+
+        # Get maximum span length and apply the span_masks
+        span_lengths = (span_ids[:, :, 1] - span_ids[:, :, 0]) * span_masks # (batch, num_spans)
+        max_span_len = max(span_lengths.max().item(), 1)
+        # Initialize tensors for batched processing
+        span_token_reps = torch.zeros((batch_size, num_spans, max_span_len, hidden), device=token_reps.device)
+        key_padding_mask = torch.ones((batch_size, num_spans, max_span_len), device=token_reps.device, dtype=torch.bool)  # True means ignore position
+        # Extract span tokens and create attention masks
+        for b in range(batch_size):
+            for s in range(num_spans):
+                start, end = span_ids[b, s]
+                span_len = span_lengths[b, s]
+                if span_len > 0:
+                    # Copy span tokens
+                    span_token_reps[b, s, :span_len, :] = token_reps[b, start:end, :]
+                    # Update attention mask for valid tokens
+                    key_padding_mask[b, s, :span_len] = False
+
+        # Add span positional encodings if enabled
+        if self.use_span_pos_encoding:
+            span_token_reps = self.span_pos_encoder(span_token_reps)
+        
+        # Reshape tensors for batched attention - keeping each span separate
+        # Each dummy-span pair becomes a separate "batch" item
+        dummy_query = self.dummy_query.expand(batch_size * num_spans, 1, hidden)
+        span_token_reps = span_token_reps.view(batch_size * num_spans, max_span_len, hidden)
+        key_padding_mask = key_padding_mask.view(batch_size * num_spans, max_span_len)
+
+        # Apply attention with masking
+        span_reps, _ = self.attn(
+            dummy_query,
+            span_token_reps,
+            span_token_reps,
+            key_padding_mask=key_padding_mask,
+            need_weights=False,
+        )
+        # Apply layer norm and FFN, can do it here or after reshaping, doesn't matter
+        span_reps = self.norm(span_reps + dummy_query)
+        span_reps = self.norm(self.ffn(span_reps) + span_reps)
+
+        # Reshape
+        span_reps = span_reps.view(batch_size, num_spans, hidden)  # (batch, num_spans, hidden)
+        #Zero out masked spans
+        span_reps[~span_masks] = 0
+        
+        return span_reps  # (batch, num_spans, hidden)
 
 
 
@@ -385,94 +500,75 @@ class AttentionPooling_vectorized(nn.Module):
         
         self.init_weights()
 
+
     def init_weights(self):
         # Init dummy query
         init.xavier_normal_(self.dummy_query)
 
 
-    def forward(self, token_reps, span_ids, pooling, **kwargs):
+    def forward(self, token_reps, span_ids, span_masks, pooling, **kwargs):
         '''
+        Vectorized attention pooling for span representations.
+        
         Args:
-            token_reps: (batch, max_batch_seq_len, hidden)    #sw or word token aligned
-            span_ids: (batch, num_spans, 2)                   #same alignment as token_reps
-            pooling if word token alinged or not
-            
+            token_reps: (batch, max_batch_seq_len, hidden)
+            span_ids: (batch, num_spans, 2) - Start and end+1 indices for spans
+            span_masks: (batch, num_spans) - Boolean mask indicating valid spans
+            pooling: True for word token aligned reps
+
         Returns:
             span_reps: (batch, num_spans, hidden)
-
-        token_reps are either w token aligned or sw_token aligned
-        - if they are sw_token aligned, the span_ids passed are also sw_token aligned and masked
-        - if they are word token aligned, the span_ids passed are also word token aligned and masked
-
-        NOTE: I have checked this and it gives different results to the older loop style code, but the code is good
-        without re-writing the mha code myself and getting into it, I just do not know, but the way it is done here is ok
         '''
         batch_size, seq_len, hidden = token_reps.shape
         batch_size, num_spans, _ = span_ids.shape
-        # Add positional encodings to full sequence
+        # Add positional encodings to the full sequence
         token_reps = self.seq_pos_encoder(token_reps)
-
-        # Get maximum span length
-        span_lengths = span_ids[:, :, 1] - span_ids[:, :, 0]  # (batch, num_spans)
-        max_span_len = max(span_lengths.max().item(), 1)
-
-        # Initialize tensors for batched processing
-        span_token_reps = torch.zeros((batch_size, num_spans, max_span_len, hidden), device=token_reps.device)
-        key_padding_mask = torch.ones((batch_size, num_spans, max_span_len), device=token_reps.device, dtype=torch.bool)  # True means ignore position
-        #key_padding_mask = torch.full((batch_size, num_spans, max_span_len), float('-inf'), device=token_reps.device)  # Use -inf instead of True
-        
-        # Extract span tokens and create attention masks
-        for b in range(batch_size):
-            for s in range(num_spans):
-                start, end = span_ids[b, s]
-                span_len = end - start
-                if span_len > 0:
-                    # Copy span tokens
-                    span_token_reps[b, s, :span_len, :] = token_reps[b, start:end, :]
-                    # Update attention mask for valid tokens
-                    key_padding_mask[b, s, :span_len] = False
-                    #key_padding_mask[b, s, :span_len] = 0  # Set to 0 where attention is needed
+        #Compute span lengths, use the span_masks to zero out masked out spans, will be used later to make the key_padding_mask
+        span_lengths = (span_ids[:, :, 1] - span_ids[:, :, 0]) * span_masks      #shape (batch, num_spans)
+        max_span_len = max(span_lengths.max().item(), 1)                        #scalar
+        # Create key_padding_mask (== 1 for masked out spans)
+        range_tensor = torch.arange(max_span_len, device=token_reps.device)     #shape (seq_len)
+        expanded_lengths = span_lengths.unsqueeze(-1)                           #(batch, num_spans, 1)
+        key_padding_mask = range_tensor >= expanded_lengths                     #True means masked out (batch, num_spans, seq_len)
+        # Vectorized token gathering
+        span_starts = span_ids[..., 0].unsqueeze(-1)                            #(batch, num_spans, 1)
+        indices = span_starts + range_tensor                                    #NOt sure (batch, num_spans, max_span_len)
+        gather_indices = indices.unsqueeze(-1).expand(-1, -1, -1, hidden)
+        span_token_reps = torch.gather(                                         #(batch, num_spans, seq_len, hidden)
+            token_reps.unsqueeze(1).expand(-1, num_spans, -1, -1),
+            dim=2,
+            index=gather_indices
+        )
+        # Mask out invalid positions
+        span_token_reps = span_token_reps.masked_fill(key_padding_mask.unsqueeze(-1), 0)
 
         # Add span positional encodings if enabled
         if self.use_span_pos_encoding:
             span_token_reps = self.span_pos_encoder(span_token_reps)
-        
-        '''
-        #print(key_padding_mask)
-        print(self.dummy_query)
-        
-        for b in range(span_token_reps.shape[0]):
-            for s in range(span_token_reps.shape[1]):
-                print(span_token_reps[b,s])
-                print(key_padding_mask[b,s])
-        '''
 
-        # Reshape tensors for batched attention - keeping each span separate
-        # Each dummy-span pair becomes a separate "batch" item
+        # Reshape for batched attention
         dummy_query = self.dummy_query.expand(batch_size * num_spans, 1, hidden)
         span_token_reps = span_token_reps.view(batch_size * num_spans, max_span_len, hidden)
         key_padding_mask = key_padding_mask.view(batch_size * num_spans, max_span_len)
 
-        # Apply attention with masking
-        output, _ = self.attn(
+        # Apply multi-head attention
+        span_reps, _ = self.attn(
             dummy_query,
             span_token_reps,
             span_token_reps,
             key_padding_mask=key_padding_mask,
             need_weights=False,
         )
-        # Apply layer norm and FFN, can do it here or after reshaping, doesn't matter
-        output = self.norm(output + dummy_query)
-        output = self.norm(self.ffn(output) + output)
+        span_reps = self.norm(span_reps + dummy_query)
+        span_reps = self.norm(self.ffn(span_reps) + span_reps)
 
-        # Reshape back to batch dimensions
-        output = output.view(batch_size, num_spans, hidden)  # (batch, num_spans, hidden)
-        
-        # Zero out empty spans
-        empty_spans = (span_lengths == 0)
-        output[empty_spans] = 0
-        
-        return output  # (batch, num_spans, hidden)
+        #Reshape
+        span_reps = span_reps.view(batch_size, num_spans, hidden)
+        #apply the span_masks to set unwanted span_reps to all 0
+        span_reps[~span_masks] = 0
+
+        return span_reps
+
 
 
 
@@ -536,7 +632,7 @@ class PositionalEncoding(nn.Module):
         return self.dropout(x)    
 
 
-def extract_rep(token_reps, w_span_ids, w2sw_map=None):
+def extract_rep(token_reps, ids):
     '''
     This is code to support the graphER stuff, I do not use it for my stuff...
     Doesn't work for no pooling cases
@@ -545,145 +641,82 @@ def extract_rep(token_reps, w_span_ids, w2sw_map=None):
     returning a tensor of shape (b,k,d), i.e. one row of d for each element k
 
     inputs are:
-        token_reps of shape (batch, seq_len, hidden)
-        ids which are the ids to exract from token_reps, of shape (batch, num_spans)
+        token_reps of shape (batch, seq_len, hidden) float
+        ids which are the word token ids to exract from token_reps, of shape (batch, num_spans) int, one for each span
+        span_masks is the span mask indicating which spans are valid and not padding   (batch num_spans) bool
     
     The code gets the token_reps elements for the ids using gather, which is basically a lookup
 
     output:
         the tensor of reps for each element in ids of shape (batch, num_spans, hidden)
-
-    NOTE: if w2sw_map is present, then the token_reps is sw token aligned, so need to use w2sw_map to get the sw token ids for each w token id and max pool them
     '''
     batch, seq_len, hidden = token_reps.shape       #seq_len is sw_seq_len for sw aligned case or w_seq_len for w token aligned case
-    batch, num_spans = w_span_ids.shape
+    batch, num_spans = ids.shape
 
-    # Original gather-based implementation for word-aligned tokens
-    expanded_ids = w_span_ids.unsqueeze(-1).expand(-1, -1, hidden)
+    #Original gather-based implementation for word-aligned tokens
+    expanded_ids = ids.unsqueeze(-1).expand(-1, -1, hidden)   #expand ids to (batch, num_spans, hidden)
     output = torch.gather(token_reps, 1, expanded_ids)
     
     return output    #shape (batch, num_spans, hidden)   where num_spans = w_seq_len*max_span_width
 
 
 
-def extract_span_reps(token_reps, span_ids, pooling, mode='start_end'):
-    '''
-    Extracts different types of span representations based on the provided mode, using either word or subword indices.
 
-    Args:
-        token_reps: (batch, seq_len, hidden) - Token representations, could be at the word or subword level
-        span_ids: (batch, num_spans, 2) - Word or sw aligned span indices dependent on pooling being true/false
-        pooling: true for w token aligned reps
-        mode: 'maxpool', 'start_end', 'start_inner_maxpool_end' - Determines the type of span representation
-
-    Returns:
-        span_reps: Tensor with appropriate dimensions based on the selected mode
-    '''
-    batch, _, hidden = token_reps.shape
-    all_span_reps = []
-    #set the subtoken first and last windows (using this as a workaround to not having w2sw_map to get the actual first and end subtoken widths)
-    #this many subword tokens are used for the first/last part of the span, if the span is shorter than this,then the window is the whole span
-    #if the start window and end window overlap as the span length in sw tokens is < 2*sw_win, then the inner subtokens are None
-    win = 1 if pooling else 3   
-    
-    for obs_id in range(batch):
-        obs_spans = []
-        for span_id in range(len(span_ids[obs_id])):
-            start, end = span_ids[obs_id, span_id]
-            span_len = max(0, end - start)
-
-            #deal with invalid span cases
-            if span_len == 0:
-                if mode == 'maxpool': rep=1
-                elif mode == 'start_end': rep=2
-                elif mode == 'start_inner_maxpool_end': rep=3
-                else: raise Exception(f'error: span_mode is incorrect: {mode}')
-                obs_spans.append(torch.zeros(rep*hidden, device=token_reps.device))
-                continue                
-
-            #do maxpooling mode, this is the easiest
-            #this works for both the pooling or no pooling cases
-            if mode == 'maxpool':
-                maxpool_rep = torch.max(token_reps[obs_id, start:end], dim=0)[0]
-                obs_spans.append(maxpool_rep)
-                continue
-            
-            #at this point we are in either start_inner_maxpool_end or start_end mode
-            #this works for both the pooling or no pooling cases
-            #get the start and end reps first
-            start_start, end_end = start, end
-            start_end = min(start_start + win, end_end)  # Ensure not exceeding end
-            end_start = max(end_end - win, start_start)  # Ensure not preceding start
-            #NOTE: in the case that the span_len <= win, then start_rep = end_rep
-            start_rep = torch.max(token_reps[obs_id, start_start:start_end], dim=0)[0]
-            end_rep = torch.max(token_reps[obs_id, end_start:end_end], dim=0)[0]
-
-            if mode == 'start_end':
-                obs_spans.append(torch.cat([start_rep, end_rep], dim=-1))
-                continue
-            
-            #if we got here we are in start_inner_maxpool_end mode
-            if span_len > 2*win:   #the case we have some inner tokens in the span
-                inner_rep = torch.max(token_reps[obs_id, start+win:end-win], dim=0)[0]
-            else:    #the case the span is too short and we have no inner tokens, so just use the start rep for the inner rep
-                inner_rep = start_rep
-            obs_spans.append(torch.cat([start_rep, inner_rep, end_rep], dim=-1))
-
-        all_span_reps.append(torch.stack(obs_spans))
-
-    return torch.stack(all_span_reps)
-
-
-
-
-
-def extract_span_reps_vectorized(token_reps, span_ids, pooling, mode='start_end'):
+def extract_span_reps(token_reps, span_ids, span_masks, pooling, mode='start_end'):
     '''
     Vectorized version of span representation extraction.
     Extracts different types of span representations based on the provided mode, using either word or subword indices.
 
     Args:
         token_reps: (batch, seq_len, hidden) - Token representations, could be at the word or subword level
-        span_ids: (batch, num_spans, 2) - Word or sw aligned span indices dependent on pooling being true/false
-        pooling: true for w token aligned reps
+        span_ids: (batch, num_spans, 2) - Start and end+1 indices for spans
+        span_masks: (batch, num_spans) - Boolean mask indicating valid spans
+        pooling: True for word token aligned reps
         mode: 'maxpool', 'start_end', 'start_inner_maxpool_end' - Determines the type of span representation
 
-    NOTE: watch out for gpt and claude, they will try to mask then maxpool, which is a common gotcha, if you mask then maxpool, you have to convert to -inf for the masked out values        
+    NOTE: Ensure the span_masks and span_ids correctly represent the span boundaries.
     '''
     batch, seq_len, hidden = token_reps.shape
-    #set the subtoken first and last windows (using this as a workaround to not having w2sw_map to get the actual first and end subtoken widths)
-    #this many subword tokens are used for the first/last part of the span, if the span is shorter than this,then the window is the whole span
-    #if the start window and end window overlap as the span length in sw tokens is < 2*sw_win, then the inner subtokens are None
-    win = 1 if pooling else 3   
+    win = 1 if pooling else 3
 
-    # Calculate span lengths and create a mask for valid spans
-    span_starts, span_ends = span_ids[..., 0], span_ids[..., 1]    # int (batch, num_spans)
-    valid_spans_mask = span_ends > span_starts  # Ensuring end is greater than start    #bool (batch, num_spans)
+    # Extract start and end indices from span_ids
+    span_starts, span_ends = span_ids[..., 0], span_ids[..., 1]  # (batch, num_spans)
+    # Generate span masks of shape (batch, num_spans, seq_len)
+    range_tensor = torch.arange(seq_len, device=token_reps.device).reshape(1, 1, -1)
+    #Expand dimensions of token_reps for compatibility with the .where commands with the masks
+    token_reps = token_reps.unsqueeze(1)  # (batch, 1, seq_len, hidden)
 
-    # Precompute span masks for maxpool and boundary conditions for other modes
-    range_tensor = torch.arange(seq_len, device=token_reps.device).reshape(1, 1, -1)  #int (1, 1, seq_len) => range tensor is a vector from 0 to seq_len-1
-    span_mask = (range_tensor >= span_starts.unsqueeze(-1)) & \
-                (range_tensor < span_ends.unsqueeze(-1))   #bool (batch, num_spans, seq_len) => for each span in each batch we have a bool vector with zero if the token is out of the span and 1 if it is in the span
-    #unsqueeze these 2 tensors so they are compatible
-    span_mask = span_mask.unsqueeze(-1)
-    token_reps = token_reps.unsqueeze(1)
+    #process based on mode
     if mode == 'maxpool':
-        #Apply span mask using torch.where and apply maxpooling
-        #this handles expansion of all dims so both tensor match the largest of each pair of dims
-        #note how it converts the mask False to -inf as we will maxpool the output
-        span_reps = torch.where(span_mask, token_reps, torch.full_like(token_reps, float('-inf'))).max(dim=2)[0]
+        #make the full mask
+        #this will be a tensor of shape (batch, num_spans, sq_len) that has 1 for the tokens that are in each span
+        ################################################################
+        full_span_masks = (range_tensor >= span_starts.unsqueeze(-1)) & \
+                         (range_tensor < span_ends.unsqueeze(-1))  # (batch, num_spans, seq_len)
+        # Apply the provided span_masks to filter valid spans
+        full_span_masks = full_span_masks & span_masks.unsqueeze(-1)  # (batch, num_spans, seq_len)
+        #Expand dimensions of the full_span_masks for compatibility with the .where command
+        full_span_masks = full_span_masks.unsqueeze(-1)  # (batch, num_spans, seq_len, 1)
+        ###############################################################
+        # Apply span mask and maxpool
+        span_reps = torch.where(full_span_masks, token_reps, torch.full_like(token_reps, float('-inf'))).max(dim=2)[0]
 
-    else:
-        # Compute start and end masks using torch.where for proper handling of masked areas
+    else:    #for the other modes
+        #make the start/end masks
+        #this will be a tensor of shape (batch, num_spans, sq_len) that has 1 for the tokens that are in teh start/end win for each span
+        ################################################################
         start_mask = (range_tensor >= span_starts.unsqueeze(-1)) & \
-                     (range_tensor < torch.min(span_starts.unsqueeze(-1) + win, span_ends.unsqueeze(-1)))     #bool (batch, num_spans, seq_len) => for each span in each batch we have a bool vector with zero if the token is out of the span start win
+                     (range_tensor < torch.min(span_starts.unsqueeze(-1) + win, span_ends.unsqueeze(-1)))
         end_mask = (range_tensor >= torch.max(span_ends.unsqueeze(-1) - win, span_starts.unsqueeze(-1))) & \
-                   (range_tensor < span_ends.unsqueeze(-1))       #bool (batch, num_spans, seq_len) => for each span in each batch we have a bool vector with zero if the token is out of the span end win
-        #unsqueeze these 2 tensors so they are compatible with token reps
-        start_mask = start_mask.unsqueeze(-1)
-        end_mask = end_mask.unsqueeze(-1)
-        #Apply masks with where and apply maxpooling
-        #note how it converts the mask False to -inf as we will maxpool the output
+                   (range_tensor < span_ends.unsqueeze(-1))
+        # Apply the provided span_masks to filter valid spans
+        start_mask = start_mask & span_masks.unsqueeze(-1)
+        end_mask = end_mask & span_masks.unsqueeze(-1)
+        # Expand dimensions for compatibility with .where
+        start_mask = start_mask.unsqueeze(-1)  # (batch, num_spans, seq_len, 1)
+        end_mask = end_mask.unsqueeze(-1)  # (batch, num_spans, seq_len, 1)
+        ################################################################
+        # Apply masks and maxpool
         start_reps = torch.where(start_mask, token_reps, torch.full_like(token_reps, float('-inf'))).max(dim=2)[0]
         end_reps = torch.where(end_mask, token_reps, torch.full_like(token_reps, float('-inf'))).max(dim=2)[0]
 
@@ -691,25 +724,36 @@ def extract_span_reps_vectorized(token_reps, span_ids, pooling, mode='start_end'
             span_reps = torch.cat([start_reps, end_reps], dim=-1)
 
         elif mode == 'start_inner_maxpool_end':
-            # Compute mask for inner tokens if span length allows
+            #make the inner token masks
+            #this will be a tensor of shape (batch, num_spans, sq_len) that has 1 for the tokens that are in the span but not including the start/end win tokens for each span
+            ################################################################
             inner_mask = (range_tensor >= torch.min(span_starts.unsqueeze(-1) + win, span_ends.unsqueeze(-1))) & \
                          (range_tensor < torch.max(span_ends.unsqueeze(-1) - win, span_starts.unsqueeze(-1))) & \
                          ((span_ends - span_starts) > 2 * win).unsqueeze(-1)
-            inner_mask = inner_mask.unsqueeze(-1)
+            # Apply the provided span_masks to filter valid spans
+            inner_mask = inner_mask & span_masks.unsqueeze(-1)
+            # Expand dimensions for compatibility with .where
+            inner_mask = inner_mask.unsqueeze(-1)  # (batch, num_spans, seq_len, 1)
+            ################################################################
+            # Apply masks and maxpool
             inner_reps = torch.where(inner_mask, token_reps, torch.full_like(token_reps, float('-inf'))).max(dim=2)[0]
-            # Check if the inner_reps are -inf for each span (indicating no valid inner tokens), if true, replace with start_reps
-            no_inner_tokens = torch.isinf(inner_reps).all(dim=-1)  # Check along the hidden dimension
+            # Check if the inner_reps are -inf for each span (indicating no valid inner tokens), replace with start_reps if true
+            no_inner_tokens = torch.isinf(inner_reps).all(dim=-1)
             inner_reps[no_inner_tokens] = start_reps[no_inner_tokens]
-
+            #make the final reps
             span_reps = torch.cat([start_reps, inner_reps, end_reps], dim=-1)
 
         else:
             raise ValueError(f'Invalid mode: {mode}')
 
-    # Reset representations for invalid spans to zero, works regardless of hidden length
-    span_reps[~valid_spans_mask] = 0
+    # Reset representations for invalid spans to zero
+    span_reps[~span_masks] = 0
 
-    return span_reps    #(batch, num_spans, h) => where h is hidden for maxpool, 2*hidden for start_end, 3*hidden for start_inner_maxpool_end
+    return span_reps  # (batch, num_spans, h), where h is hidden, 2*hidden, or 3*hidden based on mode
+
+
+
+
 
 
 
@@ -728,9 +772,6 @@ class SpanRepLayer(nn.Module):
             use_span_pos_encoding=config.use_span_pos_encoding,    #whether to use span pos encoding in addition to full seq pos encoding
             pooling             = config.subtoken_pooling     #whether we are using pooling or not
         )
-
-
-
     """
     def __init__(self, span_mode, max_seq_len, max_span_width, pooling, **kwargs):
         super().__init__()
@@ -759,16 +800,42 @@ class SpanRepLayer(nn.Module):
         else:
             raise ValueError(f'Unknown span mode {span_mode}')
 
-
-    def forward(self, token_reps, w_span_ids, span_mask, sw_span_ids=None, **kwargs):
-        #apply span_mask to the possible spans tensor to set start, end to 0
-        #effectively they are combining the label mask and span_ids here => span_ids = 0,0 for invalid span with no label
+    '''
+    def forward(self, token_reps, w_span_ids, span_masks, sw_span_ids=None, **kwargs):
+        #apply span_masks to the w/sw_span_ids tensor.  This will set the start/end to 0,0, i.e. len of 0 for masked out span ids
+        #basically we are piggy backing the span_masks onto the span_ids tensor for ease of caclulations in the span_rep_layer code
+        #use sw_span_ids for no pooling and w_span_ids for pooling
         span_ids = w_span_ids if self.pooling else sw_span_ids
-        span_ids = span_ids * span_mask.unsqueeze(-1)
+        span_ids = span_ids * span_masks.unsqueeze(-1)
         result = self.span_rep_layer(token_reps, span_ids, self.pooling, **kwargs)
 
         return result
-    
+    '''
+
+    def forward(self, token_reps, w_span_ids, span_masks, sw_span_ids=None, **kwargs):
+        #use sw_span_ids for no pooling and w_span_ids for pooling
+        span_ids = w_span_ids if self.pooling else sw_span_ids
+        #span_ids = span_ids * span_masks.unsqueeze(-1)
+        result = self.span_rep_layer(token_reps, span_ids, span_masks, self.pooling, **kwargs)
+
+        return result
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ########################################
 ########################################
@@ -823,14 +890,17 @@ def test_attention_pooling():
         [[0, 0], [2, 4], [3, 3], [3, 8]],
         [[1, 3], [2, 2], [3, 4], [2, 6]]
     ])
+    span_mask = torch.tensor([[0, 1, 0, 1], 
+                              [1, 0, 1, 1]], dtype=torch.bool)
+    pooling = False
 
     # Create models
     set_all_seeds(42)
-    model1 = AttentionPooling(hidden_size=hidden,
-                              max_seq_len=max_seq_len,
-                              max_span_width=max_span_width)
+    model1 = AttentionPooling_vectorized_old(hidden_size=hidden,
+                                         max_seq_len=max_seq_len,
+                                         max_span_width=max_span_width)
     state_dict1 = model1.state_dict()
-    span_reps1 = model1(token_reps, span_ids)
+    span_reps1 = model1(token_reps, span_ids, span_mask, pooling)
     
     # Create second model
     set_all_seeds(42)
@@ -838,7 +908,7 @@ def test_attention_pooling():
                                          max_seq_len=max_seq_len,
                                          max_span_width=max_span_width)
     state_dict2 = model2.state_dict()
-    span_reps2 = model2(token_reps, span_ids)
+    span_reps2 = model2(token_reps, span_ids, span_mask, pooling)
 
     # Compare all parameters
     print("\nComparing model parameters:")
@@ -906,4 +976,24 @@ So both attention pooling variants work without error, the issue is that even wh
 
 Also ask about init the params when creatign the model, FFN, pos encoding, MHA, etc....
 
+
+
+
+
+
+
+THE NEW ATTENTIONPOOLING VECTORIZED, IS NOT WORKING LIKE THE OLD ONE, IT HAS ISSUES....
+
+
+
+
+
+
+
+
 '''
+
+
+
+
+

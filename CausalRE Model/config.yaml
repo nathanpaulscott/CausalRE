@@ -4,19 +4,25 @@
 log_dir: logs                               #location of the log file folder
 model_path: "none"                          #pretrained model path => Use "none" if no pretrained model is being used
 data_path: "data/sample data.json"          #the dataset file
+
 #####################################################################
 #General Configs
+#####################################################################
+neg_sample_rate: 0.1                    #the percentage of neg cases to select for training
+min_neg_sample_limit: 100               #the lower limit of neg cases selected per obs is the min of the number of valid neg cases and (the max of this and the number of selected neg cases).  
+
 #####################################################################
 #Model Configuration
 #####################################################################
 model_name: bert-base-uncased           #name of the flair or hf model, eg 'microsoft/deberta-v3-base' or 'bert-base-uncased'
 model_source: HF                        #HF/flair => HF for hugging face models, flair for flair models.  NOTE: I have implemented the pooling with the HF option.
 
+use_prompt: true                        #whether to use prompting of the span and rel types to generate span_type_reps and rel_type_reps
 subtoken_pooling: none                  #first/last/first_last/mean/maxpool(HF only)/none(HF only).  none will disable subtoken pooling, only supported by HF.  NOTE: first_last will double the hidden dim, but the projection layer will pull it back to normal
 #subtoken_pooling: first_last               #first/last/first_last/mean/maxpool(HF only)/none(HF only).  none will disable subtoken pooling, only supported by HF.  NOTE: first_last will double the hidden dim, but the projection layer will pull it back to normal
 
 shuffle_train: false                    #always be true, except for debugging
-fine_tune: true                         #whether to allow fine tuning of the transformer encoder params (eg. bert), should leave as true
+freeze_encoder: true                    #whether to allow fine tuning of the transformer encoder params (eg. bert), should leave as true
 hidden_size: 768                        #hidden size of the bert based encoder
 dropout: 0.1                            #standard model dropout
 ffn_ratio: 4                              #I think the mult factor for the Feed Forward blocks
@@ -37,6 +43,15 @@ use_span_pos_encoding: False            #use span pos encoding in additon to ful
 #graph transformer config
 num_heads: 4                            #used by the graph transformer layer 
 num_transformer_layers: 2               #used by the graph transformer layer
+
+#span filtering params                  #these are from graphER for choosing the spans per obs for the initial graph, I will keep them for now, but will probably change the calc later
+#NOTE: a key point here is limiting the number of spans for the initial graph as the number of rels is quadratically dependent on this number
+#Also note that we have forced the pos cases to be at the top of the list (see span filtering score calcs, that is from graphER, but I also implemente somehting similar, it is kind of important to guide the model, at least initially)
+span_force_pos: true                    #whether to force pos spans to +inf in the span filtering score calc ensuring pos cases are included in the initial graph (a form of teacher forcing)
+rel_force_pos: false                    #whether to force pos rels to +inf in the rel filtering score calc ensuring pos cases are included in the initial graph (a form of teacher forcing)
+pos_force_step_limit: none              #whether to turn off positive case forcing at some point in the training process, none => means never, 10 means after 10 batches, 45 means after 45 batches etc..
+max_top_k_spans: 54                     #max number of spans to choose per obs for the initial graph, if the seq len goes below this, then that is the limit
+add_top_k_spans: 10                     #add to the result of the min(seq_len, max_top_k_spans) calc
 #####################################################################
 #Training Parameters
 #####################################################################
@@ -47,6 +62,7 @@ eval_every: 5000                        #eval every 5000 batches I guess
 warmup_ratio: 0.1                       #probably tied to the learning rate reduction, they let it run for a while before starting to reduce it
 scheduler_type: cosine                  #not sure what the cosine scheduler is
 save_total_limit: 20                    #not sure
+
 #####################################################################
 #Learning Rate and weight decay Configuration
 #####################################################################

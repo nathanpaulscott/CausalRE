@@ -17,12 +17,12 @@ def MLP(units, dropout, activation=nn.ReLU):
 
 
 
-class TorchTransformerEncoder(nn.Module):
+class TransformerEncoderTorch(nn.Module):
     '''
     Just makes a torch transformer encoder as per attention is all you need
     '''
     def __init__(self, d_model, num_heads, num_layers, ffn_mul=4, dropout=0.1):
-        super(TorchTransformerEncoder, self).__init__()
+        super(TransformerEncoderTorch, self).__init__()
 
         if num_layers > 0:
             self.transformer_encoder = self.torch_transformer_encoder(d_model, num_heads, num_layers, ffn_mul, dropout)
@@ -34,7 +34,7 @@ class TorchTransformerEncoder(nn.Module):
         https://pytorch.org/docs/stable/nn.html#transformer-layers
 
         you could try using this for various things:
-        - the attention pooling => just use less layers (mayb just 1) and less heads (say 4)
+        - the attention pooling => just use less layers (mayb just 1) and less heads (say 4) => I say no, the random query vector with mha and ffn is simpler and better
         - the main encoder => I think no need as this is not pretrained and the HF or flair options are more optimised and allow usage of different architectures
         - graph attention?  Maybe
         '''

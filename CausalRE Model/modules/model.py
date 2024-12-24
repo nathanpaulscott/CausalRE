@@ -13,13 +13,13 @@ from pathlib import Path
 ###############################################
 #custom imports
 from .filtering import FilteringLayer
-from .layers import MLP, LstmSeq2SeqEncoder, TransLayer, GraphEmbedder
+from .layers_transformer_encoder_flair import TransformerEncoderFlairPrompt
+from .layers_transformer_encoder_hf import TransformerEncoderHFPrompt
+from .layers_other import MLP, LstmSeq2SeqEncoder, TransformerEncoderTorch, GraphEmbedder
 from .loss_functions import compute_matching_loss
 from .rel_rep import RelationRep
 from .scorer import ScorerLayer
 from .span_rep import SpanRepLayer
-from .transformer_encoder_flair import TransformerEncoderFlair_w_prompt
-from .transformer_encoder_hf import TransformerEncoderHF_w_prompt
 from .utils import get_ground_truth_relations, get_candidates, er_decoder, get_relation_with_span, load_from_json, save_to_json
 from .evaluator import Evaluator
 
@@ -50,9 +50,9 @@ class Model(nn.Module):
         
         #make the modified transformer encoder with prompt addition/removal and subtoken pooling functionality
         if self.config.model_source == 'flair':
-            self.transformer_encoder_w_prompt = TransformerEncoderFlair_w_prompt(self.config)
+            self.transformer_encoder_w_prompt = TransformerEncoderFlairPrompt(self.config)
         elif self.config.model_source == 'HF':
-            self.transformer_encoder_w_prompt = TransformerEncoderHF_w_prompt(self.config)
+            self.transformer_encoder_w_prompt = TransformerEncoderHFPrompt(self.config)
         
         # hierarchical representation of tokens (Zaratiana et al, 2022)
         # https://arxiv.org/pdf/2203.14710.pdf
@@ -89,8 +89,8 @@ class Model(nn.Module):
         )
 
         # filtering layer for spans and relations
-        self._span_filtering = FilteringLayer(config.hidden_size)
-        self._rel_filtering = FilteringLayer(config.hidden_size)
+        self.span_filter_head = FilteringLayer(config.hidden_size)
+        self.rel_filter_head = FilteringLayer(config.hidden_size)
 
         # relation representation
         self.rel_rep_layer = RelationRep(
@@ -104,7 +104,7 @@ class Model(nn.Module):
         self.graph_embedder = GraphEmbedder(config.hidden_size)
 
         # transformer layer
-        self.trans_layer = TransLayer(
+        self.trans_layer = TransformerEncoderTorch(
             config.hidden_size,
             num_heads=config.num_heads,
             num_layers=config.num_transformer_layers
@@ -205,10 +205,26 @@ class Model(nn.Module):
 
 
 
-    def compute_score_train(self, x):
+    def encode_train(self, x):
+    #def compute_score_train(self, x):
         '''
-        this is almost identical to the eval case without the .no_grad
-        review if we can merge them!!!
+        This just gets the device internally
+
+        Inputs: x
+        
+        Operations:
+        Passes the inputs (x) through the transformer encoder
+        then through an LSTM layer to further enrich the embeddings
+        then generates the span_reps
+
+        Returns:
+        token_reps/masks
+        span_reps/masks
+        sw_span_ids
+        span_type_reps
+        rel_type_reps
+        w2sw_map if required
+                
         '''
         # Process input
         #so here they add the unqiue entity and relation classes to the bert input and then separate the reps out after bert
@@ -241,62 +257,65 @@ class Model(nn.Module):
                               token_masks) 
 
         #generates the span reps from the token reps and the span start/end idx and outputs a tensor of shape (B, L, max_span_width, D), i.e. the span reps are grouped by start idx (remember L*max_span_width == max_num_spans)
-        #note that they pass a param in the config file specifying which method to use for span rep generation, he has about 6-7 methods, which is understandable to do ablation studies, 
-        #although most of them are weird using convolutions and only 2 very similar ones use the first and last word tokens, what about first + last + maxpooled insides!?!?  What about break into 3rds and max pool each part then concat!?!?
-        #what about attention pooling?
         span_reps = self.span_rep_layer(token_reps, 
                                         w_span_ids  = x['span_ids'], 
-                                        span_mask   = x['span_mask'], 
+                                        span_masks  = x['span_masks'], 
                                         sw_span_ids = sw_span_ids, 
                                         cls_reps    = cls_reps,
                                         span_widths = x['span_ids'][:,:,1] - x['span_ids'][:,:,0])
 
         return dict(span_reps       = span_reps, 
-                    span_type_reps  = span_type_reps, 
-                    rel_type_reps   = rel_type_reps, 
                     token_reps      = token_reps, 
                     token_masks     = token_masks,
+                    span_type_reps  = span_type_reps,    #will be None for use_prompt = false
+                    rel_type_reps   = rel_type_reps,     #will be None for use_prompt = false
                     sw_span_ids     = sw_span_ids,   #will be None for pooling
                     w2sw_map        = w2sw_map)      #will be None for pooling
 
 
+
     @torch.no_grad()
-    def compute_score_eval(self, x, device):
-        span_ids = (x['span_ids'] * x['span_mask'].unsqueeze(-1)).to(device)
+    def encode_eval(self, x):
+    #def compute_score_eval(self, x, device):
+        '''
+        Currently this is the same as the train case except for the @torch.no_grad
+        I have not tested it yet, it may need to change, just start with this
+        '''
         # Process input
         result = self.transformer_encoder_w_prompt(x, "eval")
-        token_reps     = result['token_reps'] 
-        token_masks    = result['token_masks']
-        span_type_reps = result['span_type_reps'] 
-        rel_type_reps  = result['rel_type_reps']
+        token_reps     = result['token_reps']       #embeddings of the word/sw tokens
+        token_masks    = result['token_masks']      #masks for the word/sw tokens
+        span_type_reps = result['span_type_reps']   #embeddings for the span types
+        rel_type_reps  = result['rel_type_reps']    #embeddings for the rel types
         cls_reps       = result['cls_reps']         #embeddings for the CLS sw token, only if we are using HF
         sw_span_ids    = result['sw_span_ids']      #tensor (batch, max_seq_len_batch*max_span_width, 2) => x['span_ids'] with values mapped using w2sw_map to the sw token start, end. Only if we are HF with no pooling.
         w2sw_map       = result['w2sw_map']         #w2sw mapping for the non-prompt and non special token word tokens to subword tokens. Only if we are HF with no pooling.
 
-        # Compute representations
+        #Enrich token_reps
         token_reps = self.rnn(token_reps, 
-                              token_masks)
+                              token_masks) 
+
+        #generates the span reps from the token reps and the span start/end idx and outputs a tensor of shape (B, L, max_span_width, D), i.e. the span reps are grouped by start idx (remember L*max_span_width == max_num_spans)
         span_reps = self.span_rep_layer(token_reps, 
                                         w_span_ids  = x['span_ids'], 
-                                        span_mask   = x['span_mask'], 
+                                        span_masks   = x['span_masks'], 
                                         sw_span_ids = sw_span_ids, 
                                         cls_reps    = cls_reps,
                                         span_widths = x['span_ids'][:,:,1] - x['span_ids'][:,:,0])
 
         return dict(span_reps       = span_reps, 
-                    span_type_reps  = span_type_reps, 
-                    rel_type_reps   = rel_type_reps, 
                     token_reps      = token_reps, 
                     token_masks     = token_masks,
+                    span_type_reps  = span_type_reps,    #will be None for use_prompt = false
+                    rel_type_reps   = rel_type_reps,     #will be None for use_prompt = false
                     sw_span_ids     = sw_span_ids,   #will be None for pooling
                     w2sw_map        = w2sw_map)      #will be None for pooling
 
 
-
     ##################################################################################
     ##################################################################################
     ##################################################################################
-    def forward(self, x, prediction_mode=False):
+    def forward(self, x, step=None, prediction_mode=False):
         '''
         x is a batch, which is a dict, with the keys being of various types as described below:
         x['tokens']     => list of ragged lists of strings => the raw word tokenized seq data as strings
@@ -304,149 +323,103 @@ class Model(nn.Module):
         x['relations']  => list of ragged list of tuples => the positive cases for each obs
         x['seq_length'] => tensor (batch) the length of tokens for each obs
         x['span_ids']   => tensor (batch, max_seq_len_batch*max_span_width, 2) => the span_ids truncated to the max_seq_len_batch * max_span_wdith
-        x['span_mask']  => tensor (batch, max_seq_len_batch*max_span_width) => 1 for valid spans, 0 for pad and invalid spans
-        x['span_label'] => tensor (batch, max_seq_len_batch*max_span_width) => 0 to num_span_types for valid cases, -1 for invalid and pad cases
+        x['span_masks']  => tensor (batch, max_seq_len_batch*max_span_width) => 1 for spans to be used (pos cases + selected neg cases), 0 for pad, invalid and unselected neg cases
+        x['span_labels'] => tensor (batch, max_seq_len_batch*max_span_width) => 0 to num_span_types for valid cases, -1 for invalid and pad cases
+
+        step will be current batch idx, i.e. we just set the total number of batch runs, say there are 1000 batches in the datset and we set pbar to 2200, then step will go from 0 to 2199, i.e. each batch will be run 2x and 200 will be 3x
         '''
-        #set some params
-        span_label = x['span_label'].clone()
-        num_span_types  = len(self.config.span_types)
-        num_rel_types   = len(self.config.rel_types)
 
         # compute span representation
         if prediction_mode:
             # Get the device of the model
-            device = next(self.parameters()).device
-            #Compute scores for evaluation
-            result = self.compute_score_eval(x, device)
+            #device = next(self.parameters()).device
+            result = self.encode_eval(x)
         else:
             #Compute scores for training
-            result = self.compute_score_train(x)
-        #read in the results
-        span_reps       = result['span_reps']
-        span_type_reps  = result['span_type_reps']
-        rel_type_reps   = result['rel_type_reps']
-        token_reps      = result['token_reps']
-        token_masks     = result['token_masks']
-
-        #check the data here
-        #check the data here
-        #check the data here
-        #check the data here
-        #print(x[0])
-
-        print(f'span_reps shape:        {span_reps.shape}')
-        print(f'token_reps shape:       {token_reps.shape}')
-        print(f'token_masks shape:      {token_masks.shape}')
-        print(f'span_type_reps shape:   {span_type_reps.shape}')
-        print(f'rel_type_reps shape:    {rel_type_reps.shape}')
-        exit()
-        #return 0
-
-        '''
+            result = self.encode_train(x)
         
-        we are here now
-
-        I am ready to ove past this point
+        #read in data from results or x
+        token_reps      = result['token_reps']          #(batch, max_seq_len_batch, hidden) => float, sw or w token aligned depedent pooling   
+        token_masks     = result['token_masks']         #(batch, max_seq_len_batch, hidden) => bool, sw or w token aligned depedent pooling   
+        w_span_ids      = x['span_ids'].clone()         #(batch, max_seq_len_batch * max_span_width, 2) => int, w aligned span_ids
+        sw_span_ids     = result['sw_span_ids']         #(batch, max_seq_len_batch * max_span_width, 2) => int, sw aligned span_ids => None if pooling
+        span_reps       = result['span_reps']           #(batch, max_seq_len_batch * max_span_width, hidden) => float
+        span_masks      = x['span_masks'].clone()       #(batch, max_seq_len_batch * max_span_width) => bool
+        span_labels      = x['span_labels'].clone()     #(batch, max_seq_len_batch * max_span_width) => int
+        num_span_types  = len(self.config.span_types)   #scalar
+        span_type_reps  = result['span_type_reps']      #(batch, num_span_types, hidden) => float, no mask needed
+        num_rel_types   = len(self.config.rel_types)    #scalar
+        rel_type_reps   = result['rel_type_reps']       #(batch, num_rel_types, hidden) => float, no mask needed
+        '''
+        NOTE: if use_prompt = false, the span_type_reps and rel_type_reps will be None here
         '''
 
-
-
-
-        #NEED TO DETERMINE IF THIS SPAN_TYPE_MASK AND REL_TYPE_MASK ARE NEEDED!!!!!!!
-        #it is only used here: compute_matching_loss
-        #Do not think this type mask shit is correct, need to check it
-        #Do nto think this type mask shit is correct, need to check it
-        #Do nto think this type mask shit is correct, need to check it
-        #Do nto think this type mask shit is correct, need to check it
-        # Create masks for relation and entity types, setting all values to 1
-        span_type_masks = torch.ones(size=(span_type_reps.shape[0], num_span), device=device)
-        rel_type_masks = torch.ones(size=(rel_type_reps.shape[0], num_rel), device=device)
-
-        # Reshape span_rep from (B, L, K, D) to (B, L * K, D)
-        #B = batch size, L = seq len, K = max span width, D is the hidden size
-        #Nathan: now they reshape the span_rep output back to (batch, num_spans, D)!!  
-        #Why the fuck did they not just leave it like that to start with!?
-        B, L, K, D = span_reps.shape
-        span_reps = span_reps.view(B, L * K, D)
-
-        # Compute filtering scores and CELoss for spans from the span_reps and the span_labels
-        #The filter score per span in each obs is a scale from -inf to +inf on the conf of the span being a positive entity (>0) or none_entity (<0)
-        #the loss is an accumulated metric over all spans in all obs in the batch, so one scalar for the batch, indicating how well the model can detect that a span is postive case (an entity) or negaitve case (none entity)
-        #the binary classification head is trainable, so hopefully it gets better at determining if a span is positive over time
-        filter_score_span, filter_loss_span = self._span_filtering(span_reps, x['span_label'])
-
-        # Determine the maximum number of candidates (span candidates - natahn)
-        # If L is greater than the configured maximum, use the configured maximum plus an additional top K
-        # Otherwise, use L plus an additional top K
-        #Nathan => so in the config they have max_top_k = 54 and add_top_k = 10 and max seq len in words at 384
-        #so effectively the max span candidates is hard limited to 64 unless L < 54 (short sequence)
-        #I know the reason they are limiting this, it is quadratic problem when you try to assess all the possible span-pairs from this, eg 64*2 = 4096 whcih is a lot, ideally you only want 10-20 span candidates
-        #They just need to adjust the score thd for filtering the spans to control the max number of spans per seq
-        #NOTE this is a problem as below he goes and calcs a per obs top_k, so why not just do that here instead of calculating a scalar
-        #the calc should be: max_top_k = tensor cals(min(x['seq_len'], config.max_top_k) + config.add_top_k)
-        #then he can apply this tensor here: span_idx_to_keep = sorted_idx[:, :max_top_k], but in a tensor way
-        max_top_k = min(L, self.config.max_top_k) + self.config.add_top_k
-        # Sort the filter scores for spans in descending order and jsut get the span_idx 
-        #NOTE [1] is to get the idx as opposed to the values as torch.sort returns a tuple
-        sorted_idx = torch.sort(filter_score_span, dim=-1, descending=True)[1]
-
-        #Basically what he is doing is selecting the top K (usually 64) spans and their associated tensors to use for the intial graph construction
-        #but he is doing it in a retarded way!!!
-        #I would have just put all the code right here for clarity, we already have B, num_spans = L*K, and D, well easier to read...
+        #get some dims
+        batch, max_seq_len, hidden = token_reps.shape
         '''
-        #this selects the top K spans from each obs
-        span_idx_to_keep = sorted_idx[:, :max_top_k]
-        candidate_span_reps =    span_reps.gather(1, span_idx_to_keep.unsqueeze(-1).expand(-1, -1, D))
-        candidate_span_label =  span_label.gather(1, span_idx_to_keep)
-        candidate_span_mask =   x['span_mask'].gather(1, span_idx_to_keep)
-        candidate_spans_idx =   x['span_idx'].gather(1, span_idx_to_keep)
+        remember they denote dims as:
+        B => batch (batch len)
+        L => max_seq_len (for the batch, not self.config.max_seq_len)
+        K => self.config.max_span_width
+        D => hidden
+        NOTE: num_spans = max_seq_len * self.config.max_span_width (inlcudes invalid spans etc...)
+        graphER config has these params:
+        max_top_k: 54
+        add_top_k: 10
         '''
-        #this, howvever is the gobbledigook code he has me reading....
-        # Define the elements to get candidates for
-        #NAthan: make a list of the 4 tensors he wants to filter!!!
-        elements = [span_reps, span_label, x['span_mask'], x['span_idx']]
-        # Use a list comprehension to get the candidates for each element
-        #use a list comp to just fucking make people reading this pull their hair out!
-        #and to top it off the 'get_candidates' fn is in another file...
-        candidate_span_reps, candidate_span_label, candidate_span_mask, candidate_spans_idx = [
-            get_candidates(sorted_idx, element, topk=max_top_k)[0] for element in elements
-        ]
 
-        '''
-        hang on, the top_k_lengths are the lengths of the sequences in the batch + 10, nothing to do with the candidate span widths
-        #See above where he should have put this 
-        then they are filtering out candidate spans based on this weird condition where if the cand span is more than seq len + 10 from teh top of the list, then it is removed.
-        i.e. say we have 64 candidate spans and the seq len +10 is 45, then he will only keep the top 45, so this only really kicks in for very short sequences
-        So basically he is applying an additional candidate pruning strategy based on the length of the seq in words (as opposed to L which is the max seq length)
-        This is just half assed stupid shit.  Now the the guy is losing my respect, don't have multiple adhoc pruning steps, it is silly, make your pruning clear and simple
-        Why not just apply the previously?!?!?!?!?!?!?!?!?  when you calc max_top_k????  Just calc a tensor, for each obs as oppsoed to a scalar
-        Potentially, he first wanted to reduce the tensor sizes for teh tensors for the spans by pruning them on the num_span dim, as you have to keep at a uniform value
-        Then he introduced further pruning by masking to individually tailor the num_spans to each obs, maybe, but he could have explained that and done it in a clearer way, that is my issue
-        This is key code and it should be super clear.  Also his var names are dogshit.
-        '''
-        # Calculate the lengths for the top K entities
-        #Nathan: so surely they mean they want the span_width for the topK entities in each obs, 
-        #but this is not what he is doing, he is just addind 10 to every obs seq length here?!  Nothing to do with the span widths
-        top_k_lengths = x["seq_length"].clone() + self.config.add_top_k
-        # Create a condition mask where the range of top K is greater than or equal to the top K lengths
-        condition_mask = torch.arange(max_top_k, device=span_reps.device).unsqueeze(0) >= top_k_lengths.unsqueeze(-1)
-        # Apply the condition mask to the candidate span mask and label, setting the masked values to 0 and -1
-        # respectively
-        candidate_span_mask.masked_fill_(condition_mask, 0)  #is this even needed as he is putting the masking info in the candidate_span_label tensor!!!
-        candidate_span_label.masked_fill_(condition_mask, -1)
-        
+        #choose the top K spans per obs for the initial graph
+        ###########################################################
+        #Compute span filtering scores and binary CELoss for spans (only calcs for span within span_mask)
+        #The filter score (batch, num_spans) float is a scale from -inf to +inf on the conf of the span being a pos case (> 0) or neg case (< 0)
+        #the filter loss is an accumulated metric over all spans in all obs in the batch, so one scalar for the batch, indicating how well the model can detect that a span is postive case or negaitve case
+        #determine the postive case forcing strategy first
+        force_pos = self.config.span_force_pos
+        if force_pos == True and (self.config.pos_force_step_limit != 'none' and self.config.pos_force_step_limit > step+1):
+            force_pos = False
+        #then run the scoring
+        filter_score_span, filter_loss_span = self._span_filtering(span_reps, 
+                                                                   span_labels, 
+                                                                   span_masks, 
+                                                                   force_pos_cases=force_pos)
+        #We now select the top K spans for the initial graph based on the span filter scores
+        #first sort the filter_score_span tensor descending
+        #NOTE [1] is to get the idx as opposed to the values as torch.sort returns a tuple (vals, idx)
+        sorted_span_idx = torch.sort(filter_score_span, dim=-1, descending=True)[1]
+        #next determine how many to shortlist (the K in top K), for longer sequences, it will be maxed at 64 spans per obs
+        top_k_spans = min(max_seq_len, self.config.max_top_k_spans) + self.config.add_top_k_spans
+        #next select the top K spans from each obs
+        span_idx_to_keep = sorted_span_idx[:, :top_k_spans]
+        #Correcting batch indices for broadcasting
+        batch_ind = torch.arange(batch).unsqueeze(-1)  # shape: (batch, 1)
+        cand_span_reps   = span_reps[batch_ind, span_idx_to_keep, :]  # shape: (batch, top_k_spans, hidden)
+        cand_span_masks   = span_masks[batch_ind, span_idx_to_keep]  # shape: (batch, top_k_spans)
+        cand_span_labels = span_labels[batch_ind, span_idx_to_keep]  # shape: (batch, top_k_spans)
+        cand_w_spans_ids = w_span_ids[batch_ind, span_idx_to_keep, :]  # shape: (batch, top_k_spans, 2)
+        cand_spans_ids = cand_w_spans_ids
+        if self.config.subtoken_pooling == 'none':
+            cand_sw_spans_ids = sw_span_ids[batch_ind, span_idx_to_keep, :]  # shape: (batch, top_k_spans, 2)
+            cand_spans_ids = cand_sw_spans_ids
+        #NOTE: these candidate tensors are smaller than the span_rep tensors, so it saves memory!!!, otherwise, I do not see the reason fro doing this, you coudl literally, just pass the span_idx_to_keeo
+
+
+
+        #up to here....
+    
+
+
         #Nathan: now he moves onto relations
 
         # Get ground truth relations
         #Nathan: he fills the relation_classes tensor with ground truth relation labels from (x['relations]) but reformats it to be aligned with candidate_spans_idx
         #i.e. of shape (batch, max_top_k**2) with all ground truth rels having a relation idx and others having -1
-        rel_classes = get_ground_truth_relations(x, candidate_spans_idx, candidate_span_label)
+        rel_classes = get_ground_truth_relations(x, cand_spans_ids, cand_span_labels)
         #rel_rep = self.relation_rep(candidate_span_reps).view(B, max_top_k * max_top_k, -1)  # Reshape in the same line
         #Nathan, they basically just concatenate the span reps for the head and tail spans and reproject the hidden dim back to D
         #Tehy do nto include any context token reps at all!!!!!!  This is notable and could be improved
         rel_reps = self.rel_reps_layer(candidate_span_reps)    #output shape (B, max_top_k, max_top_k, D)
         #move the shape back to 3 dims
-        rel_reps = rel_reps.view(B, max_top_k * max_top_k, -1)
+        rel_reps = rel_reps.view(batch, top_k_spans * top_k_spans, -1)
 
         # Compute filtering scores for relations and sort them in descending order
         #Nathan:
@@ -457,7 +430,7 @@ class Model(nn.Module):
         #the loss is an accumulated metric over all rels in all obs in the batch, so one scalar for the batch, indicating how well the model can detect that a rel is postive case (an relation) or negaitve case (none rel)
         #the binary classification head is trainable, so hopefully it gets better at determining if a rel is positive over time
         #NOTE: the structure of the binary classification head and the score and loss calc is identical to the span case
-        filter_score_rel, filter_loss_rel = self._rel_filtering(rel_rep, rel_classes)
+        filter_score_rel, filter_loss_rel = self._rel_filtering(rel_reps, rel_classes)
         # Sort the filter scores for rels in descending order and just get the rel_idx 
         #NOTE [1] is to get the idx as opposed to the values as torch.sort returns a tuple
         sorted_idx_pair = torch.sort(filter_score_rel, dim=-1, descending=True)[1]
@@ -488,11 +461,11 @@ class Model(nn.Module):
         candidate_pair_label = rel_classes.gather(1, rel_idx_to_keep)
         '''
         # Define the elements to get candidates for
-        elements = [cat_pair_rep.view(B, max_top_k * max_top_k, -1), rel_classes.view(B, max_top_k * max_top_k)]
+        elements = [cat_pair_rep.view(batch, top_k_spans * top_k_spans, -1), rel_classes.view(batch, top_k_spans * top_k_spans)]
         # Use a list comprehension to get the candidates for each element
-        candidate_pair_rep, candidate_pair_label = [get_candidates(sorted_idx_pair, element, topk=max_top_k)[0] for element in elements]   #NAthan: ill be shape (B, max_top_k**2, D), (B, max_top_k**2)
+        cand_pair_rep, cand_pair_label = [get_candidates(sorted_idx_pair, element, topk=top_k_spans)[0] for element in elements]   #NAthan: ill be shape (B, max_top_k**2, D), (B, max_top_k**2)
         # Get the top K relation indices
-        topK_rel_idx = sorted_idx_pair[:, :max_top_k]
+        topK_rel_idx = sorted_idx_pair[:, :top_k_spans]
         # Mask the candidate pair labels using the condition mask and refine the relation representation
         #Nathan: do masking on teh remaining pairs using the same technique as used for the spans
         '''
@@ -500,8 +473,8 @@ class Model(nn.Module):
         # Create a condition mask where the range of top K is greater than or equal to the top K lengths
         condition_mask = torch.arange(max_top_k, device=span_reps.device).unsqueeze(0) >= top_k_lengths.unsqueeze(-1)
         '''
-        candidate_pair_label.masked_fill_(condition_mask, -1)
-        candidate_pair_mask = candidate_pair_label > -1
+        cand_pair_label.masked_fill_(condition_mask, -1)
+        cand_pair_mask = cand_pair_label > -1
         ###################################################
 
         ###################################################
@@ -511,8 +484,8 @@ class Model(nn.Module):
         #think of it like a sequence and each span or pair is a token, so he is concat the spans and pairs
         #so shape will be (B, max_top_k + max_top_k*max_top_k, D)
         #he is doing this to throw it into an attention block, the node speific identifiers and the node/edge discriminator shoudl help the attention to dscriminate 
-        concat_span_pair = torch.cat((candidate_span_reps, candidate_pair_rep), dim=1)   #Nathan: shape (B, max_top_k + max_top_k**2, D)
-        mask_span_pair = torch.cat((candidate_span_mask, candidate_pair_mask), dim=1)   #Nathan: shape (B, max_top_k + max_top_k**2)
+        concat_span_pair = torch.cat((cand_span_reps, cand_pair_rep), dim=1)   #Nathan: shape (B, max_top_k + max_top_k**2, D)
+        mask_span_pair = torch.cat((cand_span_masks, cand_pair_mask), dim=1)   #Nathan: shape (B, max_top_k + max_top_k**2)
 
         ###################################################
         # Apply transformer layer and keep_mlp
@@ -533,7 +506,7 @@ class Model(nn.Module):
         #Nathan: this command is wrong and will not work
         #needs to be:
         #keep_span, keep_rel = keep_score.split([max_top_k, max_top_k**2], dim=1)
-        keep_span, keep_rel = keep_score.split([max_top_k, max_top_k], dim=1)   #shoudl have out dims (B, max_top_k + max_top_k**2, D)
+        keep_span, keep_rel = keep_score.split([top_k_spans, top_k_spans], dim=1)   #shoudl have out dims (B, max_top_k + max_top_k**2, D)
 
         """not use output from transformer layer for now"""
         # Split out_trans
@@ -574,10 +547,10 @@ class Model(nn.Module):
         #NAthan: for train mode, he just calculates a loss from all the heads and graph structure change etc and returns that
         # Compute losses for relation and entity classifiers
         rel_loss = compute_matching_loss(scores_rel, candidate_pair_label, rel_type_masks, num_rel)
-        span_loss = compute_matching_loss(scores_span, candidate_span_label, span_type_masks, num_span)
+        span_loss = compute_matching_loss(scores_span, candidate_span_labels, span_type_masks, num_span)
 
         # Concatenate labels for binary classification and compute binary classification loss
-        span_rel_label = (torch.cat((candidate_span_label, candidate_pair_label), dim=1) > 0).float()
+        span_rel_label = (torch.cat((candidate_span_labels, candidate_pair_label), dim=1) > 0).float()
         filter_loss = F.binary_cross_entropy_with_logits(keep_score, ent_rel_label, reduction='none')
 
         # Compute structure loss and total loss

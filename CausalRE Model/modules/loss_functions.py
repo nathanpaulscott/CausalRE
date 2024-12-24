@@ -1,10 +1,67 @@
 import torch
 import torch.nn.functional as F
 
+'''
+This has the various loss functions used in the model
+'''
+
+def binary_loss(preds_b, labels_b, mask, is_logit=True):
+    '''
+    Calculates the loss for binary span/rel predictions versus binary span/rel labels, considering only specified spans/rels based on mask.
+    This function supports two types of predictions: raw logits or log softmaxed predictions. It computes loss for 
+    both positive and a subset of negative samples specified by the mask.
+
+    Parameters:
+    - preds_b (torch.Tensor): Binary predictions from the model, of shape (batch, num_items, 2), type float.
+                              These can be raw logits or log softmaxed outputs depending on `is_logit`.
+    - labels_b (torch.Tensor): True labels, of shape (batch, num_items), type int.
+    - mask (torch.Tensor): A boolean mask of shape (batch, num_items) that indicates which spans/rels
+                           should be considered in the loss computation.
+    - is_logit (bool): Flag indicating the type of predictions:
+                       True if `preds` are raw logits (use cross_entropy loss),
+                       False if `preds` are log softmaxed outputs (use nll_loss).
+
+    Returns:
+    torch.Tensor: The sum of the losses computed for both positive and the subset of negative samples.
+
+    Usage:
+    loss = loss_binary(predictions, true_labels, mask, is_logit=True)
+
+    #################################################################################
+    Nathan: this is adapted from the graphER code, I have removed almost all of their stuff, so it is completely different,
+    the only thing remaining that bugs me is the reduction = 'sum', I will leave it there for now, but that may need to go also
+    #################################################################################
+    '''
+    batch, num_items, _ = preds_b.shape
+
+    #Determine the loss function
+    loss_func = F.cross_entropy if is_logit else F.nll_loss
+    #Flatten the tensors for loss
+    flat_preds = preds_b.view(-1, 2)   #(batch * num_items, 2)
+    flat_labels = labels_b.view(-1)    #(batch * num_items)
+    flat_mask = mask.view(-1)     #(batch * num_items)
+    #Masking the pos labels
+    valid_pos_labels = flat_labels.clone()
+    #set the ignore labels to -1
+    valid_pos_labels[(flat_labels < 1) | (~flat_mask)] = -1  # Ignore
+    #Masking the neg labels
+    valid_neg_labels = flat_labels.clone()
+    #set the ignore labels to -1
+    valid_neg_labels[(flat_labels > 0) | (~flat_mask)] = -1  # Ignore
+    #Calculate losses for positive and negative samples
+    loss_pos = loss_func(flat_preds, valid_pos_labels, ignore_index=-1, reduction='sum')
+    loss_neg = loss_func(flat_preds, valid_neg_labels, ignore_index=-1, reduction='sum')
+
+    # Sum the losses
+    return loss_pos + loss_neg
+
+
+
+
 
 def compute_matching_loss(logits, labels, mask, num_classes):
     '''
-    What the fuck is this
+    Have not gone through this yet, not sure what it is doing.
     '''
     B, _, _ = logits.size()
 
@@ -32,24 +89,3 @@ def compute_matching_loss(logits, labels, mask, num_classes):
     loss = loss.sum()
 
     return loss
-
-
-def down_weight_loss(logits, y, sample_rate=0.1, is_logit=True):
-    '''
-    What the fuck is this, garbage function name!!
-    NAthan: This is the loss used to indicate how well the binary classifier of a span being an entity or not is working
-    The seem to use the cross_entropy loss version, and pass in sample rate = 0.0
-    So effectively the loss comp is:
-    total loss = CREloss_positive_spans + CRELoss_negative_spans*(1-sample_rate)
-    NOTE: they exclude label==-1 (invalid spans) 
-    So basically they split it so they can reduce the impact of the neg samples, however they use sample rate == 0 so they use all neg samples
-    '''
-    if is_logit:
-        loss_func = F.cross_entropy
-    else:
-        loss_func = F.nll_loss
-
-    loss_entity = loss_func(logits, y.masked_fill(y == 0, -1), ignore_index=-1, reduction='sum')
-    loss_non_entity = loss_func(logits, y.masked_fill(y > 0, -1), ignore_index=-1, reduction='sum')
-
-    return loss_entity + loss_non_entity * (1 - sample_rate)
