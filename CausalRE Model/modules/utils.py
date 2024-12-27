@@ -104,145 +104,20 @@ def er_decoder(x, entity_logits, rel_logits, topk_pair_idx, max_top_k,
 
 
 def get_relation_with_span(x):
-    entities, relations = x['entities'], x['relations']
-    B = len(entities)
+    '''
+    not sure what this is doing, used for eval
+    will get to it later
+    '''
+    spans, relations = x['spans'], x['relations']
+    B = len(spans)
     relation_with_span = [[] for i in range(B)]
     for i in range(B):
         rel_i = relations[i]
-        ent_i = entities[i]
+        span_i = spans[i]
         for rel in rel_i:
-            act = (ent_i[rel[0]], ent_i[rel[1]], rel[2])
+            act = (span_i[rel[0]], span_i[rel[1]], rel[2])
             relation_with_span[i].append(act)
     return relation_with_span
-
-
-def get_ground_truth_relations(x, candidate_spans_idx, candidate_span_label):
-    """
-    As usual the naming is fucking misleading, this guy needs a good talking to!!
-    This function actually generates the relation labels tensor for all possible span-pairs derived from candidate_spans_idx
-    The output shape is (batch, candidate_span_label.shape[1]**2)   This is the quadratic relation expansion part
-    NOTE: this function is really horrible, working in python objects, lots of list searches and bad var naming, the whole thing needs to be redone from the ground up
-    
-    inputs:
-    x => so all inputs
-    candidate_spans_idx => the idx tensor of the candidate spans (start, end) tuples for each obs
-    candidate_span_label => the labels tensor of the candidate spans
-    NOTE: we already have the main span labels, so we do not really need this, but it saves us having to extract it
-    
-    Outputs:
-    relation_classes, which is a tensor of shape (batch, max_top_k**2) with the ground truth label for each candidate relation and -1 if it has no label
-    """
-    #get dims of the caididate span tensor
-    B, max_top_k = candidate_span_label.shape
-
-    #Nathan: make the blank relation_slasses tensor of shape (batch, num_cand_spans, num_cand_spans), to be flattened in the last 2 dims later
-    #So, this should be called candidate_rel_label, not relation_classes!!!!
-    relation_classes = torch.zeros((B, max_top_k, max_top_k), dtype=torch.long, device=candidate_spans_idx.device)
-
-    # Populate relation classes
-    #Nathan: ya, he just fills out the relation_classes tensor based on the relation labels in x['relations'] and x['entities]
-    #before getting into this, to me, it seems like he is making it way harder than it needs to be, you already have all the data, you just need some indexing and filtering
-    # I think x['entities'] and x['relations'] are still in python object format, he should have already converted this to tensor by now, he is doing it inside the model, no good!!!
-    for i in range(B):
-        #get the rel and ent labels for the obs
-        rel_i = x["relations"][i]
-        ent_i = x["entities"][i]
-
-        #these are the head,tail,rel_type lists for the candidate rels
-        new_heads, new_tails, new_rel_type = [], [], []
-
-        #Nathan: Loop over the ground truth relation labels lists to extract the rel types, the span start/end bounds from the head/tail idx
-        #so the output here is still python objects
-        for k in rel_i:
-            """
-            #he should have better code like this:
-            head_span_idx, tail_span_idx, rel_type = k
-            head_span_start, head_span_end = ent_i[head_span_idx]
-            tail_span_start, tail_span_end = ent_i[tail_span_idx]
-            new_heads.append((head_span_start, head_span_end))
-            new_tails.append((tail_span_start, tail_span_end))
-            new_rel_type.append(rel_type)
-            """
-            #nathan: read the head span boundary
-            heads_i = [ent_i[k[0]][0], ent_i[k[0]][1]]
-            #nathan: read the tail span boundary
-            tails_i = [ent_i[k[1]][0], ent_i[k[1]][1]]
-            #nathan: read the relation type
-            type_i = k[2]
-            new_heads.append(heads_i)
-            new_tails.append(tails_i)
-            new_rel_type.append(type_i)
-
-        # Update the original lists
-        #Nathan: he is doing absolutely nothing here, just changing the names of the 3 lists!!?!?!?
-        heads_, tails_, rel_type = new_heads, new_tails, new_rel_type
-
-        # idx of candidate spans
-        #Nathan: converting the cand_spans_idx tensor (tensor of candidate span start/end tuples) for the obs to a list (python object)  why is he staying in python objects at this point???
-        cand_i = candidate_spans_idx[i].tolist()
-
-        #Nathan: now he goes through the extracted relation ground truth label data and updates the relation_classes tensor
-        #again this loop is full of terrible var naming => eg. flag!!   fucking for what is the flag being used?
-        for heads_i, tails_i, type_i in zip(heads_, tails_, rel_type):
-            #first he determines if the rel_type is in the rel_to_id mapping, there is no reason it would not be as the mapping was created from the ground truth labels!?!?!?
-            #this should not even be needed, just a side effect of bad coding
-            #should be known_rel_type_flag or something....
-            flag = False
-            if isinstance(x["rel_to_id"], dict):
-                if type_i in x["rel_to_id"]:
-                    flag = True
-            elif isinstance(x["rel_to_id"], list):
-                if type_i in x["rel_to_id"][i]:
-                    flag = True
-
-            #Nathan: this is the key check, he checks if the head_span and tail_span are in the cand_span_idx list
-            #terrible way to do it, he is doing a two list searches here, very slow, should have found a smarter way!!!!  (1) heads_i in cand_i and (2) list.index()
-            #logic is if the head and tail spans are in teh cand list and the rel type is known (which it should always be), then process it
-            if heads_i in cand_i and tails_i in cand_i and flag:   
-                #get teh list index of the head and tail span of the relation from the cand list
-                idx_head = cand_i.index(heads_i)
-                idx_tail = cand_i.index(tails_i)
-
-                #Nathan: here they populate the relation_classes tensor with the candidate relation type read from teh ground thruth labels
-                #what a round about horrible way to get there!!!
-                if isinstance(x["rel_to_id"], list):
-                    relation_classes[i, idx_head, idx_tail] = x["rel_to_id"][i][type_i]
-                elif isinstance(x["rel_to_id"], dict):
-                    relation_classes[i, idx_head, idx_tail] = x["rel_to_id"][type_i]
-
-    # flat relation classes
-    #Nathan: flattens the last 2 dims of the relation_classes so teh tensor is now (batch, max_top_k**2)
-    relation_classes = relation_classes.view(-1, max_top_k * max_top_k)
-
-    # put to -1 class where corresponding candidate_span_label is -1 (for both head and tail)
-    #bad english, what he means is put the rel type to -1 if EITHER head OR tail span type is -1 (invalid or set to -1 for filtering purposes)
-    #first he exacts the head_span_label and tail_Span_label for every element in relation_classes
-    #Nathan: due to the way he crated the relation_classes, they are aligned with the candidate_span_label tensors, 
-    head_candidate_span_label = candidate_span_label.view(B, max_top_k, 1).repeat(1, 1, max_top_k).view(B, -1)
-    tail_candidate_span_label = candidate_span_label.view(B, 1, max_top_k).repeat(1, max_top_k, 1).view(B, -1)
-    #then here he sets the relation_classes tensor element to -1 if either of the head or tail span types are -1, i.e. only allowing relations where both head and tail spans have a positive ground truth label in the cand set
-    relation_classes.masked_fill_(head_candidate_span_label.view(B, max_top_k * max_top_k) == -1, -1)  # head
-    relation_classes.masked_fill_(tail_candidate_span_label.view(B, max_top_k * max_top_k) == -1, -1)  # tail
-
-    return relation_classes
-
-
-
-
-def get_candidates(sorted_idx, tensor_elem, topk=10):
-    # sorted_idx [B, num_spans]
-    # tensor_elem [B, num_spans, D] or [B, num_spans]
-
-    sorted_topk_idx = sorted_idx[:, :topk]
-
-    if len(tensor_elem.shape) == 3:
-        B, num_spans, D = tensor_elem.shape
-        topk_tensor_elem = tensor_elem.gather(1, sorted_topk_idx.unsqueeze(-1).expand(-1, -1, D))
-    else:
-        # [B, topk]
-        topk_tensor_elem = tensor_elem.gather(1, sorted_topk_idx)
-
-    return topk_tensor_elem, sorted_topk_idx
 
 
 

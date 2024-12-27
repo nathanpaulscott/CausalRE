@@ -72,9 +72,8 @@ class FilteringLayer(nn.Module):
         filter_score = filter_score.masked_fill(~mask, float('-inf'))
         
         #set the positive label spans/rels to +inf => definitely positive cases
-        #Nathan: he is guaranteeing that the positive label cases end up getting chosen (even if the pred incorrectly says they are not_entities)
-        #this is kind of similar to what I was doing with hybrid teacher forcing, I was ensuring that all pos label spans/rels end up making it to the span-pair stage even if being classified as none-entities, it did not work so good
-        #also note that he doesn't do it for the non-training case as you have no labels so you are forced to do non-teacher forcing (which worked best even for training after a short warmup)
+        #this is a form of teacher forcing, we are guaranteeing that positive span cases make it to the initial graph
+        #I put in code to be able to turn this off and also to turn it off after a set number of batches after the model has honed in on a good state (this is what worked best for me in other models)
         if self.training and force_pos_cases:
             filter_score = filter_score.masked_fill(labels_b > 0, float('inf'))
 

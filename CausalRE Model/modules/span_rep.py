@@ -5,6 +5,8 @@ import torch.nn.functional as F
 from torch import nn
 import torch.nn.init as init
 
+from .layers_other import PositionalEncoding, FFNProjectionLayer
+
 #################################################################
 #################################################################
 #################################################################
@@ -30,8 +32,7 @@ class First_n_Last_graphER(nn.Module):
                  max_span_width, 
                  hidden_size, 
                  ffn_ratio,
-                 dropout, 
-                 **kwargs):
+                 dropout, **kwargs):
         super().__init__()
         #overwrite the passed values to copy graphER
         ffn_ratio = 1.5
@@ -41,13 +42,7 @@ class First_n_Last_graphER(nn.Module):
         self.project_end = FFNProjectionLayer(hidden_size, ffn_ratio, hidden_size, dropout)       #FFN for th eend token
         self.out_project = FFNProjectionLayer(2*hidden_size, ffn_ratio, hidden_size, dropout)    #projects the concat of the start/end back to hidden
         self.relu = nn.ReLU()
-
-        self.init_weights()
-
-
-    def init_weights(self):
-        pass
-
+        #init weights not required as is handled by FFNLayers
 
     def forward(self, token_reps, span_ids, span_masks, pooling, **kwargs):
         '''
@@ -300,6 +295,7 @@ class AttentionPooling(nn.Module):
         if use_span_pos_encoding:
             self.span_pos_encoder = PositionalEncoding(hidden_size, dropout, max_span_width)
         
+        #init weights for the dummy query only
         self.init_weights()
 
 
@@ -391,6 +387,7 @@ class AttentionPooling_vectorized_old(nn.Module):
         if use_span_pos_encoding:
             self.span_pos_encoder = PositionalEncoding(hidden_size, dropout, max_span_width)
         
+        #init weights for the dummy query only
         self.init_weights()
 
     def init_weights(self):
@@ -498,6 +495,7 @@ class AttentionPooling_vectorized(nn.Module):
         if use_span_pos_encoding:
             self.span_pos_encoder = PositionalEncoding(hidden_size, dropout, max_span_width)
         
+        #init weights for the dummy query only
         self.init_weights()
 
 
@@ -575,63 +573,6 @@ class AttentionPooling_vectorized(nn.Module):
 #############################################################
 #Utility Code################################################
 #############################################################
-class FFNProjectionLayer(nn.Module):
-    '''
-    Projection Layer that can have nonlinearities, dropout and FFN aspects
-    '''
-    def __init__(self, input_dim, ffn_ratio=1.5, output_dim=None, dropout=0.2):
-        super().__init__()
-        #check if output dim is specified, if not then FFN outputs same dimensionality as the input
-        if output_dim is None: 
-            output_dim = input_dim
-        intermed_dim = int(output_dim * ffn_ratio)
-
-        self.linear_in = nn.Linear(input_dim, intermed_dim)
-        self.dropout = nn.Dropout(dropout)
-        self.relu = nn.ReLU()
-        self.linear_out = nn.Linear(intermed_dim, output_dim)
-        
-        self.init_weights()
-
-    def init_weights(self):
-        init.kaiming_normal_(self.linear_in.weight, nonlinearity='relu')
-        init.constant_(self.linear_in.bias, 0)
-        init.kaiming_normal_(self.linear_out.weight, nonlinearity='relu')
-        init.constant_(self.linear_out.bias, 0)
-
-    def forward(self, x):
-        x = self.linear_in(x)
-        x = self.dropout(x)
-        x = self.relu(x)
-        x = self.linear_out(x)
-        x = self.dropout(x)
-        return x
-
-
-
-class PositionalEncoding(nn.Module):
-    def __init__(self, hidden_size, dropout=0.1, max_seq_len=5000):
-        super().__init__()
-        self.dropout = nn.Dropout(p=dropout)
-        
-        position = torch.arange(max_seq_len).unsqueeze(1)
-        div_term = torch.exp(torch.arange(0, hidden_size, 2) * (-math.log(10000.0) / hidden_size))
-        pe = torch.zeros(1, max_seq_len, hidden_size)  # batch first format
-        pe[0, :, 0::2] = torch.sin(position * div_term)
-        pe[0, :, 1::2] = torch.cos(position * div_term)
-        self.register_buffer('pe', pe)
-        
-    def forward(self, x):
-        """
-        Args:
-            x: Tensor shape (batch, seq_len, hidden)
-        Returns:
-            Same shape as input
-        """
-        x = x + self.pe[:, :x.size(1)]
-        return self.dropout(x)    
-
-
 def extract_rep(token_reps, ids):
     '''
     This is code to support the graphER stuff, I do not use it for my stuff...
@@ -761,23 +702,28 @@ class SpanRepLayer(nn.Module):
     """
     Various span representation approaches
 
+    The init call from models....
         self.span_rep_layer = SpanRepLayer(
-            span_mode           = config.span_mode,
-            hidden_size         = config.hidden_size,
-            max_span_width      = config.max_span_width,    #in word widths
-            max_seq_len         = config.max_seq_len,       #in word widths    
-            width_embeddings    = self.width_embeddings,    #in word widths
-            dropout             = config.dropout,
-            ffn_ratio           = config.ffn_ratio, 
-            use_span_pos_encoding=config.use_span_pos_encoding,    #whether to use span pos encoding in addition to full seq pos encoding
-            pooling             = config.subtoken_pooling     #whether we are using pooling or not
+            #specifically named....
+            span_mode             = config.span_mode,
+            max_seq_len           = config.max_seq_len,       #in word widths    
+            max_span_width        = config.max_span_width,    #in word widths
+            pooling               = config.subtoken_pooling,     #whether we are using pooling or not
+            #the rest are in kwargs...
+            hidden_size           = config.hidden_size,
+            width_embeddings      = self.width_embeddings,    #in word widths
+            dropout               = config.dropout,
+            ffn_ratio             = config.ffn_ratio, 
+            use_span_pos_encoding = config.use_span_pos_encoding,    #whether to use span pos encoding in addition to full seq pos encoding
+            cls_flag              = config.model_source == 'HF'    #whether we will have a cls token rep
         )
+
     """
     def __init__(self, span_mode, max_seq_len, max_span_width, pooling, **kwargs):
         super().__init__()
-        #kwargs has remaining: ['hidden_size', 'width_embeddings', 'dropout', 'ffn_ratio', 'use_span_pos_encoding']
+        #kwargs has remaining: ['hidden_size', 'width_embeddings', 'dropout', 'ffn_ratio', 'use_span_pos_encoding', 'cls_flag']
         self.span_mode = span_mode
-        self. pooling = pooling
+        self.pooling = pooling
 
         if span_mode == 'firstlast_grapher':
             self.span_rep_layer = First_n_Last_graphER(max_span_width, **kwargs)
@@ -800,17 +746,7 @@ class SpanRepLayer(nn.Module):
         else:
             raise ValueError(f'Unknown span mode {span_mode}')
 
-    '''
-    def forward(self, token_reps, w_span_ids, span_masks, sw_span_ids=None, **kwargs):
-        #apply span_masks to the w/sw_span_ids tensor.  This will set the start/end to 0,0, i.e. len of 0 for masked out span ids
-        #basically we are piggy backing the span_masks onto the span_ids tensor for ease of caclulations in the span_rep_layer code
-        #use sw_span_ids for no pooling and w_span_ids for pooling
-        span_ids = w_span_ids if self.pooling else sw_span_ids
-        span_ids = span_ids * span_masks.unsqueeze(-1)
-        result = self.span_rep_layer(token_reps, span_ids, self.pooling, **kwargs)
 
-        return result
-    '''
 
     def forward(self, token_reps, w_span_ids, span_masks, sw_span_ids=None, **kwargs):
         #use sw_span_ids for no pooling and w_span_ids for pooling

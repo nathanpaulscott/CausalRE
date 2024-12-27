@@ -1,18 +1,66 @@
 import torch
 from torch import nn
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
+import torch.nn.init as init
+import math
 
 
-def MLP(units, dropout, activation=nn.ReLU):
-    units = [int(u) for u in units]
-    assert len(units) >= 2
-    layers = []
-    for i in range(len(units) - 2):
-        layers.append(nn.Linear(units[i], units[i + 1]))
-        layers.append(activation())
-        layers.append(nn.Dropout(dropout))
-    layers.append(nn.Linear(units[-2], units[-1]))
-    return nn.Sequential(*layers)
+
+class PositionalEncoding(nn.Module):
+    def __init__(self, hidden_size, dropout=0.1, max_seq_len=5000):
+        super().__init__()
+        self.dropout = nn.Dropout(p=dropout)
+        
+        position = torch.arange(max_seq_len).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, hidden_size, 2) * (-math.log(10000.0) / hidden_size))
+        pe = torch.zeros(1, max_seq_len, hidden_size)  # batch first format
+        pe[0, :, 0::2] = torch.sin(position * div_term)
+        pe[0, :, 1::2] = torch.cos(position * div_term)
+        self.register_buffer('pe', pe)
+        
+    def forward(self, x):
+        """
+        Args:
+            x: Tensor shape (batch, seq_len, hidden)
+        Returns:
+            Same shape as input
+        """
+        x = x + self.pe[:, :x.size(1)]
+        return self.dropout(x)    
+
+
+
+class FFNProjectionLayer(nn.Module):
+    '''
+    Projection Layer that can have nonlinearities, dropout and FFN aspects
+    Always 2 linear projection layers, input and output, with a activation function between
+    '''
+    def __init__(self, input_dim, ffn_ratio=1.5, output_dim=None, dropout=0.2):
+        super().__init__()
+        #check if output dim is specified, if not then FFN outputs same dimensionality as the input
+        if output_dim is None: 
+            output_dim = input_dim
+        intermed_dim = int(output_dim * ffn_ratio)
+
+        self.linear_in = nn.Linear(input_dim, intermed_dim)
+        self.dropout = nn.Dropout(dropout)
+        self.relu = nn.ReLU()
+        self.linear_out = nn.Linear(intermed_dim, output_dim)
+        
+        self.init_weights()
+
+    def init_weights(self):
+        init.kaiming_normal_(self.linear_in.weight, nonlinearity='relu')
+        init.constant_(self.linear_in.bias, 0)
+        init.kaiming_normal_(self.linear_out.weight, nonlinearity='relu')
+        init.constant_(self.linear_out.bias, 0)
+
+    def forward(self, x):
+        x = self.linear_in(x)
+        x = self.dropout(x)
+        x = self.relu(x)
+        x = self.linear_out(x)
+        return x
 
 
 

@@ -84,14 +84,14 @@ class Trainer:
 
 
 
-    def get_optimizer(self, model, lr_encoder, lr_others, freeze_token_rep=False):
+    def get_optimizer(self, model, lr_encoder, lr_others, freeze_encoder=False):
         """
         Sets learning rates for the encoder and all other layers, with an option to freeze the encoder.
 
         Parameters:
         - lr_encoder: Learning rate for the transformer encoder layer.
         - lr_others: Learning rate for all other layers.
-        - freeze_token_rep: Whether to freeze the transformer encoder layer.
+        - freeze_encoder: Whether to freeze the transformer encoder layer.
         """
         # Ensure learning rates are float values
         lr_encoder = float(lr_encoder)
@@ -100,7 +100,7 @@ class Trainer:
         param_groups = []
         # Handling the transformer encoder parameters: either freeze or assign learning rate
         transformer_encoder_params = list(model.transformer_encoder_w_prompt.parameters())
-        if freeze_token_rep:
+        if freeze_encoder:
             for param in transformer_encoder_params:
                 param.requires_grad = False
         else:
@@ -349,7 +349,7 @@ class Trainer:
         optimizer = self.get_optimizer(model, 
                                        self.config.lr_encoder, 
                                        self.config.lr_others, 
-                                       freeze_token_rep=self.config.freeze_token_rep)
+                                       freeze_encoder=self.config.freeze_encoder)
         #kick off the training
         self.train(model, 
                    optimizer, 

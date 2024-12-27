@@ -2,7 +2,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from .layers import MLP
+from .layers_other import FFNProjectionLayer
 
 
 class ScorerLayer(nn.Module):
@@ -12,10 +12,19 @@ class ScorerLayer(nn.Module):
         self.scoring_type = scoring_type
 
         if scoring_type == "concat_proj":
-            self.proj = MLP([hidden_size * 4, hidden_size * 4, 1], dropout)
+            self.proj = FFNProjectionLayer(input_dim  = hidden_size * 4,
+                                           ffn_ratio  = 1,
+                                           output_dim = 1, 
+                                           dropout    = dropout)
         elif scoring_type == "dot_thresh":
-            self.proj_thresh = MLP([hidden_size, hidden_size * 4, 2], dropout)
-            self.proj_type = MLP([hidden_size, hidden_size * 4, hidden_size], dropout)
+            self.proj_thresh = FFNProjectionLayer(input_dim  = hidden_size,
+                                                  ffn_ratio  = 4,
+                                                  output_dim = 2, 
+                                                  dropout    = dropout)
+            self.proj_type = FFNProjectionLayer(input_dim  = hidden_size,
+                                                ffn_ratio  = 4,
+                                                output_dim = hidden_size, 
+                                                dropout    = dropout)
 
     def forward(self, candidate_pair_rep, rel_type_rep):
         # candidate_pair_rep: [B, N, D]

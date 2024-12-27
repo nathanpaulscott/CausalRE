@@ -12,15 +12,16 @@ from pathlib import Path
 
 ###############################################
 #custom imports
-from .filtering import FilteringLayer
 from .layers_transformer_encoder_flair import TransformerEncoderFlairPrompt
 from .layers_transformer_encoder_hf import TransformerEncoderHFPrompt
-from .layers_other import MLP, LstmSeq2SeqEncoder, TransformerEncoderTorch, GraphEmbedder
+from .layers_other import FFNProjectionLayer, LstmSeq2SeqEncoder, TransformerEncoderTorch, GraphEmbedder
 from .loss_functions import compute_matching_loss
-from .rel_rep import RelationRep
-from .scorer import ScorerLayer
 from .span_rep import SpanRepLayer
-from .utils import get_ground_truth_relations, get_candidates, er_decoder, get_relation_with_span, load_from_json, save_to_json
+from .filtering import FilteringLayer
+from .data_processor import RelationProcessor
+from .rel_rep import RelationRepLayer
+from .scorer import ScorerLayer
+from .utils import er_decoder, get_relation_with_span, load_from_json, save_to_json
 from .evaluator import Evaluator
 
 
@@ -71,33 +72,40 @@ class Model(nn.Module):
         )
 
 
-        #this forms the span reps from the token reps using the method defined by config.span_mode,
         #span width embeddings (in word widths)
         self.width_embeddings = nn.Embedding(config.max_span_width, config.width_embedding_size)
-        #span representation
+        #span representations
+        #this forms the span reps from the token reps using the method defined by config.span_mode,
         self.span_rep_layer = SpanRepLayer(
-            span_mode           = config.span_mode,
-            hidden_size         = config.hidden_size,
-            max_span_width      = config.max_span_width,    #in word widths
-            max_seq_len         = config.max_seq_len,       #in word widths    
-            width_embeddings    = self.width_embeddings,    #in word widths
-            dropout             = config.dropout,
-            ffn_ratio           = config.ffn_ratio, 
-            use_span_pos_encoding=config.use_span_pos_encoding,    #whether to use span pos encoding in addition to full seq pos encoding
-            pooling             = config.subtoken_pooling,     #whether we are using pooling or not
-            cls_flag            = config.model_source == 'HF'    #whether we will have a cls token rep
+            span_mode             = config.span_mode,
+            max_seq_len           = config.max_seq_len,       #in word widths    
+            max_span_width        = config.max_span_width,    #in word widths
+            pooling               = config.subtoken_pooling,     #whether we are using pooling or not
+            #the rest are in kwargs
+            hidden_size           = config.hidden_size,
+            width_embeddings      = self.width_embeddings,    #in word widths
+            dropout               = config.dropout,
+            ffn_ratio             = config.ffn_ratio, 
+            use_span_pos_encoding = config.use_span_pos_encoding,    #whether to use span pos encoding in addition to full seq pos encoding
+            cls_flag              = config.model_source == 'HF'    #whether we will have a cls token rep
+        )
+
+        #define the relation processor to process the raw x['relations'] data once we have our initial cand_span_ids
+        self.rel_processor = RelationProcessor(self.config)
+        
+        #relation representation
+        #this forms the rel reps from the cand_span_reps after the span reps have been filtered for the initial graph
+        self.rel_rep_layer = RelationRepLayer(
+            rel_mode    = config.rel_mode,    #what kind of rel_rep generation algo to use 
+            hidden_size = config.hidden_size, 
+            ffn_ratio   = config.ffn_ratio,
+            dropout     = config.dropout,
+            pooling     = config.subtoken_pooling,     #whether we are using pooling or not
         )
 
         # filtering layer for spans and relations
         self.span_filter_head = FilteringLayer(config.hidden_size)
         self.rel_filter_head = FilteringLayer(config.hidden_size)
-
-        # relation representation
-        self.rel_rep_layer = RelationRep(
-            config.hidden_size, 
-            config.dropout, 
-            config.ffn_ratio
-        )
 
         # graph embedder
         #this has code errors
@@ -110,22 +118,20 @@ class Model(nn.Module):
             num_layers=config.num_transformer_layers
         )
 
-        # keep_mlp
+        #keep_head
         #this seems to be a simple FFN then a binary classification head
-        self.keep_mlp = MLP([config.hidden_size, config.hidden_size * config.ffn_ratio, 1], dropout=0.1)
-
-        # scoring layers
-        self.scorer_span = ScorerLayer(
-            scoring_type    = config.scorer,
-            hidden_size     = config.hidden_size,
-            dropout         = config.dropout
-        )
-
-        self.scorer_rel = ScorerLayer(
-            scoring_type    = config.scorer,
-            hidden_size     = config.hidden_size,
-            dropout         = config.dropout
-        )
+        self.keep_head = FFNProjectionLayer(input_dim  = config.hidden_size, 
+                                            ffn_ratio  = config.ffn_ratio, 
+                                            output_dim = 1, 
+                                            dropout    = 0.1)
+        
+        #scoring layers
+        self.scorer_span = ScorerLayer(scoring_type = config.scorer,
+                                       hidden_size  = config.hidden_size,
+                                       dropout      = config.dropout)
+        self.scorer_rel = ScorerLayer(scoring_type = config.scorer,
+                                      hidden_size  = config.hidden_size,
+                                      dropout      = config.dropout)
 
         self.init_weights()
 
@@ -321,10 +327,11 @@ class Model(nn.Module):
         x['tokens']     => list of ragged lists of strings => the raw word tokenized seq data as strings
         x['spans']      => list of ragged list of tuples => the positive cases for each obs 
         x['relations']  => list of ragged list of tuples => the positive cases for each obs
+        x['orig_map']   => list of dicts for the mapping of the orig span idx to the span_ids dim 1 idx (for pos cases only, is needed in the model for rel tensor generation later)
         x['seq_length'] => tensor (batch) the length of tokens for each obs
         x['span_ids']   => tensor (batch, max_seq_len_batch*max_span_width, 2) => the span_ids truncated to the max_seq_len_batch * max_span_wdith
-        x['span_masks']  => tensor (batch, max_seq_len_batch*max_span_width) => 1 for spans to be used (pos cases + selected neg cases), 0 for pad, invalid and unselected neg cases
-        x['span_labels'] => tensor (batch, max_seq_len_batch*max_span_width) => 0 to num_span_types for valid cases, -1 for invalid and pad cases
+        x['span_masks'] => tensor (batch, max_seq_len_batch*max_span_width) => 1 for spans to be used (pos cases + selected neg cases), 0 for pad, invalid and unselected neg cases
+        x['span_labels']=> tensor (batch, max_seq_len_batch*max_span_width) => 0 to num_span_types for valid cases, -1 for invalid and pad cases
 
         step will be current batch idx, i.e. we just set the total number of batch runs, say there are 1000 batches in the datset and we set pbar to 2200, then step will go from 0 to 2199, i.e. each batch will be run 2x and 200 will be 3x
         '''
@@ -340,7 +347,7 @@ class Model(nn.Module):
         
         #read in data from results or x
         token_reps      = result['token_reps']          #(batch, max_seq_len_batch, hidden) => float, sw or w token aligned depedent pooling   
-        token_masks     = result['token_masks']         #(batch, max_seq_len_batch, hidden) => bool, sw or w token aligned depedent pooling   
+        token_masks     = result['token_masks']         #(batch, max_seq_len_batch) => bool, sw or w token aligned depedent pooling   
         w_span_ids      = x['span_ids'].clone()         #(batch, max_seq_len_batch * max_span_width, 2) => int, w aligned span_ids
         sw_span_ids     = result['sw_span_ids']         #(batch, max_seq_len_batch * max_span_width, 2) => int, sw aligned span_ids => None if pooling
         span_reps       = result['span_reps']           #(batch, max_seq_len_batch * max_span_width, hidden) => float
@@ -378,48 +385,75 @@ class Model(nn.Module):
         if force_pos == True and (self.config.pos_force_step_limit != 'none' and self.config.pos_force_step_limit > step+1):
             force_pos = False
         #then run the scoring
-        filter_score_span, filter_loss_span = self._span_filtering(span_reps, 
-                                                                   span_labels, 
-                                                                   span_masks, 
-                                                                   force_pos_cases=force_pos)
+        filter_score_span, filter_loss_span = self.span_filter_head(span_reps, 
+                                                                    span_labels, 
+                                                                    span_masks, 
+                                                                    force_pos_cases=force_pos)
         #We now select the top K spans for the initial graph based on the span filter scores
         #first sort the filter_score_span tensor descending
         #NOTE [1] is to get the idx as opposed to the values as torch.sort returns a tuple (vals, idx)
         sorted_span_idx = torch.sort(filter_score_span, dim=-1, descending=True)[1]
         #next determine how many to shortlist (the K in top K), for longer sequences, it will be maxed at 64 spans per obs
         top_k_spans = min(max_seq_len, self.config.max_top_k_spans) + self.config.add_top_k_spans
-        #next select the top K spans from each obs
-        span_idx_to_keep = sorted_span_idx[:, :top_k_spans]
-        #Correcting batch indices for broadcasting
+        
+        '''
+        select the top_k spans from each obs and form the cand_span tensors (with the spans to use for the initial graph)
+        This will create new tensors of length top_k_spans.shape[1] (dim 1) with the same order of span_idx as in teh top_k_spans tensor
+        NOTE: these candidate tensors are smaller than the span_rep tensors, so it saves memory!!!, otherwise, I do not see the reason fro doing this, you coudl literally, just pass the span_idx_to_keeo
+        '''
+        #get the batch idx ad span idx for selection into the cand_span tensors
         batch_ind = torch.arange(batch).unsqueeze(-1)  # shape: (batch, 1)
-        cand_span_reps   = span_reps[batch_ind, span_idx_to_keep, :]  # shape: (batch, top_k_spans, hidden)
-        cand_span_masks   = span_masks[batch_ind, span_idx_to_keep]  # shape: (batch, top_k_spans)
-        cand_span_labels = span_labels[batch_ind, span_idx_to_keep]  # shape: (batch, top_k_spans)
-        cand_w_spans_ids = w_span_ids[batch_ind, span_idx_to_keep, :]  # shape: (batch, top_k_spans, 2)
-        cand_spans_ids = cand_w_spans_ids
+        span_idx_to_keep = sorted_span_idx[:, :top_k_spans]
+        #do the selection
+        #get tensors for span_id (w_span_ids => map span boundaries to word tokens, sw_span_ids => map span boundaries to sw tokens, span_ids = w_span_ids for pooling or sw_span_ids)
+        cand_w_span_ids = w_span_ids[batch_ind, span_idx_to_keep, :]  # shape: (batch, top_k_spans, 2)
+        cand_span_ids = cand_w_span_ids
         if self.config.subtoken_pooling == 'none':
-            cand_sw_spans_ids = sw_span_ids[batch_ind, span_idx_to_keep, :]  # shape: (batch, top_k_spans, 2)
-            cand_spans_ids = cand_sw_spans_ids
-        #NOTE: these candidate tensors are smaller than the span_rep tensors, so it saves memory!!!, otherwise, I do not see the reason fro doing this, you coudl literally, just pass the span_idx_to_keeo
+            cand_sw_span_ids = sw_span_ids[batch_ind, span_idx_to_keep, :]  # shape: (batch, top_k_spans, 2)
+            cand_span_ids = cand_sw_span_ids
+        #get the rps, masks and labels
+        cand_span_reps = span_reps[batch_ind, span_idx_to_keep, :]  # shape: (batch, top_k_spans, hidden)
+        cand_span_masks = span_masks[batch_ind, span_idx_to_keep]  # shape: (batch, top_k_spans)
+        cand_span_labels = span_labels[batch_ind, span_idx_to_keep]  # shape: (batch, top_k_spans)
 
 
+        '''
+        Now process relations to find the subset to include in the initial graph
+        - up to this point we only have the raw rel data => x['relations'], a list of dicts, we have no tensors
+        - we need to form rel_reps, rel_labels, rel_ids, rel_masks
+        NOTE: we do not use the cand prefix as this is the first time we make them....
+        '''
+        #get the rel labels from x['relations'] with dim 1 in same order as cand_span_id dim 1 expanded to top_k_spans**2 (this is why we need to limit top_k_spans to as low as possible)
+        #NOTE: the rel_masks have the diagonal set to 0, i.e self relations masked out
+        #this returns rel_labels and rel_masks, both of shape (batch, top_k_spans**2)
+        rel_labels, rel_masks = self.rel_processor.get_cand_rel_tensors(x['relations'], 
+                                                                        x['orig_map'],
+                                                                        span_idx_to_keep,
+                                                                        cand_span_ids, 
+                                                                        cand_span_labels)
 
-        #up to here....
-    
+        '''
+        Make the relation reps, has several options, based on config.rel_mode:
+        1) no_context => graphER => juts concat the head and tail span reps
+        2) between_context => concatenate the head and tail reps with between spans rep for context => to be coded
+        3) window_context => concatenate the head and tail reps with windowed context reps, i.e. window context takes token reps in a window before and after each span and attention_pools, max_pool them => to be coded
+        '''
+        #output shape (batch, max_top_k**2, hidden)
+        rel_reps = self.rel_rep_layer(cand_span_reps, 
+                                      cand_span_ids, 
+                                      token_reps, 
+                                      token_masks)   
 
+        #need test this rel_rep generation code do it for the no context and between context (w maxpooling) cases for now
+        #need test this rel_rep generation code do it for the no context and between context (w maxpooling) cases for now
+        #need test this rel_rep generation code do it for the no context and between context (w maxpooling) cases for now
+        #need test this rel_rep generation code do it for the no context and between context (w maxpooling) cases for now
+        #need test this rel_rep generation code do it for the no context and between context (w maxpooling) cases for now
+        #need test this rel_rep generation code do it for the no context and between context (w maxpooling) cases for now
+        #need test this rel_rep generation code do it for the no context and between context (w maxpooling) cases for now
+        #need test this rel_rep generation code do it for the no context and between context (w maxpooling) cases for now
+        #need test this rel_rep generation code do it for the no context and between context (w maxpooling) cases for now
 
-        #Nathan: now he moves onto relations
-
-        # Get ground truth relations
-        #Nathan: he fills the relation_classes tensor with ground truth relation labels from (x['relations]) but reformats it to be aligned with candidate_spans_idx
-        #i.e. of shape (batch, max_top_k**2) with all ground truth rels having a relation idx and others having -1
-        rel_classes = get_ground_truth_relations(x, cand_spans_ids, cand_span_labels)
-        #rel_rep = self.relation_rep(candidate_span_reps).view(B, max_top_k * max_top_k, -1)  # Reshape in the same line
-        #Nathan, they basically just concatenate the span reps for the head and tail spans and reproject the hidden dim back to D
-        #Tehy do nto include any context token reps at all!!!!!!  This is notable and could be improved
-        rel_reps = self.rel_reps_layer(candidate_span_reps)    #output shape (B, max_top_k, max_top_k, D)
-        #move the shape back to 3 dims
-        rel_reps = rel_reps.view(batch, top_k_spans * top_k_spans, -1)
 
         # Compute filtering scores for relations and sort them in descending order
         #Nathan:
@@ -430,7 +464,7 @@ class Model(nn.Module):
         #the loss is an accumulated metric over all rels in all obs in the batch, so one scalar for the batch, indicating how well the model can detect that a rel is postive case (an relation) or negaitve case (none rel)
         #the binary classification head is trainable, so hopefully it gets better at determining if a rel is positive over time
         #NOTE: the structure of the binary classification head and the score and loss calc is identical to the span case
-        filter_score_rel, filter_loss_rel = self._rel_filtering(rel_reps, rel_classes)
+        filter_score_rel, filter_loss_rel = self.rel_filter_head(rel_reps, rel_labels)
         # Sort the filter scores for rels in descending order and just get the rel_idx 
         #NOTE [1] is to get the idx as opposed to the values as torch.sort returns a tuple
         sorted_idx_pair = torch.sort(filter_score_rel, dim=-1, descending=True)[1]
@@ -461,9 +495,9 @@ class Model(nn.Module):
         candidate_pair_label = rel_classes.gather(1, rel_idx_to_keep)
         '''
         # Define the elements to get candidates for
-        elements = [cat_pair_rep.view(batch, top_k_spans * top_k_spans, -1), rel_classes.view(batch, top_k_spans * top_k_spans)]
+        elements = [cat_pair_rep.view(batch, top_k_spans * top_k_spans, -1), rel_labels.view(batch, top_k_spans * top_k_spans)]
         # Use a list comprehension to get the candidates for each element
-        cand_pair_rep, cand_pair_label = [get_candidates(sorted_idx_pair, element, topk=top_k_spans)[0] for element in elements]   #NAthan: ill be shape (B, max_top_k**2, D), (B, max_top_k**2)
+        cand_pair_rep, cand_pair_label = [self.rel_processor.get_rel_candidates(sorted_idx_pair, element, topk=top_k_spans)[0] for element in elements]   #NAthan: ill be shape (B, max_top_k**2, D), (B, max_top_k**2)
         # Get the top K relation indices
         topK_rel_idx = sorted_idx_pair[:, :top_k_spans]
         # Mask the candidate pair labels using the condition mask and refine the relation representation
@@ -488,7 +522,7 @@ class Model(nn.Module):
         mask_span_pair = torch.cat((cand_span_masks, cand_pair_mask), dim=1)   #Nathan: shape (B, max_top_k + max_top_k**2)
 
         ###################################################
-        # Apply transformer layer and keep_mlp
+        # Apply transformer layer and keep_head
         ###################################################
         #this is a using the torch built in mha transformer encoder, mask is the key padding mask
         #seems to be setup properly, need to check, but looks ok, will be slooooow if you increase layers
@@ -497,7 +531,7 @@ class Model(nn.Module):
         #the trans out reps go to a FFN then a binary classification head, i.e. last dim goes down to 1, then squeezed out
         #thuse we get one logit per node and edge that we can use to prune the graph
         #Nathan: keep_score will have shape (B, max_top_k + max_top_k*max_top_k)  => (max_top_k nodes + max_top_k^2 edges)
-        keep_score = self.keep_mlp(out_trans).squeeze(-1)  # Shape: (B, max_top_k + max_top_k, 1)   #Nathan, this comment is def not correct!! shape will be (B, max_top_k + max_top_k**2, D)
+        keep_score = self.keep_head(out_trans).squeeze(-1)  # Shape: (B, max_top_k + max_top_k, 1)   #Nathan, this comment is def not correct!! shape will be (B, max_top_k + max_top_k**2, D)
 
         # Apply sigmoid function and squeeze the last dimension
         # keep_score = torch.sigmoid(keep_score).squeeze(-1)  # Shape: (B, max_top_k + max_top_k)  #Nathan: this comment is also wrong
