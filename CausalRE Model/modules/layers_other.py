@@ -1,9 +1,9 @@
 import torch
 from torch import nn
+import torch.nn.functional as F
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 import torch.nn.init as init
 import math
-
 
 
 class PositionalEncoding(nn.Module):
@@ -27,6 +27,33 @@ class PositionalEncoding(nn.Module):
         """
         x = x + self.pe[:, :x.size(1)]
         return self.dropout(x)    
+
+
+
+
+
+class SimpleProjectionLayer(nn.Module):
+    '''
+    Simple Projection Layer that reprojects from hidden1 to hidden 2
+    Only has dropout
+    '''
+    def __init__(self, input_dim, output_dim, dropout=None):
+        super().__init__()
+        self.linear = nn.Linear(input_dim, output_dim)
+        self.dropout = nn.Dropout(dropout) if dropout is not None else None
+
+        self.init_weights()
+
+    def init_weights(self):
+        init.xavier_uniform_(self.linear.weight)
+        if self.linear.bias is not None:
+            init.constant_(self.linear.bias, 0)
+
+    def forward(self, x):
+        if self.dropout is not None:
+            x = self.dropout(x)
+        x = self.linear(x)
+        return x
 
 
 
@@ -80,11 +107,6 @@ class TransformerEncoderTorch(nn.Module):
         '''
         makes a torch transformer encoder => based on BERT, obviously with no pretrianing....
         https://pytorch.org/docs/stable/nn.html#transformer-layers
-
-        you could try using this for various things:
-        - the attention pooling => just use less layers (mayb just 1) and less heads (say 4) => I say no, the random query vector with mha and ffn is simpler and better
-        - the main encoder => I think no need as this is not pretrained and the HF or flair options are more optimised and allow usage of different architectures
-        - graph attention?  Maybe
         '''
         layer = nn.TransformerEncoderLayer(d_model          = d_model, 
                                            nhead            = nhead, 
@@ -107,6 +129,41 @@ class TransformerEncoderTorch(nn.Module):
 
 
 
+
+class GraphTransformerModel(nn.Module):
+    '''
+    This makes the graph transformer using the torch transformer encoder
+    It performs the concatenation and splitting of the inputs/outputs
+
+    Not used currently
+    '''
+    def __init__(self, d_model, num_heads, num_layers, ffn_mul=4, dropout=0.1):
+        super(GraphTransformerModel, self).__init__()
+        self.transformer = TransformerEncoderTorch(d_model, num_heads, num_layers, ffn_mul, dropout)
+
+    def forward(self, node_reps, edge_reps, node_masks, edge_masks):
+        # Input node_reps shape: (batch_size, top_k_spans, d_model)
+        # Input edge_reps shape: (batch_size, top_k_rels, d_model)
+        # Input node_masks shape: (batch_size, top_k_spans)
+        # Input edge_masks shape: (batch_size, top_k_rels)
+
+        batch_size, top_k_spans, d_model = node_reps.shape
+        _, top_k_rels, _ = edge_reps.shape
+
+        # Concatenate node and edge representations to form graph_reps
+        graph_reps = torch.cat((node_reps, edge_reps), dim=1)  # Shape: (batch_size, top_k_spans + top_k_rels, d_model)
+
+        # Combine node and edge masks
+        graph_masks = torch.cat((node_masks, edge_masks), dim=1)  # Shape: (batch_size, top_k_spans + top_k_rels)
+
+        # Pass through the transformer encoder
+        enriched_graph_reps = self.transformer(graph_reps, graph_masks)
+
+        # Split back into enriched node and edge representations
+        enriched_node_reps = enriched_graph_reps[:, :top_k_spans, :]  # Shape: (batch_size, top_k_spans, d_model)
+        enriched_edge_reps = enriched_graph_reps[:, top_k_spans:, :]  # Shape: (batch_size, top_k_rels, d_model)
+
+        return enriched_node_reps, enriched_edge_reps
 
 
 class LstmSeq2SeqEncoder(nn.Module):
@@ -139,79 +196,111 @@ class LstmSeq2SeqEncoder(nn.Module):
 
 
 
-
 class GraphEmbedder(nn.Module):
+    """
+    A module for embedding graph nodes and edges using an element-wise addition approach for distinguishing node and edge representations.
+    This approach adds an identifier vector to each node and edge representation, initialized to zero, allowing the model to learn
+    how best to utilize these identifiers during training. The identifiers are adjusted through training to effectively differentiate
+    nodes from edges based on learned significance.
+
+    Parameters:
+    - d_model (int): The dimensionality of each input token representation, defining the size of the identifier vectors.
+
+    Attributes:
+    - node_identifier (torch.nn.Parameter): A trainable parameter that serves as the identifier for nodes, added element-wise to node representations.
+    - edge_identifier (torch.nn.Parameter): A trainable parameter that serves as the identifier for edges, added element-wise to edge representations.
+
+    Forward Inputs:
+    - cand_span_reps (torch.Tensor): The tensor representing candidate span representations with shape [batch_size, num_spans, d_model].
+    - cand_rel_reps (torch.Tensor): The tensor representing relation representations with shape [batch_size, num_relations, d_model].
+    - cand_span_masks (torch.Tensor): The binary mask tensor for candidate spans with shape [batch_size, num_spans], indicating valid span positions.
+    - rel_masks (torch.Tensor): The binary mask tensor for relations with shape [batch_size, num_relations], indicating valid relation positions.
+
+    Output:
+    - nodes (torch.Tensor): The tensor containing node representations enhanced with identifiers, with shape [batch_size, num_spans, d_model].
+    - edges (torch.Tensor): The tensor containing edge representations enhanced with identifiers, with shape [batch_size, num_relations, d_model].
+
+    Example Usage:
+    module = GraphEmbedder(d_model=128)
+    nodes, edges = module(cand_span_reps, cand_rel_reps, cand_span_masks, rel_masks)
+    """
+
     def __init__(self, d_model):
         super().__init__()
+        self.d_model = d_model
+        # Initialize identifiers for nodes and edges to zero
+        self.node_identifier = nn.Parameter(torch.zeros(d_model))
+        self.edge_identifier = nn.Parameter(torch.zeros(d_model))
 
-        # Project node to half of its dimension
-        #this is used to form the node specific identifier
-        #the weights are trainable, so I guess that is enough!!
-        #He doesn't init the weights
-        self.project_node = nn.Linear(d_model, d_model // 2)
+    def forward(self, cand_span_reps, cand_rel_reps, cand_span_masks, cand_rel_masks):
+        # Apply element-wise addition of identifiers
+        masked_nodes = cand_span_reps * cand_span_masks.unsqueeze(-1)
+        nodes = masked_nodes + self.node_identifier
 
-        # Initialize identifier with zeros
-        #this is the node/edge discriminator identifier
-        #nn.Parameter() this just makes this 2D tensor trainable
-        self.identifier = nn.Parameter(torch.randn(2, d_model))
-        nn.init.zeros_(self.identifier)
+        masked_edges = cand_rel_reps * cand_rel_masks.unsqueeze(-1)
+        edges = masked_edges + self.edge_identifier
 
-    def forward(self, candidate_span_rep):
-        """
-        This forms the node and edge reps from the candidate span reps
-        
-        The inputs are the candidate span reps
-        
-        The outputs are the node and edge reps, which are similar to the pre-graph span and relation reps, but they have the graph identifiers added to them which gives graph position
-
-        NAthan:
-        This code has an error (read point 5)
-        There is a whole bunch or weird shit going on here:
-        (1) he is doing the same relation generation algo he just did prior to building the graph, so why fucking do it again in here?  Just pass the rel reps in!!!
-        (2) he doesn't mask out self relations/edges, why not?  
-        (3) the nodes is stupid, he projects span reps down to hidden/2 then concatenates them to each other, that is just dumb, why not just use the plain span reps for nodes?  Makes no sense
-        (4) the identifiers, he uses one id rep for all nodes and another id rep for all edges, so if the identifier reps are just for differentiating nodes from edges, then this is a dumb way of doing it
-        Just add an identifier dim to the rep, just cat 0 for nodes and 1 for edges.
-        (5) in the paper he states that he adds the raw span reps to the node identifier reps but he doesn't do that
-        he actually should add the raw rel reps to the edges also, he even mentions that it works better if he does that in the paper
-        
-        So basically this graph embedder is not finished.
-        """
-        max_top_k = candidate_span_rep.size()[1]
-
-        # Project nodes
-        #project span reps to hidden/2, a lower dimensionality
-        #this is actually for the node specific identifier, he is just init the node specific identifiers with the projected span_reps
-        #I would have said it makes more sense to use actual orthogonal codes, but hey
-        nodes = self.project_node(candidate_span_rep)
-
-        # Split nodes into heads and tails
-        #Nathan: do the same thing we did for the regular span-pair expansion, add a dim and put a copy of the span reps in one or the other
-        heads = nodes.unsqueeze(2).expand(-1, -1, max_top_k, -1)
-        tails = nodes.unsqueeze(1).expand(-1, max_top_k, -1, -1)
-        # Concatenate heads and tails to form edges
-        # then concate the heads and tails tensors to make the relations (edges), 
-        #edges will be the edge identifiers (which are just concat of the head and tail node identifier)
-        edges = torch.cat([heads, tails], dim=-1)
-
-        # Duplicate nodes along the last dimension
-        #Nathan: These are basically the self edges, not sure the reason for making them
-        #NOTE that these will also be in the edges tensor on the diagonals of the middle 2 dims, so I do not know why he makes it again!?
-        #anyway, these are the node specific identifiers
-        nodes = torch.cat([nodes, nodes], dim=-1)
-
-        #Add node/edge identifier to nodes and edges
-        #here he adds the node/edge discriminator identifier so we can tell an edge from a node
-        nodes += self.identifier[0]
-        edges += self.identifier[1]
-
-        #why is he not adding the raw span/rel reps to this node/edge identifier reps?
-        #that is what they do in the paper!!!!
-        #HE SHOUD HAVE THIS HERE, but he doesn't:
-        #HE SHOUD HAVE THIS HERE, but he doesn't:
-        #HE SHOUD HAVE THIS HERE, but he doesn't:
-        #HE SHOUD HAVE THIS HERE, but he doesn't:
-        #nodes += candidate_span_rep
-        
         return nodes, edges
+    
 
+
+
+
+class OutputLayer(nn.Module):
+    """
+    A custom neural network output layer that can operate in two modes: prompting and non-prompting.
+    When prompting is enabled, it computes interactions between item representations and type representations
+    using untrainable Einstein summation. When prompting is disabled, it processes item representations through
+    a trainable linear layer followed by dropout.
+
+    Parameters:
+        num_types (int, optional): Number of types or classes for the non-prompting output layer. This must be
+                                   specified if `use_prompt` is False.
+        hidden_size (int, optional): The size of the hidden layer dimensions. Defaults to 768.
+        dropout (float, optional): The dropout rate applied to the linear layer output in non-prompting mode.
+                                   Defaults to 0.1.
+        use_prompt (bool, optional): Determines the mode of operation. If True, the layer expects to perform
+                                     operations using prompting logic. If False, it uses a standard linear
+                                     transformation followed by dropout. Defaults to True.
+
+    Raises:
+        ValueError: If `num_types` is not provided in non-prompting mode or if `item_type_reps` is not provided
+                    in prompting mode.
+
+    Inputs:
+        item_reps (torch.Tensor): The tensor of item representations with shape (batch, num_items, hidden).
+        item_type_reps (torch.Tensor, optional): The tensor of item type representations, required in prompting
+                                                 mode, with shape (batch, num_types, hidden).
+
+    Outputs:
+        torch.Tensor: The output tensor. In prompting mode, the shape is (batch, num_items, num_types), representing
+                      the interaction scores between items and types. In non-prompting mode, the shape is
+                      (batch, num_items, num_types), where each item's representation is transformed to predict
+                      its type.
+
+    Example:
+        >>> output_layer = OutputLayer(num_types=10, use_prompt=False)
+        >>> logits = output_layer(item_reps)  # item_reps is a tensor of shape (batch, num_items, hidden)
+
+        For prompting mode:
+        >>> output_layer = OutputLayer(use_prompt=True)
+        >>> logits = output_layer(item_reps, item_type_reps)  # item_type_reps must also be provided
+    """
+    def __init__(self, num_types=None, hidden_size=768, dropout=0.1, use_prompt=True):
+        super(OutputLayer, self).__init__()
+        self.use_prompt = use_prompt
+        
+        if not use_prompt:
+            if num_types is None:
+                raise ValueError("num_types must be provided for no prompting")
+            self.output_head = nn.Linear(hidden_size, num_types)
+            self.dropout = nn.Dropout(dropout)
+
+    def forward(self, item_reps, item_type_reps=None):
+        if self.use_prompt:
+            if item_type_reps is None:
+                raise ValueError("item_type_reps must be provided for prompting")
+            return torch.einsum("bnd,btd->bnt", item_reps, item_type_reps)
+        else:
+            item_reps = self.dropout(item_reps)
+            return self.output_head(item_reps)

@@ -92,6 +92,19 @@ class DataProcessor(object):
 
 
 
+    def calc_neg_samples_count(valid_neg_indices, neg_sample_rate, min_limit):
+        total_negs = len(valid_neg_indices)
+        # Calculate the initial number of negatives based on the percentage rate
+        initial_neg_sample = total_negs * (neg_sample_rate / 100)
+        # Apply the minimum limit constraint
+        negs_after_min_limit = max(initial_neg_sample, min_limit)
+        # Ensure we do not exceed the number of available negatives
+        num_negs_to_select = min(negs_after_min_limit, total_negs)
+
+        return int(num_negs_to_select)
+
+
+
 
     def generate_span_mask_for_obs(self, span_labels, span_ids, seq_len, neg_sample_rate, min_limit):
         """
@@ -133,7 +146,7 @@ class DataProcessor(object):
         valid_pos_indices = torch.nonzero(valid_labels > 0, as_tuple=True)[0]
         ##########################################
         #do the neg sampling adhering to the sample rate and the min limit
-        num_negs_to_select = min(max(len(valid_neg_indices) * neg_sample_rate, min_limit), len(valid_neg_indices))
+        num_negs_to_select = self.calc_neg_samples_count(valid_neg_indices, neg_sample_rate, min_limit)
         selected_neg_indices = valid_neg_indices[torch.randperm(len(valid_neg_indices))[:num_negs_to_select]]
         ##########################################
         #Map selected negative indices back to the original span_labels tensor indices
@@ -161,6 +174,9 @@ class DataProcessor(object):
         NOTE: these params are already set in the self.config params
         self.config.all_span_ids, self.config.s_to_id, self.config.id_to_s, self.config.r_to_id, self.config.id_to_r
         '''
+        neg_sample_rate = self.config.neg_sample_rate, 
+        min_neg_sample_limit = self.config.min_neg_sample_limit
+        
         #Get the maximum length for the word tokens and truncate
         #NOTE: this needs to be as low as possible for model speed, but not so small that it uneccessarily truncates input sequences
         #NOTE: the encoder transformer will later also truncate the encoder specific token sequences (max_enc_seq_len, bert is 512 sw tokens, bigbird is 4096 bigbird tokens)
@@ -176,45 +192,50 @@ class DataProcessor(object):
         else:
             seq_len = len(tokens)
 
-        #simplify the spans and rels to list of tuples
-        spans = [(x['start'], x['end'], x['type']) for x in obs['spans']]
-        rels = [(x['head'], x['tail'], x['type']) for x in obs['relations']]
-
         #get all possible spans in seq_len, noting there will be some who's 'end' goes past the seq_len bounds
         #length of span_ids will be seq_len * max_span_width
         span_ids = [x for x in self.config.all_span_ids if x[0] < seq_len]
-
         #make the mapping from original span idx to the idx in the span_ids tensor
         # Map span tuples to their index in span_ids for quick lookup
         span_ids_map = {span: idx for idx, span in enumerate(span_ids)}
-        # Create a mapping from original span index to new index in span_ids
+
+        #simplify the spans and rels to list of tuples
+        if self.config.run_type == 'predict':
+            #only need this for predict and everything else just falls into palce,
+            #NOTE: we disable neg samping by setting the rate to 100%
+            spans, rels, neg_sample_rate = [], [], 100
+        else:
+            spans = [(x['start'], x['end'], x['type']) for x in obs['spans']]
+            rels = [(x['head'], x['tail'], x['type']) for x in obs['relations']]
+
+        #Create a mapping from original span index to new index in span_ids
         orig_map = {}
         for i, span in enumerate(spans):
             span_tuple = (span[0], span[1])
             orig_map[i] = span_ids_map[span_tuple]
 
-        # Get the dictionary of span labels key is (start, end), value is the class as idx
+        #Get the dictionary of span labels.  The key is (start, end), the value is the class as idx
         #this maps the (start, end) to the label idx, returns 0 if key not in dict (defaultdict behaviour)
         label_dict = self.make_span_to_label_defaultdict(spans, self.config.s_to_id) if spans else defaultdict(int)
-        span_labels = [label_dict[x] for x in span_ids]   #label of 0 if the span doesn't have a label as label_dict is a default dict (returns 0 to keys that are not there)
+        span_labels = [label_dict[x] for x in span_ids]   #label of 0 if the span doesn't have a label, because label_dict is a default dict (returns 0 to keys that are not there)
         #move to tensors
         span_labels = torch.tensor(span_labels, dtype=torch.long)
         span_ids = torch.tensor(span_ids, dtype=torch.long)
         
         #do neg sampling to get the span_mask (valid pos spans + valid selected neg cases)
-        span_mask = self.generate_span_mask_for_obs(span_labels, span_ids, seq_len, self.config.neg_sample_rate, self.config.min_neg_sample_limit)
+        span_mask = self.generate_span_mask_for_obs(span_labels, span_ids, seq_len, neg_sample_rate, min_neg_sample_limit)
         #set the span_labels to -1 for masked out span ids, do not really need to but just do it anyway
         span_labels = span_labels.masked_fill(~span_mask, -1)        
 
         # Return a dictionary with the preprocessed observations
         return dict(
             tokens      = tokens,             #the word tokens of the input seq
-            spans       = spans,              #the simplified list of span tuples [(start, end, type), ...]
-            relations   = rels,               #the simplified list of rel tuples [(head, tail, type), ...]
+            spans       = spans,              #the simplified list of span tuples [(start, end, type), ...]   NOTE: [] for no labels
+            relations   = rels,               #the simplified list of rel tuples [(head, tail, type), ...]    NOTE: [] for no labels
             span_ids    = span_ids,           #tensor (seq_len*max_span_width, 2) all possible span (start,end) tuples starting within tokens
-            span_label  = span_labels,        #tensor (seq_len*max_span_width) the span labels aligning with each element in span_idx, 0 if none_span
-            span_mask   = span_mask,          #tensor (seq_len*max_span_width) the span mask aligning with each element in span_idx, 1 if the span is valid and selected for use
-            orig_map    = orig_map,           #this makes the dict mapping the original span idx in spans to the dim 0 idx in the span_ids tensor here
+            span_label  = span_labels,        #tensor (seq_len*max_span_width) the span labels aligning with each element in span_idx, 0 if none_span    NOTE: all zero if no labels
+            span_mask   = span_mask,          #tensor (seq_len*max_span_width) the span mask aligning with each element in span_idx, 1 if the span is valid and selected for use   NOTE: 1 for all valid spans and 0 for pad and invalid spans
+            orig_map    = orig_map,           #this makes the dict mapping the original span idx in spans to the dim 0 idx in the span_ids tensor here      NOTE: {} if no labels
             seq_length  = seq_len,            #length of tokens, a scalar
         )
 
@@ -237,21 +258,28 @@ class DataProcessor(object):
         return batch_output
 
 
-    def create_dataloaders(self, data: dict, **kwargs) -> Dict:
+
+    def create_dataloaders(self, data, **kwargs) -> Dict:
         """
         Create DataLoaders for the dataset with span and relation types extracted from the schema.
         Args:
-            data: The dataset to be loaded with train, val, test keys
+            data: The dataset to be loaded with train, val, test keys or predict keys for run_type == predict
             **kwargs: Additional arguments passed to the DataLoader.
         Returns:
             one DataLoader per data key: A PyTorch DataLoader instance.
         """
         #make the loaders    
-        loaders = dict(
-            train = DataLoader(data['train'], collate_fn=self.collate_fn, batch_size=self.config.train_batch_size, shuffle=self.config.shuffle_train, **kwargs),
-            val =   DataLoader(data['val'],   collate_fn=self.collate_fn, batch_size=self.config.eval_batch_size,  shuffle=False, **kwargs),
-            test =  DataLoader(data['test'],  collate_fn=self.collate_fn, batch_size=self.config.eval_batch_size,  shuffle=False, **kwargs)
-        )
+        if self.config.run_type == 'train':
+            loaders = dict(
+                train = DataLoader(data['train'], collate_fn=self.collate_fn, batch_size=self.config.train_batch_size, shuffle=self.config.shuffle_train, **kwargs),
+                val =   DataLoader(data['val'],   collate_fn=self.collate_fn, batch_size=self.config.eval_batch_size,  shuffle=False, **kwargs),
+                test =  DataLoader(data['test'],  collate_fn=self.collate_fn, batch_size=self.config.eval_batch_size,  shuffle=False, **kwargs)
+            )
+
+        elif self.config.run_type == 'predict':
+            loaders = dict(
+                predict =  DataLoader(data['predict'],  collate_fn=self.collate_fn, batch_size=self.config.eval_batch_size,  shuffle=False, **kwargs)
+            )
         return loaders
 
 
@@ -487,6 +515,7 @@ class RelationProcessor():
             Tuple[torch.Tensor, torch.Tensor]:
                 rel_labels (torch.Tensor): Tensor (batch, top_k_spans**2) of type int, containing relation labels aligned with candidate span indices.
                 rel_masks (torch.Tensor): Tensor (batch, top_k_spans**2) of type bool, containing masks aligned with candidate span indices.
+                rel_ids (torch.Tensor): Tensor containing pairs of candidate span indices for each relation.
 
         Notes:
             The function assumes that relation tensors are created here for the first time since candidate span IDs are not predetermined before model execution.
@@ -509,57 +538,74 @@ class RelationProcessor():
         batch, top_k_spans = cand_span_labels.shape
         device = cand_span_labels.device
 
-        #NOTE: we do not need the rel_ids as we can simply determine the cand_span_ids for the head and tail span from dim 1 (head) and dim 2 (tail) of the rel_labels/masks
-        #if we flatten dim 1 and 2 later we can still find the head/tail span idx from the rel_label dim 1 idx (k) via:
-        #i = k // top_k_spans   #Head Span Index (i): 
-        #j = k % top_k_spans    #Tail Span Index (j): 
-        rel_labels = torch.full((batch, top_k_spans, top_k_spans), 0, dtype=torch.int)
+        rel_labels = torch.full((batch, top_k_spans, top_k_spans), -1, dtype=torch.int32, device=device)
+        rel_masks = torch.zeros((batch, top_k_spans, top_k_spans), dtype=torch.bool, device=device)
+        rel_ids = torch.full((batch, top_k_spans, top_k_spans, 2), -1, dtype=torch.int32, device=device)  # For storing head and tail indices
+
         for batch_idx in range(batch):
-            # Each item in x['orig_map'] corresponds to the mapping in the same batch index
-            orig_map = orig_map[batch_idx]  # This is a dict mapping original span idx to the span_ids tensor dim 1 idx
-            relations = raw_rels[batch_idx]  # List of relation tuples (head, tail, rel_type) 
             #go through the relations
-            for rel in relations:
+            for rel in raw_rels[batch_idx]:
                 #get the original head and tail span ids and the string rel label
                 head_orig, tail_orig, rel_type = rel
                 #map these to the cand_span_ids dim 1 with a boolean index first as the head or tail may not be present if we disable pos forcing (i.e. some pos cases are missing from cand_span_ids)
-                head_cand_idx = cand_span_map[batch_idx] == orig_map.get(head_orig, -1)    #cand_span_map is never -1 so if -1 nothing will be found
-                tail_cand_idx = cand_span_map[batch_idx] == orig_map.get(tail_orig, -1)
+                head_cand_idx = (cand_span_map[batch_idx] == orig_map[batch_idx].get(head_orig, -1)).nonzero(as_tuple=True)[0]    #cand_span_map is never -1 so if -1 nothing will be found
+                tail_cand_idx = (cand_span_map[batch_idx] == orig_map[batch_idx].get(tail_orig, -1)).nonzero(as_tuple=True)[0]
                 # Update rel_labels only if both head and tail indices are part of the candidate spans
-                if head_cand_idx.any() and tail_cand_idx.any():
-                    #Convert boolean indices to actual indices
-                    head_cand_idx = head_cand_idx.nonzero(as_tuple=True)[0][0]
-                    tail_cand_idx = tail_cand_idx.nonzero(as_tuple=True)[0][0]
-                    #Map relation type to its corresponding integer identifier
-                    rel_label_idx = self.config.r_to_id[rel_type]
+                if head_cand_idx.numel() > 0 and tail_cand_idx.numel() > 0:
                     # Update the tensors for labels and IDs
-                    rel_labels[batch_idx, head_cand_idx, tail_cand_idx] = rel_label_idx
+                    rel_labels[batch_idx, head_cand_idx, tail_cand_idx] = self.config.r_to_id[rel_type]
+                    rel_masks[batch_idx, head_cand_idx, tail_cand_idx] = True
+                    rel_ids[batch_idx, head_cand_idx, tail_cand_idx, 0] = head_cand_idx.item()
+                    rel_ids[batch_idx, head_cand_idx, tail_cand_idx, 1] = tail_cand_idx.item()
 
-        #do the rel_masks
-        #Expand rel_masks for directed relations (no symetry about the diagonal)
-        rel_masks = cand_span_masks.unsqueeze(2) & cand_span_masks.unsqueeze(1)  # Shape becomes (batch, top_k_spans, top_k_spans)
-        # Mask out self-relations (i.e., diagonal elements)
+        #Mask out self-relations (i.e., diagonal elements)
         diagonal_mask = torch.eye(top_k_spans, device=device, dtype=torch.bool).unsqueeze(0)
         rel_masks = rel_masks & ~diagonal_mask
 
         #Apply the mask to rel_labels to ensure invalid relationships are set to -1
         rel_labels.masked_fill_(~rel_masks, -1)
 
-        #flattens the last 2 dims of the rel_labels and rel_masks to (batch, top_k_spans**2)
-        #NOTE: we do not need the rel_ids as we can simply determine the cand_span_ids for the head and tail span from dim 1 (head) and dim 2 (tail) of the rel_labels/masks
-        #if we flatten dim 1 and 2 later we can still find the head/tail span idx from the rel_label dim 1 idx (k) via:
-        #i = k // top_k_spans   #Head Span Index (i): 
-        #j = k % top_k_spans    #Tail Span Index (j): 
-        rel_labels = rel_labels.view(-1, top_k_spans * top_k_spans)
-        rel_masks = rel_masks.view(-1, top_k_spans * top_k_spans)
+        # Flatten tensors for compatibility with downstream processing
+        rel_labels = rel_labels.view(batch, -1)
+        rel_masks = rel_masks.view(batch, -1)
+        rel_ids = rel_ids.view(batch, -1, 2)
 
-        return rel_labels, rel_masks
+        return rel_labels, rel_masks, rel_ids
     
+
+
+    def dynamic_top_k_rels(self, rel_scores, config):
+        """
+        Dynamically determines the number of top relationships to include in the graph based on a percentile threshold of relationship scores.
+
+        This function calculates the threshold score at a specified percentile of the relationship scores provided. It then counts how many relationships exceed this threshold and limits the count based on the maximum number allowed by the configuration. The function ensures that the number of relationships considered does not exceed the actual number of relationships available.
+
+        Args:
+            rel_scores (torch.Tensor): A tensor containing the scores of relationships, where higher scores indicate a stronger likelihood of the relationship being significant. These scores should range from -inf to +inf.
+            config (ConfigClass): An object containing configuration parameters, including:
+                rel_score_percentile (float): The percentile (between 0 and 1) used to determine the threshold score for including relationships. For example, 0.95 means the top 5% of scores are considered.
+                max_top_k_rels (int): The maximum number of relationships to include, providing an upper bound to prevent excessive computation.
+
+        Returns:
+            int: The number of relationships to include, which is the minimum of the number of relationships exceeding the score threshold, the maximum number allowed, and the total number of relationships available.
+
+        Example:
+            >>> rel_scores = torch.tensor([0.1, 0.4, 0.35, 0.8, 0.95])
+            >>> config = ConfigClass(rel_score_percentile=0.8, max_top_k_rels=3)
+            >>> dynamic_top_k_rels(rel_scores, config)
+            2  # Only two scores exceed the 80th percentile threshold in this example.
+        """
+        rel_score_thd = torch.quantile(rel_scores, config.rel_score_percentile)
+        valid_rels_mask = rel_scores >= rel_score_thd
+        valid_rels_count = valid_rels_mask.sum().item()
+        top_k_rels = min(valid_rels_count, config.max_top_k_rels, rel_scores.shape[1])
+        return top_k_rels
+
 
 
     def get_rel_candidates(self, sorted_idx, tensor_elem, topk=10):
         '''
-        Description!?
+        This is old code from graphER, I am pruning earlier is a more clear way, do not use this stuff
         '''
         # sorted_idx [batch, num_spans]
         # tensor_elem [batch, num_spans, D] or [batch, num_spans]

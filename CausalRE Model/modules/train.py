@@ -7,6 +7,7 @@ from transformers import (
 )
 import torch
 import os, re
+from pathlib import Path
 from typing import Tuple, List, Dict, Union
 from types import SimpleNamespace
 from tqdm import tqdm
@@ -15,36 +16,23 @@ from tqdm import tqdm
 #custom imports
 from .model import Model
 from .data_processor import DataProcessor
-from .utils import import_data
-
-
-
-
-
-
-
-
-'''
-NATHAN
---------------------
-This sets up the model, data_processor, scheduler, scaler etc..
-
-This sets up the train and eval loops
-the pimary info is the batch size and the number of batch steps (num_steps) which will be as many as you want, i.e. it just recycles through the batches if it runs out, as opposed to defining epochs
-
-'''
-
+from .utils import import_data, er_decoder, get_relation_with_span, load_from_json, save_to_json
+from .evaluator import Evaluator
 
 
 
 class Trainer:
     '''
-    This is the Trainer class that brings in the config and basically orchestrates everything    
+    This is the Trainer class that brings in the config and basically orchestrates everything 
+    It is used for prediction and training   
     '''
     def __init__(self, config):
-        #put the config instance into a property as a backup
         self.config = config
 
+
+    ################################################
+    #get the model
+    ################################################
     def get_model(self, device=None):
         '''
         This sets up the model
@@ -83,19 +71,16 @@ class Trainer:
 
 
 
-
-    def get_optimizer(self, model, lr_encoder, lr_others, freeze_encoder=False):
+    ################################################
+    #get the optimiser
+    ################################################
+    def get_optimizer(self, model):
         """
         Sets learning rates for the encoder and all other layers, with an option to freeze the encoder.
-
-        Parameters:
-        - lr_encoder: Learning rate for the transformer encoder layer.
-        - lr_others: Learning rate for all other layers.
-        - freeze_encoder: Whether to freeze the transformer encoder layer.
         """
-        # Ensure learning rates are float values
-        lr_encoder = float(lr_encoder)
-        lr_others = float(lr_others)
+        lr_encoder = float(self.config.lr_encoder)
+        lr_others = float(self.config.lr_others)
+        freeze_encoder = self.config.freeze_encoder
 
         param_groups = []
         # Handling the transformer encoder parameters: either freeze or assign learning rate
@@ -125,10 +110,14 @@ class Trainer:
 
 
 
-    def init_scheduler(self, scheduler_type, optimizer, num_warmup_steps, num_steps):
+    ################################################
+    #get the scheduler
+    ################################################
+    def get_scheduler(self, optimizer, num_warmup_steps, num_steps):
         '''
         Setup the learning rate scheduler
         '''
+        scheduler_type = self.config.scheduler_type, 
         if scheduler_type == "cosine":
             scheduler = get_cosine_schedule_with_warmup(
                 optimizer,
@@ -165,16 +154,17 @@ class Trainer:
 
 
 
-    #function def uses type hints (eg. : int)
-    #I have not reviewed this code yet
-    def save_top_k_checkpoints(self, model: Model, save_path: str, checkpoint: int, top_k: int = 5):
+    ################################################
+    #save the model code
+    ################################################
+    def save_top_k_checkpoints(self, model: Model, save_path: str, checkpoint: int, top_k: int = 1):
         """
-        Save the top-k checkpoints (latest k checkpoints) of a model and tokenizer.
+        Save the most recent top_k models, I have top_k set to 1 by default, so it just saves the most recent model
 
         Parameters:
             model (Model): The model to save.
             save_path (str): The directory path to save the checkpoints.
-            top_k (int): The number of top checkpoints to keep. Defaults to 5.
+            top_k (int): The number of top checkpoints to keep. Defaults to 1.
         """
         # Save the current model and tokenizer
         model.save_pretrained(os.path.join(save_path, str(checkpoint)))
@@ -194,23 +184,14 @@ class Trainer:
 
 
     ##########################################################################
-    #TRAIN
-    #getting issues with the scheduler
-    #getting issues with the scheduler
-    #getting issues with the scheduler
-    #getting issues with the scheduler
-    #getting issues with the scheduler
-
+    #TRAIN/EVAL
     ##########################################################################
-    def train(self, model, optimizer, loaders):
+    def train_loop(self, model, optimizer, loaders):
         '''
-        This is the training function
+        This is the training and eval loop
         '''
         #read some params from config
         device = self.config.device
-        train_loader = loaders['train']
-        val_loader = loaders['val']
-        test_loader = loaders['test']
         num_steps = self.config.num_steps
         pbar = tqdm(range(num_steps))
         warmup_ratio = self.config.warmup_ratio
@@ -219,53 +200,223 @@ class Trainer:
         save_total_limit = self.config.save_total_limit
         log_dir = self.config.log_dir
 
+        #set model to train mode
         model.train()
-        scheduler = self.init_scheduler(self.config.scheduler_type, optimizer, num_warmup_steps, num_steps)
-        iter_train_loader = iter(train_loader)
+        #get the optimiser and scheduler
+        optimizer = self.get_optimizer(model)
+        scheduler = self.get_scheduler(optimizer, num_warmup_steps, num_steps)
         scaler = torch.cuda.amp.GradScaler()
+
+        #get the loaders
+        train_loader = loaders['train']
+        val_loader = loaders['val']
+        test_loader = loaders['test']
+        #make an infinitely iterable from train loader
+        iter_loader_inf = self.load_loader(train_loader, device, infinite=True)
 
         for step in pbar:
             optimizer.zero_grad()
-            #NATHAN: fetches a batch and moves it to the GPU
-            try:
-                x = next(iter_train_loader)
-            except StopIteration:
-                iter_train_loader = iter(train_loader)
-                x = next(iter_train_loader)
-
-            for k, v in x.items():
-                if isinstance(v, torch.Tensor):
-                    x[k] = v.to(device)
-
-            #NATHAN: this is the core of it, running the data x through the model
+            #get next batch and run through model
+            x = next(iter_loader_inf)
             with torch.cuda.amp.autocast(dtype=torch.float16):    #forcing data to half precision
-                loss = model(x, step)
-
+                result = model(x, step, mode='train')
+                loss = result['loss']
+            #skip if loss is NaN
             if torch.isnan(loss).any():
-                print("Warning: NaN loss detected")
+                print(f"Warning: NaN loss detected, not processing step {step}")
                 continue
 
-            #NATHAN: this backpropagates and runs the optimiser and scheduler
+            #backpropagates and runs the optimiser and scheduler
             scaler.scale(loss).backward()
             scaler.step(optimizer)
             scaler.update()
             scheduler.step()
 
-            #NATHAN: writes status to the screen
+            #writes status to the screen
             description = f"step: {step} | epoch: {step // len(train_loader)} | loss: {loss.item():.2f}"
             pbar.set_description(description)
 
-            #NATHAN: runs eval, need to put the code in here for eval
+            #runs eval and saves the model
             if (step + 1) % eval_every == 0:
-                #I think you need to do eval here
-                #I think you need to do eval here
-                #I think you need to do eval here
-
+                #run the eval loop
+                result = self.eval_loop(model, val_loader, device, step)
+                #save the model
                 checkpoint = f'model_{step + 1}'
                 self.save_top_k_checkpoints(model, log_dir, checkpoint, save_total_limit)
                 #if val_data_dir != "none":
                     #get_for_all_path(model, step, log_dir, val_data_dir)
                 model.train()
+
+
+        #run the final eval and test loop
+        result_eval = self.eval_loop(model, val_loader, device, step)
+        result_test = self.eval_loop(model, test_loader, device, step)
+        #do some shit with the results here
+        #save the model
+        checkpoint = f'model_{step + 1}'
+        self.save_top_k_checkpoints(model, log_dir, checkpoint, save_total_limit)
+
+
+
+
+    def eval_loop(self, model, data_loader, device, step):
+        model.eval()
+        iter_loader = self.load_loader(data_loader, device, infinite=False)
+        with torch.no_grad():
+            for x in iter_loader:
+                result = model(x, step=step, mode='pred_w_labels')
+                '''
+                Here, implement your logic to process outputs, which contain loss and logits + associated data
+                so we would report:
+                - loss (potentially need to breakdown loss also)
+                - predictions:
+                    - spans (start, end, type, potentially show the actual textual span)
+                    - rels (head_idx, tail_idx, type)
+                - metrics 
+    
+                I am not sure what this returns right now if anything
+                '''
+        return 'something'
+
+
+
+    ##########################################################################
+    #PREDICT
+    ##########################################################################
+    def predict_loop(self, model, loaders):
+        '''
+        This is the training function
+        '''
+        #read some params from config
+        device = self.config.device
+        predict_loader = loaders['predict']
+        log_dir = self.config.log_dir
+
+        model.eval()
+        iter_loader = self.load_loader(predict_loader, device, infinite=False)
+        with torch.no_grad():
+            for x in iter_loader:
+                result = model(x, mode='pred_no_labels')
+                '''
+                Here, implement your logic to process outputs, which contain logits + associated data only
+                so we would report:
+                - predictions:
+                    - spans (start, end, type, potentially show the actual textual span)
+                    - rels (head_idx, tail_idx, type)
+    
+                I am not sure what this returns right now if anything
+
+                '''
+        
+        return 'something'
+    ########################################################################
+
+
+
+
+
+
+
+    #################################################################
+    #INTEGRATE THIS!!!!!!
+    #INTEGRATE THIS!!!!!!
+    #INTEGRATE THIS!!!!!!
+    #INTEGRATE THIS!!!!!!
+    #INTEGRATE THIS!!!!!!
+    ###########################################################################
+    #Base Functions, these were in basemodel before, moving to the train class
+    ###########################################################################
+    def save_pretrained(self, save_directory: str):
+        """Save the model parameters and config to the specified directory"""
+        save_directory = Path(save_directory)
+        save_directory.mkdir(parents=True, exist_ok=True)
+        torch.save(self.state_dict(), save_directory / "pytorch_model.bin")
+        # Optionally save the configuration file
+        save_to_json(save_directory / 'config.json')
+
+
+    def load_pretrained(self, model_path):
+        """Load model weights from the specified path"""
+        state_dict = torch.load(model_path)
+        self.load_state_dict(state_dict)
+        print(f"Model loaded from {model_path}")
+
+
+    def adjust_logits(self, logits, keep):
+        """Adjust logits based on the keep tensor."""
+        keep = torch.sigmoid(keep)
+        keep = (keep > 0.5).unsqueeze(-1).float()
+        adjusted_logits = logits + (1 - keep) * -1e9
+        return adjusted_logits
+
+
+    def predict(self, x, threshold=0.5, output_confidence=False):
+        """Predict entities and relations."""
+        out = self.forward(x, prediction_mode=True)
+
+        # Adjust relation and entity logits
+        out["span_logits"] = self.adjust_logits(out["span_logits"], out["keep_span"])
+        out["rel_logits"] = self.adjust_logits(out["rel_logits"], out["keep_rel"])
+
+        # Get entities and relations
+        spans, rels = er_decoder(x, 
+                                 out["span_logits"], 
+                                 out["rel_logits"], 
+                                 out["topK_rel_idx"], 
+                                 out["max_top_k"], 
+                                 out["candidate_spans_idx"], 
+                                 threshold=threshold, 
+                                 output_confidence=output_confidence)
+        return spans, rels
+
+
+    def evaluate(self, eval_loader, threshold=0.5, batch_size=12, rel_types=None):
+        self.eval()
+        device = next(self.parameters()).device
+        all_preds = []
+        all_trues = []
+        for x in eval_loader:
+            for k, v in x.items():
+                if isinstance(v, torch.Tensor):
+                    x[k] = v.to(device)
+            batch_predictions = self.predict(x, threshold)
+            all_preds.extend(batch_predictions)
+            all_trues.extend(get_relation_with_span(x))
+        evaluator = Evaluator(all_trues, all_preds)
+        out, f1 = evaluator.evaluate()
+        return out, f1
+    ###########################################################################
+    ###########################################################################
+    ###########################################################################
+
+
+
+
+    ################################################
+    #helper functions
+    ################################################
+    ################################################
+    def load_loader(self, data_loader, device, infinite=True):
+        """
+        Generator function to endlessly yield batches from the data loader, optionally moving them to a specified device,
+        restarting from the beginning once all batches have been yielded.
+
+        Args:
+            data_loader (DataLoader): The DataLoader from which to fetch data.
+            device (str or torch.device): The device to which tensors in the batches should be moved.
+            infinite (bool): If True, yields batches indefinitely. If False, yields batches once through the data loader.
+
+        Yields:
+            batch (dict): A batch from the data_loader, with all tensors moved to the specified device.
+        """
+        while True:
+            for batch in data_loader:
+                # Move each tensor in the batch to the specified device
+                batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
+                yield batch
+            if not infinite:
+                break
+
 
 
     def make_all_possible_spans(self):
@@ -311,19 +462,40 @@ class Trainer:
 
 
     def make_type_mappings_and_span_ids(self):
-        '''
-        add to the config => the span and rel type mapping dicts and the all_possible_spans data
-        '''
+        """
+        Initializes and configures the type mappings and identifier settings for span and relationship types
+        within the model's configuration. This method sets several configuration properties related to span
+        and relationship types, including creating mapping dictionaries and a list of all possible spans.
+
+        Updates the following in self.config:
+        - num_span_types: Number of span types, not including the 'none_span'.
+        - num_rel_types: Number of relationship types, not including the 'none_rel'.
+        - none_span: A placeholder name for non-existent span types.
+        - none_rel: A placeholder name for non-existent relationship types.
+        - s_to_id: Dictionary mapping from span types to their indices.
+        - id_to_s: Dictionary mapping from indices to span types.
+        - r_to_id: Dictionary mapping from relationship types to their indices.
+        - id_to_r: Dictionary mapping from indices to relationship types.
+        - all_span_ids: A list of all possible spans generated from the span types.
+
+        No parameters are required as the method operates directly on the class's config attribute.
+        """
         self.config.none_span = 'none_span'
-        self.config.none_rel = 'none_rel'
+        self.config.none_rel  = 'none_rel'
+        
+        self.config.num_span_types = len(self.config.span_types)   #scalar, does not include the none_span (idx 0)
+        self.config.num_rel_types  = len(self.config.rel_types)    #scalar, does not include the none_rel (idx 0)
+        
         self.config.s_to_id, self.config.id_to_s = self.create_type_mappings(self.config.span_types, self.config.none_span)
         self.config.r_to_id, self.config.id_to_r = self.create_type_mappings(self.config.rel_types, self.config.none_rel)
+        
+        #get all span_ids in seq_len
         self.config.all_span_ids = self.make_all_possible_spans()
 
 
-    def check_loader(self, loader):
+    def testing_check_loader(self, loader):
         '''
-        temp function for dataset checking        
+        Keep this function, it is for testing
         '''
         x = iter(loader)
         batch = next(x)
@@ -331,31 +503,50 @@ class Trainer:
         print(batch)
 
 
+    def load_and_prep_data(self):
+        '''
+        Description
+        '''
+        #load the predict data
+        result = import_data(self.config)
+        #read in the data
+        dataset                     = result['dataset']
+        self.config.span_types      = result['span_types']
+        self.config.rel_types       = result['rel_types']
 
-    def run(self):
-        #load the training, val, test data
-        data_path = self.config.app_path / self.config.data_path
-        dataset, self.config.span_types, self.config.rel_types = import_data(str(data_path))
         #add to the config => the span and rel type mapping dicts and the all_possible_spans data
         self.make_type_mappings_and_span_ids()
+
         #make the data loaders
         self.data_processor = DataProcessor(self.config)
-        loaders = self.data_processor.create_dataloaders(dataset)
+        return self.data_processor.create_dataloaders(dataset)
+    ################################################
+    ################################################
+    ################################################
+
+
+    ################################################
+    #main orchestration function for training/eval
+    ################################################
+    def run(self):
+        #load and prepare data
+        loaders = self.load_and_prep_data()
         #testing
-        #self.check_loader(loaders['train'])
+        #self.testing_check_loader(loaders['train'])
+
         #get the model
         model = self.get_model()
-        #get the optimiser
-        optimizer = self.get_optimizer(model, 
-                                       self.config.lr_encoder, 
-                                       self.config.lr_others, 
-                                       freeze_encoder=self.config.freeze_encoder)
-        #kick off the training
-        self.train(model, 
-                   optimizer, 
-                   loaders)
+
+        #kick off the train_loop or predict_loop
+        if self.config.run_type == 'train': 
+            self.train_loop(model, loaders)
+
+        elif self.config.run_type == 'predict': 
+            self.predict_loop(model, loaders)
+
+        else:
+            raise Exception("Error - run_type must be either 'train' or 'predict'")
 
 
 
 
-#I think I am ready to test this

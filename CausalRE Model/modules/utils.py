@@ -197,14 +197,14 @@ def save_to_json(data, filename):
 
 
 
-def import_data(data_path):
+def import_data(data_path, config):
     """
     Load a source dataset from a JSON file and extract its schema.
 
     Args:
-        data_path (str): The path to the source JSON file.
-
-    Input JSON Format:
+        config => the config namespace
+        
+    Input JSON Format (train):
         - Outer dictionary with 2 keys: 'data', 'schema'.
             - 'data' is a dict of 3 keys: 'train', 'val', 'test'
                 - each key contains a list of dicts, each dict with 3 keys:
@@ -227,6 +227,19 @@ def import_data(data_path):
                     - 'name': The name of the relation type.
                     - 'color': The color specification.
 
+    Input JSON Format (predict):
+        - Outer dictionary with 2 keys: 'data', 'schema'.
+            - 'data' is a dict of 1 key: 'predict'
+                - the only key contains a list of dicts, each dict has one key:
+                    - 'tokens': List of word tokens for the input text
+            - 'schema': dict with 2 keys:
+                - 'span_types': List of dictionaries, each defining a span type with:
+                    - 'name': The name of the span type.
+                    - 'color': The color specification (e.g., rgba(1,2,3,0.3)).
+                - 'relation_types': List of dictionaries, each defining a relation type with:
+                    - 'name': The name of the relation type.
+                    - 'color': The color specification.
+
     Returns:
         tuple: A tuple containing:
             - data (dict): The dataset without the schema key.
@@ -235,17 +248,60 @@ def import_data(data_path):
     Raises:
         KeyError: If the 'schema' key is missing from the JSON.
     """
+    #make the absolute data path
+    data_path = str(config.app_path / config.data_path)
     #Load the JSON file into a Python object
     result = load_from_json(data_path)
     
-    #do validity checks for splits
-    if result is None or 'data' not in result or 'train' not in result['data'] or 'val' not in result['data'] or 'test' not in result['data']:
-        raise ValueError("Invalid data provided. Ensure it contains 'train', 'val' and 'test' keys")
+    #do validity checks for data
+    ######################################
+    splits = ['train', 'val', 'test']
+    keys = ['tokens', 'spans', 'relations']
+    if config.run_type == 'predict':
+        splits = ['predict']
+        keys = ['tokens']
+    try:
+        if result is None or 'data' not in result: raise Exception
+        splits = ['train', 'val', 'test']
+        keys = ['tokens', 'spans', 'relations']
+        for split in splits:
+            if split not in result['data']: raise Exception
+            for item in result['data'][split]:
+                for key in keys:
+                    if key not in item: raise Exception
+
+    except Exception as e:
+        raise ValueError(f"Invalid data provided. Ensure it contains these splits: '{','.join(splits)}' and each item in each split contains these keys: '{','.join(keys)}'")
+
+    #ensure that we only select the desired data in the dataset
+    dataset = {}
+    if config.run_type == 'train':
+        dataset = dict(
+            train   = [dict(tokens    = x['tokens'],
+                            spans     = x['spans'],
+                            relations = x['relations'])
+                            for x in result['data']['train']],
+            val     = [dict(tokens    = x['tokens'],
+                            spans     = x['spans'],
+                            relations = x['relations'])
+                            for x in result['data']['val']],
+            test    = [dict(tokens    = x['tokens'],
+                            spans     = x['spans'],
+                            relations = x['relations'])
+                            for x in result['data']['test']]
+        )
+   
+    elif config.run_type == 'predict':
+        dataset = dict(
+            predict   = [{'tokens': x['tokens']} for x in result['data']['train']],
+        )
+    ######################################
 
     #do schema validity checks
+    ######################################
     if 'schema' not in result:
         raise KeyError("The provided JSON file does not contain the required 'schema' key.")
-    #Extract the schema and remove it from the data
+    #Extract the schema
     schema = result['schema']
     #do validity checks
     if 'span_types' not in schema or 'relation_types' not in schema:
@@ -253,5 +309,10 @@ def import_data(data_path):
     #Extract and sort span and relation types, ensuring uniqueness and sorting
     span_types = sorted({x['name'] for x in schema['span_types']})
     rel_types = sorted({x['name'] for x in schema['relation_types']})
+    ######################################
 
-    return result['data'], span_types, rel_types
+    return dict(
+        dataset         = dataset,
+        span_types      = span_types,
+        rel_types       = rel_types
+    )

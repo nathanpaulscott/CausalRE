@@ -886,7 +886,7 @@ def test_extract_span_reps():
 
 
     span_reps1 = extract_span_reps(token_reps, w_span_ids, sw_span_ids, mode=mode)
-    span_reps2 = extract_span_reps_vectorized(token_reps, w_span_ids, sw_span_ids, mode=mode)
+    span_reps2 = extract_span_reps(token_reps, w_span_ids, sw_span_ids, mode=mode)
 
     print(token_reps[:,0:10,:])
     print(span_reps1)

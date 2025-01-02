@@ -224,7 +224,7 @@ class TransformerEncoderHFPrompt(torch.nn.Module):
                     w2sw_map    = w2sw_map)
 
 
-    def forward(self, x, mode=None):
+    def forward(self, x):
         '''
         this adds prompt prefix tokens (based on the span types and rel types) to each token seq
         the flair version of bert tokenizes the incoming word tokens to subword tokens 

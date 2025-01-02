@@ -56,9 +56,20 @@ def load_config_as_namespace(config_path):
 
 if __name__ == "__main__":
     '''
-    This is the main kick off code
+    This is the main kick off code for training
     setup the arg parser and then read in the configs
     then instantiate the trainer which takes in the config and internally sets up the model, reads the dataset, and trains/evals/infers the model
+    When we call the model, we call it in model.train() mode for train and model.eval() with no grad for eval (val and test)
+    We have a 3rd mode model.eval(), and no grad with no labels which is used for the prediction class, see comments below
+
+    NOTE:
+    I have not coded the prediction no labels code yet
+    This will not use the train class, it will use the predict class, some key differences will be:
+    - our input data only has one split, call it 'predict', not train, val, test
+    - the predict split will only have tokens and potentiall schema no spans/relations
+    - we thus create one dataloader with no shuffle
+    - we also do not do negative sampling as we have only negative sampels, all possible spans/rels are negative sampels, we just pass them all
+    - we can reuse the same preprocessing code with some adjustments to disable neg sampling
     '''
     #get the configs
     parser = create_parser()
@@ -70,12 +81,8 @@ if __name__ == "__main__":
     #add key properties to config
     config.app_path = app_path
     config.device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    #make a Trainer object to orchestrate everything
+    #make the Trainer object to orchestrate the training/inference
     trainer = Trainer(config)
-    #run it
+    #run the trainer
     trainer.run()
 
-
-
-
-#I am at the dataloaders part, you need to mod all the code in the collate_fn

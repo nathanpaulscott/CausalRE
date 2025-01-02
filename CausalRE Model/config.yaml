@@ -1,14 +1,19 @@
 #####################################################################
+#Run Config
+#####################################################################
+run_type: train                         #'train' for training, you need 3 labeled splits in the data json file if so.  'predict' for inference, you need one unlabelled split in the data json file if so
+
+#####################################################################
 #Directory Paths
 #####################################################################
-log_dir: logs                               #location of the log file folder
-model_path: "none"                          #pretrained model path => Use "none" if no pretrained model is being used
-data_path: "data/sample data.json"          #the dataset file
+log_dir: logs                           #location of the log file folder
+model_path: "none"                      #pretrained model path => Use "none" if no pretrained model is being used
+data_path: "data/sample data.json"      #the dataset file
 
 #####################################################################
 #General Configs
 #####################################################################
-neg_sample_rate: 0.1                    #the percentage of neg cases to select for training
+neg_sample_rate: 10                     #the percentage of neg cases to select for training  (from 0 to 100)
 min_neg_sample_limit: 100               #the lower limit of neg cases selected per obs is the min of the number of valid neg cases and (the max of this and the number of selected neg cases).  
 
 #####################################################################
@@ -18,6 +23,9 @@ model_name: bert-base-uncased           #name of the flair or hf model, eg 'micr
 model_source: HF                        #HF/flair => HF for hugging face models, flair for flair models.  NOTE: I have implemented the pooling with the HF option.
 ###############
 use_prompt: true                        #whether to use prompting of the span and rel types to generate span_type_reps and rel_type_reps
+                                        NOTE: 
+                                        if False, we send the final span and rel reps through regular multiclass output classification heads to get the final logits for each candidate span and rel  (batch, top_k_spans/rels)
+                                        if True, we send the final reps aslong with the span_type_Reps and rel_type_reps to an einsum operation to produce a similarity matrix for spans and rels as the output logits (batch, top_k_spans/rels, num_span/rel_types)
 subtoken_pooling: none                  #first/last/first_last/mean/maxpool(HF only)/none(HF only).  none will disable subtoken pooling, only supported by HF.  NOTE: first_last will double the hidden dim, but the projection layer will pull it back to normal
 #subtoken_pooling: first_last           #first/last/first_last/mean/maxpool(HF only)/none(HF only).  none will disable subtoken pooling, only supported by HF.  NOTE: first_last will double the hidden dim, but the projection layer will pull it back to normal
 shuffle_train: false                    #always be true, except for debugging
@@ -27,31 +35,20 @@ dropout: 0.1                            #standard model dropout
 ffn_ratio: 4                            #FFN hidden expansion factor
 max_seq_len: 130                        #word token limit, this will generally affect the model speed, so keep it as low as possible.  I have this in just a  a protection fro very long sequences coming in
 max_span_width: 12                      #max span width in word tokens (10-12 for NER, 40+ for long span event detection)
-scorer: dot                             #used in the final ent and rel scoring after pruning the graph
+output_layer_type: ffn                  #simple/ffn. for the span_rep and rel_rep generation output layers.  'simple' to just use a simple projection layer for the output or a 'ffn' for a more complex ffn layer.  Not implemented yet, just use 'ffn'
+
 ###############
 #span rep config
 ###############
+width_embedding_size: 200               #hidden size of the span width embedding
+use_span_pos_encoding: False            #use span pos encoding in additon to full seq pos encoding for attention pooling
 #span_mode: firstlast                   #firstlast_grapher, firstlast, spert, nathan, attentionpooling... used to configure the method used to generate the span reps from the token reps
 span_mode: spert                        #firstlast_grapher, firstlast, spert, nathan, attentionpooling... used to configure the method used to generate the span reps from the token reps
 #span_mode: nathan                      #firstlast_grapher, firstlast, spert, nathan, attentionpooling... used to configure the method used to generate the span reps from the token reps
 #span_mode: attentionpooling            #firstlast_grapher, firstlast, spert, nathan, attentionpooling... used to configure the method used to generate the span reps from the token reps
-###############
-width_embedding_size: 200               #hidden size of the span width embedding
-use_span_pos_encoding: False            #use span pos encoding in additon to full seq pos encoding for attention pooling
-###############
-#rel rep config
-###############
-rel_mode: no_context                    #rel rep is the concat of the head and tail span reps
-#rel_mode: between_context              #rel rep is the concat of the head and tail span reps + the context rep from the tokens between the head/tail spans
-#rel_mode: window_context               #rel rep is the concat of the head and tail span reps + the context rep from the tokens in a windows before/after each of the head/tail spans
 
 ###############
-#graph transformer config
-###############
-num_heads: 4                            #used by the graph transformer layer 
-num_transformer_layers: 2               #used by the graph transformer layer
-###############
-#span filtering params                  #these are from graphER for choosing the spans per obs for the initial graph, I will keep them for now, but will probably change the calc later
+#span/rel filtering params              #these are from graphER for choosing the spans per obs for the initial graph, I will keep them for now, but will probably change the calc later
 ###############
 #NOTE: a key point here is limiting the number of spans for the initial graph as the number of rels is quadratically dependent on this number
 #Also note that we have forced the pos cases to be at the top of the list (see span filtering score calcs, that is from graphER, but I also implemente somehting similar, it is kind of important to guide the model, at least initially)
@@ -60,6 +57,27 @@ rel_force_pos: false                    #whether to force pos rels to +inf in th
 pos_force_step_limit: none              #whether to turn off positive case forcing at some point in the training process, none => means never, 10 means after 10 batches, 45 means after 45 batches etc..
 max_top_k_spans: 54                     #max number of spans to choose per obs for the initial graph, if the seq len goes below this, then that is the limit
 add_top_k_spans: 10                     #add to the result of the min(seq_len, max_top_k_spans) calc
+max_top_k_rels: 100                     #max number of rels to choose per obs for the initial graph, if the number available goes below this, then that is the limit.  This is the hard limit only overridden by the percentile filter
+rel_score_percentile: 90                #only include rels with a score in this percentile, increase this to prune more, decrease to prune less (0, 100)
+
+###############
+#rel rep config
+###############
+rel_mode: no_context                    #rel rep is the concat of the head and tail span reps
+#rel_mode: between_context              #rel rep is the concat of the head and tail span reps + the context rep from the tokens between the head/tail spans
+#rel_mode: window_context               #rel rep is the concat of the head and tail span reps + the context rep from the tokens in a windows before/after each of the head/tail spans
+
+###############
+#graph embedding config
+###############
+graph_id_method: add                    #whether to add or prefix the node and edge identifiers onto the span and rel reps respectively
+
+###############
+#graph transformer config
+###############
+num_heads: 4                            #used by the graph transformer layer 
+num_transformer_layers: 2               #used by the graph transformer layer
+graph_force_pos: false                  #whether to force pos cases (nodes and edges) to +inf in the rel filtering score calc ensuring pos cases are included in the final graph (a form of teacher forcing)
 
 #####################################################################
 #Training Parameters
