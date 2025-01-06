@@ -17,41 +17,42 @@ class DataProcessor(object):
         self.config = config
 
 
-    def batch_list_to_dict_converter(self, batch: List[Dict]) -> Dict:
-        '''
-        converts a batch from a list of dicts (one dict per obs) to a dict of various things
-        i.e. The values for each key could be lists, tensors, or dicts depending on the usage, 
-        eg. 
-        s_to_id is a dict, 
-        tokens is a list of ragged lists, 
-        span_ids is a tensor
-        spans is a list of tuples
 
-        NOTE:
-        All these properties are set in the dataprocessor __init__ method
-        self.config.s_to_id, self.config.id_to_s, self.config.r_to_id, self.config.id_to_r
+    def batch_list_to_dict_converter(self, batch):
         '''
-        #convert seq_length to a tensor
+        Converts a batch from a list of dictionaries (one dictionary per observation) into a single dictionary of lists or tensors 
+        containing various structured data. This method restructures the batch data for use in further processing or modeling.
+
+        The output dictionary contains:
+        - tokens: List of ragged lists containing tokenized sequences.
+        - spans: List of ragged lists of tuples representing spans.
+        - relations: List of ragged lists of tuples representing relations.
+        - orig_map: List of dictionaries mapping original span indices to processed span indices.
+        - seq_length: Tensor representing the sequence length of each observation.
+        - span_ids: Tensor of span indices, aligned and padded to the batch's maximum sequence length.
+        - span_masks: Boolean tensor marking valid spans across the padded length.
+        - span_labels: Tensor for labels, supports both unilabel (integers) and multilabel (boolean vectors) formats.
+
+        Parameters:
+        - batch (List[Dict]): A list of dictionaries, where each dictionary corresponds to an observation.
+
+        Returns:
+        - Dict: A dictionary containing structured data for the batch.
+
+        Notes:
+        - Span indices (`span_ids`) and labels (`span_labels`) are aligned to all possible spans defined in `self.config.all_span_ids`.
+        - The `span_labels` padding handles both unilabel and multilabel formats by padding with 0 (interpreted as False for multilabel).
+        - This function maintains a clear separation of data and control signals, using a mask tensor for validity marking.
+        - All properties are initialized in the `dataprocessor.__init__` method, including `self.config.s_to_id`, `self.config.id_to_s`, etc.
+        '''
         seq_length = torch.tensor([x["seq_length"] for x in batch], dtype=torch.long)
-        
-        #pad the span_idx and span_label list of tensors to the longest observation in the batch and convert the whole thing to a tensor
-        #READ THIS
-        #remember: obs['span_ids'] and obs['span_labels'] are aligned to all possible spans (self.config.all_span_ids)
-        #obs['span_ids'] are just ints, so the padding here is to fill up where the seq_len if different between obs
-        #obs['span_labels'] are ints from 0 to num_span_types, 0 means non-span, > 0 means a classified span and -1 is an invalid span, thus we further pad with more -1 to deal with the different seq_lens.  
-        #the key point is that span_labels == 0 are neg samples, span_labels > 0 are pos samples, span_labels == -1 are invalid spans or padding => invlaid spans were marked -1 in labels back in the preprocessing function
-        #so at this point the span_mask info is in the span_labels as -1
-        #READ THIS
-        span_ids    = torch.nn.utils.rnn.pad_sequence([obs["span_ids"] for obs in batch], batch_first=True, padding_value=0)
-        span_labels = torch.nn.utils.rnn.pad_sequence([obs["span_label"] for obs in batch], batch_first=True, padding_value=-1)
-        span_masks  = torch.nn.utils.rnn.pad_sequence([obs["span_mask"] for obs in batch], batch_first=True, padding_value=False)
-        
-        #these ones are just lists
-        tokens      = [obs["tokens"] for obs in batch]
-        spans       = [obs["spans"] for obs in batch]
-        relations   = [obs["relations"] for obs in batch]
-        orig_map    = [obs['orig_map'] for obs in batch] 
-        
+        span_ids = torch.nn.utils.rnn.pad_sequence([obs["span_ids"] for obs in batch], batch_first=True, padding_value=0)
+        span_masks = torch.nn.utils.rnn.pad_sequence([obs["span_mask"] for obs in batch], batch_first=True, padding_value=False)
+        span_labels = torch.nn.utils.rnn.pad_sequence([obs["span_label"] for obs in batch], batch_first=True, padding_value=0)
+        tokens = [obs["tokens"] for obs in batch]
+        spans = [obs["spans"] for obs in batch]
+        relations = [obs["relations"] for obs in batch]
+        orig_map = [obs['orig_map'] for obs in batch]
         # Return a dict of lists
         return dict(
             tokens        = tokens,         #list of ragged lists of strings => the raw word tokenized seq data
@@ -59,51 +60,38 @@ class DataProcessor(object):
             relations     = relations,      #list of ragged lists of tuples => the positive cases for each obs
             orig_map      = orig_map,       #list of dicts for the mapping of the orig span idx to the span_ids dim 1 idx (for pos cases only, is needed in the model for rel tensor generation later)
             seq_length    = seq_length,     #tensor (batch) the length of tokens for each obs
-            span_ids      = span_ids,       #tensor (batch, max_seq_len_batch*max_span_width, 2) => the span_ids truncated to the max_seq_len in the batch* max_span_wdith
-            span_masks    = span_masks,     #tensor (batch, max_seq_len_batch*max_span_width) => 1 for valid selected spans, 0 for rest (padding, invalid spans, unselected neg cases)
-            span_labels   = span_labels,    #tensor (batch, max_seq_len_batch*max_span_width) => 0 to num_span_types for valid cases, -1 for invalid and pad cases
+            span_ids      = span_ids,       #tensor (batch, max_seq_len_batch*max_span_width, 2) int => the span_ids truncated to the max_seq_len in the batch* max_span_wdith
+            span_masks    = span_masks,     #tensor (batch, max_seq_len_batch*max_span_width) bool => True for valid selected spans, False for rest (padding, invalid spans, unselected neg cases)
+            span_labels   = span_labels,    #tensor (batch, max_seq_len_batch*max_span_width) int for unilabels.  (batch, max_seq_len_batch*max_span_width, num_span_types) bool for multilabels
         )
 
 
 
-    #remember staticmethod is a python decorator that just ties the function to the class not the instance
-    #as a result it doesn't need the self part, but this also means it doesn't have access to self
-    @staticmethod
-    def make_span_to_label_defaultdict(
-        spans: List[Tuple[int, int, str]], 
-        span_types_to_id: Dict[str, int]) -> Dict[Tuple[int, int], int]:
-        '''
-        This is just a utility function, probably should be utilities, it is for looking up the span_type idx from the span (start, end) tuple, it returns 0 if the given tuple is not there
-        NOTE: We already have s_to_id which is span_type string to span_type idx, but this one is for span (start, end) tuple to span idx
-
-        Makes a defaultdict to map the span (start, end) tuple to the label idx.
-        NOTE: the default dict functionality is crucial as it returns 0 for keys that are NOT found in the dict
-        0 is the label index for the none_span, i.e. span that doesn't represent an entity/event etc..
-
-        Input spans is a list of tuples [(start, end, label)...]
-        Output is a defaultdict mapping (start, end) to label_idx, where label_idx is 1 onwards, returns 0 if key not in the dict
-        '''
-        span_map = defaultdict(int)
-        for span in spans:
-            if span[-1] not in span_types_to_id or span_types_to_id[span[-1]] == 0:    #the span_type was not found or it maps to the none_span, do not include as we will rely on the defaultdict behaviour to return idx 0
-                continue
-            span_map[(span[0], span[1])] = span_types_to_id[span[-1]]
-        return span_map
-
-
-
     def calc_neg_samples_count(valid_neg_indices, neg_sample_rate, min_limit):
+        '''
+        Calculate the number of negative samples to select based on the available indices, a specified sample rate, 
+        and a minimum limit. This function ensures that the number of selected samples does not exceed the number 
+        of available negative indices and respects the defined minimum limit.
+
+        Parameters:
+        - valid_neg_indices (list or similar iterable): A collection of indices representing valid negative samples.
+        - neg_sample_rate (float): The desired rate of negative sampling as a percentage (e.g., 20 for 20%).
+        - min_limit (int): The minimum number of negative samples to be selected, regardless of the sample rate.
+
+        Returns:
+        - int: The number of negative samples to select. This number respects the negative sample rate, does not exceed 
+        the number of available negatives, and adheres to the minimum limit specified.
+
+        Example:
+        - Given 100 valid negative indices, a sample rate of 20%, and a minimum limit of 10, this function will calculate
+        an initial sample of 20 (20% of 100). Since 20 is greater than the minimum limit of 10, and less than the total 
+        available negatives, the function returns 20.
+        '''
         total_negs = len(valid_neg_indices)
-        # Calculate the initial number of negatives based on the percentage rate
         initial_neg_sample = total_negs * (neg_sample_rate / 100)
-        # Apply the minimum limit constraint
         negs_after_min_limit = max(initial_neg_sample, min_limit)
-        # Ensure we do not exceed the number of available negatives
-        num_negs_to_select = min(negs_after_min_limit, total_negs)
-
-        return int(num_negs_to_select)
-
-
+        num_negs_to_select = int(min(negs_after_min_limit, total_negs))
+        return num_negs_to_select
 
 
     def generate_span_mask_for_obs(self, span_labels, span_ids, seq_len, neg_sample_rate, min_limit):
@@ -112,7 +100,7 @@ class DataProcessor(object):
         Valid spans are those that do not extend beyond the specified sequence length. The selection includes negative sampling from valid negative spans along with all valid positive spans.
 
         Args:
-        span_labels (torch.Tensor): Tensor of shape (num_spans) containing label values,
+        span_labels (torch.Tensor): Tensor of shape (num_spans) unilabel or (num_spans, num_pos_classes) multilabel containing label values,
                                     where 0 represents negative samples, and >0 represents positive samples.
         span_ids (torch.Tensor): Tensor of shape (num_spans, 2) containing start and end indices for each span.
         seq_len (int): Length of the sequence, used to determine the validity of each span.
@@ -127,23 +115,26 @@ class DataProcessor(object):
         2. Negative Sampling: From valid spans, perform negative sampling on negative labels to determine which negative spans to include.
         3. Final Mask Assembly: Combine the results of negative sampling and the inclusion of all valid positive spans into a single mask indicating which spans are selected for use.
         """
-        #make the valid_span_mask
-        #############################################
-        valid_span_mask = torch.ones_like(span_labels, dtype=torch.bool)
-        filter = span_ids[:, 1] > seq_len     #no seq_len-1 here as we have pythonic end indices
-        valid_span_mask[filter] = 0
+        #Determine if span_labels are multilabel and aggregate to unilabel if so for ease of neg sampling
+        if self.config.span_labels == 'multilabel':
+            span_labels = (torch.sum(span_labels, dim=1) > 0)
+        else:  # Unilabel case
+            span_labels = (span_labels > 0)
+
+        # Create a mask indicating valid spans based on the end indices not exceeding the sequence length
+        valid_span_mask = torch.ones(span_labels.shape[0], dtype=torch.bool)
+        valid_span_mask[span_ids[:, 1] > seq_len] = False    #no seq_len-1 here as we have pythonic end indices
 
         #make the final span_mask including neg sampling on the valid neg spans and the pos cases
         #############################################
         #Initialize the sample mask as zeros (False), meaning no spans are selected by default
         span_mask = torch.zeros_like(valid_span_mask, dtype=torch.bool)
-        #Find indices in the span_masks tensor where spans are valid (True in span_masks)
+        #Find indices where spans are valid
         valid_indices = torch.nonzero(valid_span_mask, as_tuple=True)[0]
-        #Extract the labels corresponding to valid indices into a subset tensor of shape (num_valid_spans,)
         valid_labels = span_labels[valid_indices]
-        #Find indices of negative samples and pos samples within the valid labels subset tensor
-        valid_neg_indices = torch.nonzero(valid_labels == 0, as_tuple=True)[0]
-        valid_pos_indices = torch.nonzero(valid_labels > 0, as_tuple=True)[0]
+        #Separate indices for negative and positive valid labels
+        valid_neg_indices = torch.nonzero(valid_labels == False, as_tuple=True)[0]
+        valid_pos_indices = torch.nonzero(valid_labels == True, as_tuple=True)[0]
         ##########################################
         #do the neg sampling adhering to the sample rate and the min limit
         num_negs_to_select = self.calc_neg_samples_count(valid_neg_indices, neg_sample_rate, min_limit)
@@ -161,7 +152,69 @@ class DataProcessor(object):
 
 
 
-    def preprocess_obs(self, obs: Dict) -> Dict:
+    def make_span_labels_unilabels(self, len_span_ids, spans, orig_map):
+        """
+        This function fills the span_ids aligned span_labels data for the unilabel case
+        where each span can have one label only, thus just one integer (0 = negative case, 1+ = positive case).
+
+        Args:
+        - len_span_ids (int): The number of span ids.
+        - spans (list): List of spans, each with details including the label at the last index.
+        - orig_map (list): Mapping from original span indices to the current indices.
+
+        Returns:
+        - list: A list of integers where each element corresponds to a label ID or 0 for negative cases.
+        """
+        span_labels = [0] * len_span_ids
+        for i, span in enumerate(spans):
+            label = span[-1]
+            # Adds the integer ID of the label to the correct span index aligned with span_ids
+            if label not in self.config.s_to_id:
+                raise ValueError(f'Error. The annotated span type: "{label}" is not in the given span schema, exiting...')
+            label_int = self.config.s_to_id[label]
+            span_ids_idx = orig_map[i]
+            # Check if the annotated data has multiple labels for the unilabel case
+            if span_labels[span_ids_idx] != 0:
+                raise ValueError(f'Error. There are multiple labels for span ID {span_ids_idx} and span_labels is set to unilabel, exiting...')
+            span_labels[span_ids_idx] = label_int
+
+        return span_labels
+
+
+
+
+    def make_span_labels_multilabels(self, len_span_ids, num_pos_classes, spans, orig_map):
+        '''
+        This function fills the span_ids aligned span_labels data for the multilabel case,
+        where each span has a binary vector for labels. The vector length equals num_pos_classes,
+        which does not include the none_span (index 0).
+
+        Args:
+        - len_span_ids (int): The number of span ids.
+        - num_pos_classes (int): The number of positive classes, excluding the none type.
+        - spans (list): List of spans, each with details including the label at the last index.
+        - orig_map (list): Mapping from the original span indices to the current indices.
+
+        Returns:
+        - list: A list of lists, where each inner list is a binary vector indicating the presence of any of the defined positive labels.
+        '''
+        span_labels = [[False]*num_pos_classes for x in range(len_span_ids)]
+        for i, span in enumerate(spans):
+            label = span[-1]
+            #check the label is in the schema
+            if label not in self.config.s_to_id:
+                raise Exception(f'Error. The span type: "{label}" is not in the given span schema, exiting...')
+            #Get the label index adjusted for zero-based indexing in Python
+            label_vector_idx = self.config.s_to_id[label]    #no need to adjust the idx as for the multilabel case only pos types are in self.config.span_types 
+            #Update the binary vector for that span
+            span_labels[orig_map[i]][label_vector_idx] = True  #Set to True where label occurs
+        
+        return span_labels
+
+
+
+
+    def preprocess_obs(self, obs):
         '''
         NOTE: remember this is working on one obs from the batch (not the entire batch)
         processes the raw obs dict:
@@ -174,6 +227,7 @@ class DataProcessor(object):
         NOTE: these params are already set in the self.config params
         self.config.all_span_ids, self.config.s_to_id, self.config.id_to_s, self.config.r_to_id, self.config.id_to_r
         '''
+        #get teh neg sampling config params
         neg_sample_rate = self.config.neg_sample_rate, 
         min_neg_sample_limit = self.config.min_neg_sample_limit
         
@@ -195,9 +249,10 @@ class DataProcessor(object):
         #get all possible spans in seq_len, noting there will be some who's 'end' goes past the seq_len bounds
         #length of span_ids will be seq_len * max_span_width
         span_ids = [x for x in self.config.all_span_ids if x[0] < seq_len]
+        len_span_ids = len(span_ids)
         #make the mapping from original span idx to the idx in the span_ids tensor
-        # Map span tuples to their index in span_ids for quick lookup
-        span_ids_map = {span: idx for idx, span in enumerate(span_ids)}
+        #Map span tuples in span_ids to the index in span_ids for quick lookup
+        span_to_ids_map = {span: idx for idx, span in enumerate(span_ids)}
 
         #simplify the spans and rels to list of tuples
         if self.config.run_type == 'predict':
@@ -208,24 +263,31 @@ class DataProcessor(object):
             spans = [(x['start'], x['end'], x['type']) for x in obs['spans']]
             rels = [(x['head'], x['tail'], x['type']) for x in obs['relations']]
 
-        #Create a mapping from original span index to new index in span_ids
+        #Create a mapping from original span index in annotations to the span index in span_ids (all possible spans in tokens)
         orig_map = {}
         for i, span in enumerate(spans):
             span_tuple = (span[0], span[1])
-            orig_map[i] = span_ids_map[span_tuple]
+            orig_map[i] = span_to_ids_map[span_tuple]
 
-        #Get the dictionary of span labels.  The key is (start, end), the value is the class as idx
-        #this maps the (start, end) to the label idx, returns 0 if key not in dict (defaultdict behaviour)
-        label_dict = self.make_span_to_label_defaultdict(spans, self.config.s_to_id) if spans else defaultdict(int)
-        span_labels = [label_dict[x] for x in span_ids]   #label of 0 if the span doesn't have a label, because label_dict is a default dict (returns 0 to keys that are not there)
-        #move to tensors
-        span_labels = torch.tensor(span_labels, dtype=torch.long)
-        span_ids = torch.tensor(span_ids, dtype=torch.long)
+        #make the span_labels data which aligns the annotated spans data to the span_ids
+        if self.config.span_labels == 'unilabel':
+            #make the unilabel span_labels, when converted to tensor will be shape (num_possible_spans)
+            span_labels = self.make_span_labels_unilabels(len_span_ids, spans, orig_map)
+            #move to tensors
+            span_labels = torch.tensor(span_labels, dtype=torch.long)    #shape => (num_possible_spans) for unilabel
+
+        elif self.config.span_labels == 'multilabel':
+            #make the multilabel span_labels, when converted to tensor will be shape (num_possible_spans, num_span_types)
+            span_labels = self.make_span_labels_multilabels(len_span_ids, self.config.num_span_types, spans, orig_map)
+            #move to tensors
+            span_labels = torch.tensor(span_labels, dtype=torch.bool)    #shape => (num_possible_spans, num_span_types) for multilabel
+
+        #move span_ids to tensors
+        span_ids = torch.tensor(span_ids, dtype=torch.long)          #shape => (num_possible_spans)
         
         #do neg sampling to get the span_mask (valid pos spans + valid selected neg cases)
+        #NOTE: it automatically handles both unilabel and multilabel cases
         span_mask = self.generate_span_mask_for_obs(span_labels, span_ids, seq_len, neg_sample_rate, min_neg_sample_limit)
-        #set the span_labels to -1 for masked out span ids, do not really need to but just do it anyway
-        span_labels = span_labels.masked_fill(~span_mask, -1)        
 
         # Return a dictionary with the preprocessed observations
         return dict(
@@ -233,7 +295,7 @@ class DataProcessor(object):
             spans       = spans,              #the simplified list of span tuples [(start, end, type), ...]   NOTE: [] for no labels
             relations   = rels,               #the simplified list of rel tuples [(head, tail, type), ...]    NOTE: [] for no labels
             span_ids    = span_ids,           #tensor (seq_len*max_span_width, 2) all possible span (start,end) tuples starting within tokens
-            span_label  = span_labels,        #tensor (seq_len*max_span_width) the span labels aligning with each element in span_idx, 0 if none_span    NOTE: all zero if no labels
+            span_label  = span_labels,        #tensor (seq_len*max_span_width) int for unilabel, (seq_len*max_span_width, num span types) bool for multilabel.  The span labels aligning with each element in span_idx.
             span_mask   = span_mask,          #tensor (seq_len*max_span_width) the span mask aligning with each element in span_idx, 1 if the span is valid and selected for use   NOTE: 1 for all valid spans and 0 for pad and invalid spans
             orig_map    = orig_map,           #this makes the dict mapping the original span idx in spans to the dim 0 idx in the span_ids tensor here      NOTE: {} if no labels
             seq_length  = seq_len,            #length of tokens, a scalar
@@ -285,9 +347,11 @@ class DataProcessor(object):
 
 
 
-
-
-
+################################################################################################
+################################################################################################
+################################################################################################
+################################################################################################
+################################################################################################
 
 
 
@@ -311,13 +375,14 @@ class PromptProcessor():
 
     def add_prompt_to_tokens(self, x):
         '''
-        This adds in prompt tokens for each span and rel type to the tokens for each obs
+        This adds in prompt tokens for each span and rel type to the tokens for each obs (including the none type for the unilabel case)
         x is the batch, x['tokens'] is a list of lists, the outer list is for the observations, the inner list is for tokens in the sequence
         eg.
         tokens_w_prompt = ['<<S>>', 'span_type1', '<<S>>', 'span_type2', '<<SEP>>', '<<R>>','rel_type1','<<R>>','rel_type2', <<SEP>>, normal input tokens...]
         
-        NOTE: self.config.span_types and self.config.rel_types do not include the none_span and none_relation
-        
+        NOTE: 
+        for unilabels => self.config.span/rel_types CONTAIN the none type at idx 0
+        for multilabels => self.config.span/rel_types DO NOT contain the none type, idx 0 is the first pos type
         '''
         #this puts all the unique entity classes in teh obs into a list of strings ['<<S>>', span_type1, '<<S>>', span_type2,.... '<<SEP>>']
         span_prompt = self.make_prompt(self.config.span_types, self.config.s_token)
@@ -476,16 +541,20 @@ class PromptProcessor():
 
         return dict(token_reps      = token_reps,       #(b, max_batch_seq_len (token or subtoken), h)
                     token_masks     = token_masks,      #(b, max_batch_seq_len (token or subtoken))
-                    span_type_reps  = span_type_reps,   #(b, num span types, h)
-                    rel_type_reps   = rel_type_reps,    #(b, num rel types, h)
+                    span_type_reps  = span_type_reps,   #(b, num span types, h) => num span types = pos types only for multilabel and pos/neg types for unilabel
+                    rel_type_reps   = rel_type_reps,    #(b, num rel types, h) => num rel types = pos types only for multilabel and pos/neg types for unilabel
                     w2sw_map        = w2sw_map_new)     #list of dicts => adjusted to align with token_reps if no pooling used
     
 
 
-
+################################################################################################
+################################################################################################
+################################################################################################
+################################################################################################
 
 class RelationProcessor():
     '''
+    We run this from the model forward pass as we need the filtered span data as inputs.
     Processes relational data to generate candidate relation tensors. It works with the data
     from `x['relations']` to form tensors based on candidate span IDs.
     '''
@@ -499,76 +568,75 @@ class RelationProcessor():
 
     def get_cand_rel_tensors(self, raw_rels, orig_map, cand_span_map, cand_span_labels, cand_span_masks):
         """
-        Generates relation labels and masks tensors for all possible span-pairs derived from candidate span IDs.
-        This function initializes relation tensors from Python objects, which involves non-GPU operations due to dynamic span ID handling.
-        NOTE: we are naming the rel tensors without a cand prefix as it is the the only version we are making
-        There is no easy way to do this prior to this in-model stage as it woudl cause too much memory usage if we did try that considering we do not know cand_span_ids prior to model run
+        Generates relation labels and masks for all possible pairs of candidate spans derived from provided span indices.
+        This function is crucial for dynamic and efficient relation extraction post candidate span filtering, adapting to both unilabel and multilabel scenarios.
 
         Args:
-            raw_rels (list of lists of tuples): Each inner list contains tuples of (head, tail, rel_type_string) representing raw relations.
-            orig_map (list of dicts): Maps original span indices to their respective span_id tensor indices for each batch.
-            cand_span_map (torch.Tensor): Tensor (batch, top_k_spans) mapping candidate span indices to their respective span_id tensor indices.
-            cand_span_labels (torch.Tensor): Tensor containing labels for candidate spans.
-            cand_span_masks (torch.Tensor): Tensor containing masks for candidate spans.
+            raw_rels (list of lists of tuples): Nested list where each inner list corresponds to a batch and contains tuples of the form (head, tail, rel_type_string), representing relationships between spans.
+            orig_map (list of dicts): List where each dictionary maps original span indices to new indices within candidate spans for a particular batch.
+            cand_span_map (torch.Tensor): Tensor of shape (batch, top_k_spans) that maps candidate span indices to their new tensor indices within the model's processing context.
+            cand_span_labels (torch.Tensor): Tensor containing labels for candidate spans, which can be either unilabel (integers) or multilabel (boolean vectors).
+            cand_span_masks (torch.Tensor): Boolean tensor indicating valid candidate spans to consider for relation processing.
 
         Returns:
-            Tuple[torch.Tensor, torch.Tensor]:
-                rel_labels (torch.Tensor): Tensor (batch, top_k_spans**2) of type int, containing relation labels aligned with candidate span indices.
-                rel_masks (torch.Tensor): Tensor (batch, top_k_spans**2) of type bool, containing masks aligned with candidate span indices.
-                rel_ids (torch.Tensor): Tensor containing pairs of candidate span indices for each relation.
+            Tuple containing three elements:
+            - rel_labels (torch.Tensor): Tensor of relation labels. Shape is (batch, top_k_spans**2) for unilabel or (batch, top_k_spans**2, num_rel_types) for multilabel, depending on configuration.
+            - rel_masks (torch.Tensor): Boolean tensor of shape (batch, top_k_spans**2) indicating valid relations derived from candidate spans.
+            - rel_ids (torch.Tensor): Tensor of shape (batch, top_k_spans**2, 2) storing pairs of indices corresponding to the head and tail of each relation.
 
         Notes:
-            The function assumes that relation tensors are created here for the first time since candidate span IDs are not predetermined before model execution.
+            The processing of relations is designed to handle dynamically determined candidate spans, with efficient memory usage in mind. Relations are initialized based on the presence of candidate spans and are processed to exclude self-relations and unsupported mappings. Special attention is required for edge cases where candidate mappings might lead to missing relations, as indicated by the handling of missing indices with a default of -1 (leading to no matches found).
 
-
-        !!!!I suggest you do some more testing on this function when you have actual data running through it just to ensure there are no uncaught edge cases,
-        espectially for this bit:
-        head_cand_idx = cand_span_map[batch_idx] == orig_map.get(head_orig, -1)    #cand_span_map is never -1 so if -1 nothing will be found
-        tail_cand_idx = cand_span_map[batch_idx] == orig_map.get(tail_orig, -1)
-
-        and this bit
-        rel_masks = cand_span_masks.unsqueeze(2) & cand_span_masks.unsqueeze(1)  # Shape becomes (batch, top_k_spans, top_k_spans)
-        # Mask out self-relations (i.e., diagonal elements)
-        diagonal_mask = torch.eye(top_k_spans, device=device, dtype=torch.bool).unsqueeze(0)
-        rel_masks = rel_masks & ~diagonal_mask
-
-        They shoud be good, but need to triple check
+        Example usage:
+            This function is typically called after spans are filtered and candidate spans are identified within a model's pipeline. It adjusts relation data to align with these filtered views, ensuring that relation training and inference are based on the currently active span set.
         """
         #get dims of the caididate span tensor
-        batch, top_k_spans = cand_span_labels.shape
+        batch = cand_span_labels.shape[0]
+        top_k_spans = cand_span_labels.shape[1]
         device = cand_span_labels.device
 
-        rel_labels = torch.full((batch, top_k_spans, top_k_spans), -1, dtype=torch.int32, device=device)
+        #make the rel masks, ids and labels
         rel_masks = torch.zeros((batch, top_k_spans, top_k_spans), dtype=torch.bool, device=device)
-        rel_ids = torch.full((batch, top_k_spans, top_k_spans, 2), -1, dtype=torch.int32, device=device)  # For storing head and tail indices
+        rel_ids = torch.full((batch, top_k_spans, top_k_spans, 2), 0, dtype=torch.int32, device=device)  # For storing head and tail indices
+        if self.config.rel_labels == 'unilabel':
+            rel_labels = torch.full((batch, top_k_spans, top_k_spans), 0, dtype=torch.int32, device=device)
+        elif self.config.rel_labels == 'multilabel':
+            rel_labels = torch.zeros((batch, top_k_spans, top_k_spans, self.config.num_rel_types), dtype=torch.bool, device=device)
 
-        for batch_idx in range(batch):
+        for i in range(batch):
             #go through the relations
-            for rel in raw_rels[batch_idx]:
+            for rel in raw_rels[i]:
                 #get the original head and tail span ids and the string rel label
                 head_orig, tail_orig, rel_type = rel
                 #map these to the cand_span_ids dim 1 with a boolean index first as the head or tail may not be present if we disable pos forcing (i.e. some pos cases are missing from cand_span_ids)
-                head_cand_idx = (cand_span_map[batch_idx] == orig_map[batch_idx].get(head_orig, -1)).nonzero(as_tuple=True)[0]    #cand_span_map is never -1 so if -1 nothing will be found
-                tail_cand_idx = (cand_span_map[batch_idx] == orig_map[batch_idx].get(tail_orig, -1)).nonzero(as_tuple=True)[0]
+                head_cand_idx = (cand_span_map[i] == orig_map[i].get(head_orig, -1)).nonzero(as_tuple=True)[0]    #cand_span_map is never -1 so if -1 nothing will be found
+                tail_cand_idx = (cand_span_map[i] == orig_map[i].get(tail_orig, -1)).nonzero(as_tuple=True)[0]
                 # Update rel_labels only if both head and tail indices are part of the candidate spans
                 if head_cand_idx.numel() > 0 and tail_cand_idx.numel() > 0:
                     # Update the tensors for labels and IDs
-                    rel_labels[batch_idx, head_cand_idx, tail_cand_idx] = self.config.r_to_id[rel_type]
-                    rel_masks[batch_idx, head_cand_idx, tail_cand_idx] = True
-                    rel_ids[batch_idx, head_cand_idx, tail_cand_idx, 0] = head_cand_idx.item()
-                    rel_ids[batch_idx, head_cand_idx, tail_cand_idx, 1] = tail_cand_idx.item()
+                    rel_masks[i, head_cand_idx, tail_cand_idx] = True
+                    rel_ids[i, head_cand_idx, tail_cand_idx, 0] = head_cand_idx.item()
+                    rel_ids[i, head_cand_idx, tail_cand_idx, 1] = tail_cand_idx.item()
+                    #get the relation label id
+                    r_label_id = self.config.r_to_id[rel_type]
+                    if self.config.rel_labels == 'unilabel':
+                        rel_labels[i, head_cand_idx, tail_cand_idx] = r_label_id
+                    elif self.config.rel_labels == 'multilabel':
+                        #convert rel label id to a position in the multilabel binary label vector
+                        r_label_pos = r_label_id - 1
+                        rel_labels[i, head_cand_idx, tail_cand_idx, r_label_pos] = True
 
         #Mask out self-relations (i.e., diagonal elements)
         diagonal_mask = torch.eye(top_k_spans, device=device, dtype=torch.bool).unsqueeze(0)
         rel_masks = rel_masks & ~diagonal_mask
 
-        #Apply the mask to rel_labels to ensure invalid relationships are set to -1
-        rel_labels.masked_fill_(~rel_masks, -1)
-
-        # Flatten tensors for compatibility with downstream processing
-        rel_labels = rel_labels.view(batch, -1)
+        #Flatten tensors for compatibility with downstream processing
         rel_masks = rel_masks.view(batch, -1)
         rel_ids = rel_ids.view(batch, -1, 2)
+        if self.config.rel_labels == 'unilabel':
+            rel_labels = rel_labels.view(batch, -1)
+        elif self.config.rel_labels == 'multilabel':
+            rel_labels = rel_labels.view(batch, -1, self.config.num_rel_types)
 
         return rel_labels, rel_masks, rel_ids
     
@@ -602,24 +670,6 @@ class RelationProcessor():
         return top_k_rels
 
 
-
-    def get_rel_candidates(self, sorted_idx, tensor_elem, topk=10):
-        '''
-        This is old code from graphER, I am pruning earlier is a more clear way, do not use this stuff
-        '''
-        # sorted_idx [batch, num_spans]
-        # tensor_elem [batch, num_spans, D] or [batch, num_spans]
-
-        sorted_topk_idx = sorted_idx[:, :topk]
-
-        if len(tensor_elem.shape) == 3:
-            batch, num_spans, D = tensor_elem.shape
-            topk_tensor_elem = tensor_elem.gather(1, sorted_topk_idx.unsqueeze(-1).expand(-1, -1, D))
-        else:
-            # [batch, topk]
-            topk_tensor_elem = tensor_elem.gather(1, sorted_topk_idx)
-
-        return topk_tensor_elem, sorted_topk_idx
 
 
 

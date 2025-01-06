@@ -256,6 +256,7 @@ class OutputLayer(nn.Module):
     Parameters:
         num_types (int, optional): Number of types or classes for the non-prompting output layer. This must be
                                    specified if `use_prompt` is False.
+                                   NOTE: will be pos and neg types for unilabel and pos types only for multilabel
         hidden_size (int, optional): The size of the hidden layer dimensions. Defaults to 768.
         dropout (float, optional): The dropout rate applied to the linear layer output in non-prompting mode.
                                    Defaults to 0.1.
@@ -273,18 +274,7 @@ class OutputLayer(nn.Module):
                                                  mode, with shape (batch, num_types, hidden).
 
     Outputs:
-        torch.Tensor: The output tensor. In prompting mode, the shape is (batch, num_items, num_types), representing
-                      the interaction scores between items and types. In non-prompting mode, the shape is
-                      (batch, num_items, num_types), where each item's representation is transformed to predict
-                      its type.
-
-    Example:
-        >>> output_layer = OutputLayer(num_types=10, use_prompt=False)
-        >>> logits = output_layer(item_reps)  # item_reps is a tensor of shape (batch, num_items, hidden)
-
-        For prompting mode:
-        >>> output_layer = OutputLayer(use_prompt=True)
-        >>> logits = output_layer(item_reps, item_type_reps)  # item_type_reps must also be provided
+        torch.Tensor: The output tensor.  In both modes the shape is (batch, num_items, num_types) float and both cases we can consider the outputs to be logits => range (-inf, +inf)
     """
     def __init__(self, num_types=None, hidden_size=768, dropout=0.1, use_prompt=True):
         super(OutputLayer, self).__init__()

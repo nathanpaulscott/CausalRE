@@ -15,6 +15,12 @@ data_path: "data/sample data.json"      #the dataset file
 #####################################################################
 neg_sample_rate: 10                     #the percentage of neg cases to select for training  (from 0 to 100)
 min_neg_sample_limit: 100               #the lower limit of neg cases selected per obs is the min of the number of valid neg cases and (the max of this and the number of selected neg cases).  
+node_keep_thd: 0.5                      #applied to the sigmoid of the node logits part of the graph keep head logits
+edge_keep_thd: 0.5                      #applied to the sigmoid of the edge logits part of the graph keep_head logits
+predict_thd: 0.5                        #the predict threshold
+predict_conf: False                     #the predict confidence
+span_labels: unilabel                   #unilabel/multilabel => unilabel = 1 label per span, uses CELoss.  multilabel = multiple labels per span, uses BCELoss
+rel_labels: multilabel                  #unilabel/multilabel => unilabel = 1 label per rel, uses CELoss.  multilabel = multiple labels per rel, uses BCELoss
 
 #####################################################################
 #Model Configuration
@@ -27,7 +33,6 @@ use_prompt: true                        #whether to use prompting of the span an
                                         if False, we send the final span and rel reps through regular multiclass output classification heads to get the final logits for each candidate span and rel  (batch, top_k_spans/rels)
                                         if True, we send the final reps aslong with the span_type_Reps and rel_type_reps to an einsum operation to produce a similarity matrix for spans and rels as the output logits (batch, top_k_spans/rels, num_span/rel_types)
 subtoken_pooling: none                  #first/last/first_last/mean/maxpool(HF only)/none(HF only).  none will disable subtoken pooling, only supported by HF.  NOTE: first_last will double the hidden dim, but the projection layer will pull it back to normal
-#subtoken_pooling: first_last           #first/last/first_last/mean/maxpool(HF only)/none(HF only).  none will disable subtoken pooling, only supported by HF.  NOTE: first_last will double the hidden dim, but the projection layer will pull it back to normal
 shuffle_train: false                    #always be true, except for debugging
 freeze_encoder: true                    #whether to allow fine tuning of the transformer encoder params (eg. bert), should leave as true
 hidden_size: 768                        #hidden size of the bert based encoder
@@ -42,10 +47,7 @@ output_layer_type: ffn                  #simple/ffn. for the span_rep and rel_re
 ###############
 width_embedding_size: 200               #hidden size of the span width embedding
 use_span_pos_encoding: False            #use span pos encoding in additon to full seq pos encoding for attention pooling
-#span_mode: firstlast                   #firstlast_grapher, firstlast, spert, nathan, attentionpooling... used to configure the method used to generate the span reps from the token reps
 span_mode: spert                        #firstlast_grapher, firstlast, spert, nathan, attentionpooling... used to configure the method used to generate the span reps from the token reps
-#span_mode: nathan                      #firstlast_grapher, firstlast, spert, nathan, attentionpooling... used to configure the method used to generate the span reps from the token reps
-#span_mode: attentionpooling            #firstlast_grapher, firstlast, spert, nathan, attentionpooling... used to configure the method used to generate the span reps from the token reps
 
 ###############
 #span/rel filtering params              #these are from graphER for choosing the spans per obs for the initial graph, I will keep them for now, but will probably change the calc later
@@ -63,9 +65,7 @@ rel_score_percentile: 90                #only include rels with a score in this 
 ###############
 #rel rep config
 ###############
-rel_mode: no_context                    #rel rep is the concat of the head and tail span reps
-#rel_mode: between_context              #rel rep is the concat of the head and tail span reps + the context rep from the tokens between the head/tail spans
-#rel_mode: window_context               #rel rep is the concat of the head and tail span reps + the context rep from the tokens in a windows before/after each of the head/tail spans
+rel_mode: no_context                    #no_context/between_context/window_context => add context reps in (no context, from tokens between spans, from tokens in windows before/after each span)
 
 ###############
 #graph embedding config
@@ -77,7 +77,13 @@ graph_id_method: add                    #whether to add or prefix the node and e
 ###############
 num_heads: 4                            #used by the graph transformer layer 
 num_transformer_layers: 2               #used by the graph transformer layer
-graph_force_pos: false                  #whether to force pos cases (nodes and edges) to +inf in the rel filtering score calc ensuring pos cases are included in the final graph (a form of teacher forcing)
+graph_force_pos: false                  #whether to force pos cases (nodes and edges) to +1e9 in the graph filtering score calc ensuring pos cases are included in the final graph (a form of teacher forcing)
+graph_prune_log: post_loss              #where to apply the final graph pruning, by setting pruned logits to -1e9, i.e. filtering the nodes/edges based on the keep head filter score.  Options: none, pre_loss, post_loss
+                                        #none => do not do any final graph pruning
+                                        #pre_loss => apply to span/edge logits before final loss calcs => will affect model training
+                                        #post_loss => apply to span/edge logits after final loss at the end of the forward method
+use_graph_reps: True                    #True => use the node/edge reps output from the graph transformer, these will be enriched embeddings but also include the node/edge identifiers mixed in
+                                        #False => use the pre-graph transformer span/rel reps, as output, only use the filtering scores and loss from the graph transformer
 
 #####################################################################
 #Training Parameters
@@ -95,8 +101,5 @@ lr_others: 5e-5                         #this is the learning rate used for all 
 #####################################################################
 #Advanced Training Settings
 #####################################################################
-
-
-
 
 

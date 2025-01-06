@@ -9,7 +9,7 @@ import torch.nn.init as init
 from .layers_transformer_encoder_flair import TransformerEncoderFlairPrompt
 from .layers_transformer_encoder_hf import TransformerEncoderHFPrompt
 from .layers_other import LstmSeq2SeqEncoder, TransformerEncoderTorch, GraphEmbedder, OutputLayer
-from .loss_functions import matching_loss
+from .loss_functions import classification_loss
 from .span_rep import SpanRepLayer
 from .filtering import FilteringLayer
 from .data_processor import RelationProcessor
@@ -101,6 +101,11 @@ class Model(nn.Module):
         self.graph_filter_head = FilteringLayer(config.hidden_size)
         
         #final output heads
+        '''
+        NOTE: 
+        for unilabels the output dim will be num pos span/rel types + 1 for the none type
+        for multilabels the output dim will be the num pos span/rel types with no none type
+        '''
         self.output_head_span = OutputLayer(num_types   = config.num_span_types,
                                             hidden_size = config.hidden_size,
                                             dropout     = config.dropout,
@@ -109,7 +114,7 @@ class Model(nn.Module):
         self.output_head_rel = OutputLayer(num_types    = config.num_rel_types,
                                            hidden_size  = config.hidden_size,
                                            dropout      = config.dropout,
-                                           use_prompt  = config.use_prompt)
+                                           use_prompt   = config.use_prompt)
 
         self.init_weights()
 
@@ -185,10 +190,52 @@ class Model(nn.Module):
 
 
 
+    def apply_graph_keep_scores_to_logits(self, logits, filter_score, keep_thd):
+        '''
+        Adjusts logits based on a keep head score (filter score), effectively masking out logits
+        for nodes or edges that fail a specified threshold. This method is used to refine the output
+        of node/edge classification tasks by incorporating confidence scores from a graph keep head,
+        which determines the relevance or importance of each node or edge in the graph.
+
+        Args:
+            logits (torch.Tensor): The original logits for nodes or edges from the output heads.
+                                Shape should be (batch_size, top_k_spans/rels, num_classes),
+                                where num_classes depends on the specific task.
+            filter_score (torch.Tensor): Logits from a keep head that provide a score indicating
+                                        the likelihood that each node/edge should be kept.
+                                        Shape should be (batch_size, top_k_spans/rels).
+            keep_thd (float): A threshold value used to decide whether nodes or edges are kept.
+                            Nodes or edges with a keep probability (sigmoid of filter_score)
+                            less than this threshold are effectively masked out.
+
+        Returns:
+            torch.Tensor: The adjusted logits, where logits for nodes/edges not meeting the keep
+                        threshold are set to a very large negative value (close to zero
+                        influence in subsequent softmax). The shape is the same as the input logits.
+        '''
+        keep_prob = torch.sigmoid(filter_score)     # (batch, top_k_spans/rels)   float (between 0 and 1)
+        keep_mask = (keep_prob > keep_thd).unsqueeze(-1).float()    # (batch, top_k_spans/rels)   float (0.0 to not keep or 1.0 to keep)
+        adjusted_logits = logits + (1 - keep_mask) * -1e-9
+        return adjusted_logits
+
+
+
+    def binarize_labels(self, labels):
+        '''
+        Make the binary int labels from labels (handles the multilabel and unilabel cases)
+        labels_b will be shape (batch, num_reps) int with values of 0 or 1
+        '''
+        if len(labels.shape) == 3:  # Multilabel case, all zero vector is a neg case, otherwise its a pos case
+            return labels.any(dim=-1).to(torch.int64)  # Aggregate multilabels to binary
+        else:  # Unilabel case, any label > 0 is a pos case otherwise a neg case
+            return (labels > 0).to(torch.int64)
+
+
+
     ##################################################################################
     ##################################################################################
     ##################################################################################
-    def forward(self, x, step=None, mode='train'):
+    def forward(self, x, mode='train', step=None):
         '''
         x is a batch, which is a dict, with the keys being of various types as described below:
         x['tokens']     => list of ragged lists of strings => the raw word tokenized seq data as strings
@@ -201,7 +248,7 @@ class Model(nn.Module):
         x['spans']      => list of ragged list of tuples => the positive cases for each obs  => list of empty lists if no labels
         x['relations']  => list of ragged list of tuples => the positive cases for each obs  => list of empty lists if no labels
         x['orig_map']   => list of dicts for the mapping of the orig span idx to the span_ids dim 1 idx (for pos cases only, is needed in the model for rel tensor generation later) => list of empty dicts if no labels
-        x['span_labels']=> tensor (batch, max_seq_len_batch*max_span_width) => 0 to num_span_types for valid cases, -1 for invalid and pad cases => all 0 or -1 for no labels
+        x['span_labels']=> tensor (batch, max_seq_len_batch*max_span_width) int for unilabels.  (batch, max_seq_len_batch*max_span_width, num_span_types) bool for multilabels
 
         step will be current batch idx, i.e. we just set the total number of batch runs, say there are 1000 batches in the datset and we set pbar to 2200, then step will go from 0 to 2199, i.e. each batch will be run 2x and 200 will be 3x
         
@@ -215,14 +262,15 @@ class Model(nn.Module):
         w_span_ids      = x['span_ids']                 #(batch, max_seq_len_batch * max_span_width, 2) => int, w aligned span_ids
         sw_span_ids     = result['sw_span_ids']         #(batch, max_seq_len_batch * max_span_width, 2) => int, sw aligned span_ids => None if pooling
         span_masks      = x['span_masks']               #(batch, max_seq_len_batch * max_span_width) => bool
-        span_labels     = x['span_labels']              #(batch, max_seq_len_batch * max_span_width) => int
-        num_span_types  = self.config.num_span_types    #scalar, does not include the none_span (idx 0)
+        span_labels     = x['span_labels']              #(batch, max_seq_len_batch * max_span_width) int or (batch, max_seq_len_batch * max_span_width, num_span_types) bool
+        num_span_types  = self.config.num_span_types    #scalar, includes the none type (idx 0) for unilabel and only pos types for multilabel
         span_type_reps  = result['span_type_reps']      #(batch, num_span_types, hidden) => float, no mask needed
-        num_rel_types   = self.config.num_rel_types     #scalar, does not include the none_rel (idx 0)
+        num_rel_types   = self.config.num_rel_types     #scalar, includes the none type (idx 0) for unilabel and only pos types for multilabel
         rel_type_reps   = result['rel_type_reps']       #(batch, num_rel_types, hidden) => float, no mask needed
         cls_reps        = result['cls_reps']            #will be None for flair
         #NOTE: if use_prompt = false, the span_type_reps and rel_type_reps will be None here
-
+        #NOTE: for prompting, if unilabels the type reps will include the none type rep, if multilabels the type reps will only be for the positive types
+        
         #get some dims
         batch, max_seq_len, _ = token_reps.shape
 
@@ -255,7 +303,7 @@ class Model(nn.Module):
         #output will be shapes:  (batch, num_spans), scalar
         filter_score_span, filter_loss_span = self.span_filter_head(span_reps, 
                                                                     span_masks, 
-                                                                    span_labels, 
+                                                                    self.binarize_labels(span_labels), 
                                                                     force_pos_cases=force_pos,
                                                                     reduction='sum')           
         #We now select the top K spans for the initial graph based on the span filter scores
@@ -284,9 +332,9 @@ class Model(nn.Module):
             cand_span_ids = cand_sw_span_ids
         ############################################
         #get the reps, masks and labels
-        cand_span_reps = span_reps[batch_ind, span_idx_to_keep, :]   # shape: (batch, top_k_spans, hidden)
+        cand_span_reps = span_reps[batch_ind, span_idx_to_keep]   # shape: (batch, top_k_spans, hidden)
         cand_span_masks = span_masks[batch_ind, span_idx_to_keep]    # shape: (batch, top_k_spans)
-        cand_span_labels = span_labels[batch_ind, span_idx_to_keep]  # shape: (batch, top_k_spans)
+        cand_span_labels = span_labels[batch_ind, span_idx_to_keep]  # shape: (batch, top_k_spans) unilabels or (batch, top_k_spans, num_span_types) multilabels
         #cand_span_ids are already set above
 
         '''
@@ -297,7 +345,8 @@ class Model(nn.Module):
         '''
         #get the rel labels from x['relations'] with dim 1 in same order as cand_span_id dim 1 expanded to top_k_spans**2 (this is why we need to limit top_k_spans to as low as possible)
         #NOTE: the rel_masks have the diagonal set to 0, i.e self relations masked out
-        #this returns rel_labels, rel_masks, rel_ids, of shape (batch, top_k_spans**2), (batch, top_k_spans**2), (batch, top_k_spans**2, 2)
+        #this returns rel_labels of shape (batch, top_k_spans**2) int for unilabel or (batch, top_k_spans**2, num span types) bool for multilabel
+        #as well as rel_masks, rel_ids of shape (batch, top_k_spans**2), (batch, top_k_spans**2, 2) respectively
         rel_labels, rel_masks, rel_ids = self.rel_processor.get_cand_rel_tensors(x['relations'], 
                                                                                  x['orig_map'],
                                                                                  span_idx_to_keep,
@@ -335,7 +384,7 @@ class Model(nn.Module):
         #output will be shapes:  (batch, top_k_spans**2), scalar
         filter_score_rel, filter_loss_rel = self.rel_filter_head(rel_reps, 
                                                                  rel_masks,
-                                                                 rel_labels,
+                                                                 self.binarize_labels(rel_labels),
                                                                  force_pos_cases=force_pos,
                                                                  reduction='sum')           
 
@@ -350,10 +399,10 @@ class Model(nn.Module):
         batch_indices = torch.arange(batch).unsqueeze(-1)   #(batch, 1)
         rel_idx_to_keep = sorted_rel_idx[:, :top_k_rels]   #(batch, top_k_rels)
         #Extract the candidate relationship representations and labels
-        cand_rel_reps   = rel_reps[batch_indices, rel_idx_to_keep, :]    #(batch, top_k_rels, hidden)  float
+        cand_rel_reps   = rel_reps[batch_indices, rel_idx_to_keep]    #(batch, top_k_rels, hidden)  float
         cand_rel_masks  = rel_masks[batch_indices, rel_idx_to_keep]      #(batch, top_k_rels)  bool
-        cand_rel_labels = rel_labels[batch_indices, rel_idx_to_keep]     #(batch, top_k_rels) int
-        cand_rel_ids    = rel_ids[batch_indices, rel_idx_to_keep, :]     #(batch, top_k_rels, 2) int
+        cand_rel_labels = rel_labels[batch_indices, rel_idx_to_keep]     #(batch, top_k_rels) int for unilabel or (batch, top_k_rels, num rel types) int for multilabel 
+        cand_rel_ids    = rel_ids[batch_indices, rel_idx_to_keep]     #(batch, top_k_rels, 2) int
 
         #Generate the node and edge reps
         #this basically superimposes a node identifier to the span_reps and an edge identifier to the rel_reps
@@ -369,11 +418,12 @@ class Model(nn.Module):
         graph_reps = torch.cat((node_reps, edge_reps), dim=1)   #shape (batch, top_k_spans + top_k_rels, hidden)   float
         #merge masks
         graph_masks = torch.cat((cand_span_masks, cand_rel_masks), dim=1)   #(batch, top_k_spans + top_k_rels)   bool
-        #merge labels
-        graph_labels = torch.cat((cand_span_labels, cand_rel_labels), dim=1)   #(batch, top_k_spans + top_k_rels) int
+        #binarize and merge labels as this is just used for graph pruning
+        graph_labels_b = torch.cat((self.binarize_labels(cand_span_labels), 
+                                    self.binarize_labels(cand_rel_labels)), dim=1)   #(batch, top_k_spans + top_k_rels) int (0,1) for unilabel/multilabel as they have been binarized
 
         ###################################################
-        # Apply transformer layer and keep_head
+        #Apply transformer layer and keep_head
         #Q: why not use a GAT => beacuse the GAT doesn't enrich the edge reps, only the node reps, even if we get it to take in the edge reps, it is garbage
         ###################################################
         #this is a using the torch built in mha transformer encoder, mask is the key padding mask
@@ -396,13 +446,19 @@ class Model(nn.Module):
         #output will be shapes:  (batch, top_k_spans + top_k_rels), scalar
         filter_score_graph, filter_loss_graph = self.graph_filter_head(graph_reps, 
                                                                        graph_masks,
-                                                                       graph_labels,
+                                                                       graph_labels_b,
                                                                        force_pos_cases=force_pos,
                                                                        reduction='none')           
 
         #Split the scores and reps back to nodes(spans) and edges(rels)
         filter_score_nodes, filter_score_edges = filter_score_graph.split([top_k_spans, top_k_rels], dim=1)   #(batch, top_k_spans + top_k_rels) => (batch, top_k_spans), (batch, top_k_rels)
         node_reps, edge_reps = graph_reps.split([top_k_spans, top_k_rels], dim=1)                             #(batch, top_k_spans + top_k_rels, hidden) => (batch, top_k_spans, hidden), (batch, top_k_rels, hidden)
+
+        #set the node and edge reps back to the pre-graph transformer cand_span_reps and cand_rel_reps if use_graph_reps is False
+        #I do not know why this woudl be beneficial, but potentially the graph transformer doesn't help the reps and is only good for pruning
+        #this is what graphER was doing, worth doing ablation tests on
+        if not self.config.use_graph_reps:
+            node_reps, edge_reps = cand_span_reps, cand_rel_reps
 
         '''
         at this point we have the final output for spans(nodes) and rels(edges):
@@ -420,35 +476,139 @@ class Model(nn.Module):
         - cand_rel_ids
         '''
 
+        ############################################################################
+        ############################################################################
+        ############################################################################
         #Output Heads
-        #make the output logits for spans and rels, output shape and head type will be dependent on prompting
-        logits_span = self.output_head_span(node_reps, span_type_reps if self.config.use_prompt else None)  # Shape: (batch, top_k_spans, num_span_types) for prompting, or (batch, top_k_spans, num_span_types) no prompting
-        logits_rel = self.output_head_rel(edge_reps, rel_type_reps if self.config.use_prompt else None)   # Shape: (batch, top_k_spans, num_span_types) for prompting, or (batch, top_k_spans, num_span_types) no prompting
+        ############################################################################
+        ############################################################################
+        ############################################################################
+        '''
+        make the output logits for spans and rels
+        NOTE: for the prompting case the output head is not trainable, just an einsum similarity function
+              but it outputs logits of the same shape as the trainable output head used in the no prompting case
+        #####################################################################################
+        NOTE: num_span_types and num_rel_types are the number of neg/pos types for unilabel and pos types only for multilabel
+        #####################################################################################
+        '''
+        if self.config.use_prompt:
+            logits_span = self.output_head_span(node_reps, span_type_reps)  # Shape: (batch, top_k_spans, num_span_types)
+            logits_rel = self.output_head_rel(edge_reps, rel_type_reps)   # Shape: (batch, top_k_rels, num_rel_types)
+        else:
+            logits_span = self.output_head_span(node_reps)  # Shape: (batch, top_k_spans, num_span_types)
+            logits_rel = self.output_head_rel(edge_reps)   # Shape: (batch, top_k_rels, num_rel_types)
+
+        #prune graph pre loss calc
+        '''
+        NOTE: the pruning is done by biasing the logits to very negative (-1e9) for nodes/edges that we want to prune out
+              this effectively masks out these nodes/edges from all downstream loss/prediction functions
+        '''
+        if self.config.graph_prune_loc == 'pre_loss':
+            logits_span = self.apply_graph_keep_scores_to_logits(logits_span, filter_score_nodes, self.config.node_keep_threshold)
+            logits_rel = self.apply_graph_keep_scores_to_logits(logits_rel, filter_score_edges, self.config.edge_keep_threshold)
 
         #final processing and return
         total_loss = None
         if mode in ['train', 'pred_w_labels']:
-            #Compute losses for relation and entity classifiers using the span/rel type reps calculated from the promtps earlier in the encoder
-            final_span_loss = matching_loss(logits_span, cand_span_labels, cand_span_masks, self.config.use_prompt)
-            final_rel_loss = matching_loss(logits_rel, cand_rel_labels, cand_rel_masks, self.config.use_prompt)
+            #Compute losses for spans and rels final classifier heads using the span/rel type reps
+            #NOTE: uses CELoss for unilabels and BCELoss for multilabels
+            pred_span_loss = classification_loss(logits_span, 
+                                                 cand_span_labels, 
+                                                 cand_span_masks, 
+                                                 reduction='sum', 
+                                                 label_type=self.config.span_labels)
+            pred_rel_loss = classification_loss(logits_rel, 
+                                                cand_rel_labels, 
+                                                cand_rel_masks, 
+                                                reduction='sum', 
+                                                label_type=self.config.rel_labels)
             #Compute structure loss and total loss, not filter_loss_graph is a tensor, so we have to reduce it with sum here
             structure_loss = (filter_loss_graph * graph_masks.float()).sum()
             #get the total loss
-            total_loss = sum([filter_loss_span, filter_loss_rel, final_rel_loss, final_span_loss, structure_loss])
+            total_loss = sum([filter_loss_span, filter_loss_rel, pred_span_loss, pred_rel_loss, structure_loss])
 
-        output = dict(loss                 = total_loss,
-                      span_logits          = logits_span,
-                      filter_score_nodes   = filter_score_nodes,
-                      cand_span_masks      = cand_span_masks,
-                      cand_span_ids        = cand_span_ids,
-                      cand_span_labels     = cand_span_labels,
-                      top_k_spans          = top_k_spans,
-                      relation_logits      = logits_rel,
-                      filter_score_edges   = filter_score_edges,
-                      cand_rel_masks       = cand_rel_masks,
-                      cand_rel_ids         = cand_rel_ids,
-                      cand_rel_labels      = cand_rel_labels,
-                      top_k_rels           = top_k_rels)
+        #prune graph pre loss calc
+        '''
+        NOTE: the pruning is done by biasing the logits to very negative (-1e9) for nodes/edges that we want to prune out
+              this effectively masks out these nodes/edges from all downstream prediction functions
+        '''
+        if self.config.graph_prune_loc == 'post_loss':
+            logits_span = self.apply_graph_keep_scores_to_logits(logits_span, filter_score_nodes, self.config.node_keep_threshold)
+            logits_rel = self.apply_graph_keep_scores_to_logits(logits_rel, filter_score_edges, self.config.edge_keep_threshold)
+
+        output = dict(
+            loss                 = total_loss,
+            ######################################
+            logits_span          = logits_span,
+            cand_span_masks      = cand_span_masks,
+            cand_span_ids        = cand_span_ids,
+            cand_span_labels     = cand_span_labels,
+            top_k_spans          = top_k_spans,
+            ######################################
+            logits_rel           = logits_rel,
+            cand_rel_masks       = cand_rel_masks,
+            cand_rel_ids         = cand_rel_ids,
+            cand_rel_labels      = cand_rel_labels,
+            top_k_rels           = top_k_rels
+        )
 
         return output
 
+
+
+
+
+'''
+Got to here
+Got to here
+Got to here
+Got to here
+Got to here
+ok, so I am going thorugh this matching loss business, I see somehting weird going on
+I think it is incorrect for now, I think you only need 1 function, I have 2 for promtp and no prompt
+go through it in detail and work out what the fuck is going on, I know hte output heads are different for the promtp/no prompt case, but I think the shapes are hte same
+Just check it all....
+
+##################################################
+##################################################
+##################################################
+##################################################
+The current maytching loss is incorrect.  Check what format the span and rel labels are in , are they onelabel per span/rel or a binary vector.  If one value then use CELoss, if a binary vetcor, then use BCELoss.
+START here, this needs to be sorted now to stop confusion, it affects the loss and alot of filtering loss calcs throughout the model!!!!
+##################################################
+##################################################
+##################################################
+
+
+
+Then look at the preds and how we get them, shpould they still be tensors, shoud they go to python objects, I know at some poitn we need human readable output, but for the metrics, can we not stay in tensors?????
+
+Then look at how the metrics are calcd in the train/pred_w_labels case, they should be calcd on the preds/labels, so on the tensors or the python objects, would be easier if on the tensors
+
+
+look at the matching loss, why is he using binary cross entropy loss for both spans and relations?.  Spans would use CELoss (only one possible positive class per span) and rels would use BCELoss (multiple possible positive cases per rel)
+You coudl even look at using CELoss for rels also.
+
+I guess we can use BCELoss for both spans and rels, have a look at it and if it makes sense.
+
+Additional thoughts.
+If we get issues woth the long spans and trying to get positive predictions for these complex events/states, we will have to break it up into event/state triggers (spans) and event/state args (rels) to identify the complete event/state spans.
+This would essentially use the same structure as we have now, except that labels will be different, you would need instead of spans and rels, you would need: trigger_args_spans (start, end, type), arg_trigger_rels (arg_head, trigger_tail, type), trigger_trigger_rels (trigger_head, trigger_tail, type)
+Where the trigger_trigger rels are the inter event/state trigger, each event/state has one trigger and zero or more args.  
+So the flow would be:
+1) trigger and arg span classification, the benefit of this is the trigger span length is much less than what I was planning, say 10-12 word tokens
+2) arg to trigger rel classification, this is completing the event/states, the output of this would be the ability to generate the event/state reps, which could be somehting like trigger_rep + args_rep, where args_rep is the combined rep for all args of a trigger, maybe combine with attention pooling with the trigger as the query
+3) trigger to trigger rel classification, form the trigger to trigger rels, in various ways, i.e. concat event_reps, potentially add context.  Then classifiy
+Thus the main difference to the current flow is that we have 2 rel stages, which would not be that hard to add in to tthe current structure, I would follow a similar approach.
+1) get the trigger and arg spans => prune the triggers and args with a filter head as we do now, the make the trigger and arg reps.  For this stage ignore any dependency of the trigger and args, that will come out in stage 2
+2) then make the arg to trigger reps and run through a filter head and prune
+3) classify the arg to trigger rels through an output head => this will give you the initial event/state graph and make the event/state reps
+4) classify the event to event rels => make the event relation reps pass through filtering head and prune.
+5) make the graph nodes are event reps and rels are event to event reps
+6) pass through a graph transformer
+7) split back to nodes edge reps and pass each through an output layer
+8) filter by the graph pruning filter scores
+9) run the loss and output
+
+
+'''

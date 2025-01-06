@@ -6,6 +6,7 @@ from transformers import (
     get_inverse_sqrt_schedule,
 )
 import torch
+import numpy as np
 import os, re
 from pathlib import Path
 from typing import Tuple, List, Dict, Union
@@ -16,8 +17,9 @@ from tqdm import tqdm
 #custom imports
 from .model import Model
 from .data_processor import DataProcessor
-from .utils import import_data, er_decoder, get_relation_with_span, load_from_json, save_to_json
+from .utils import import_data, load_from_json, save_to_json
 from .evaluator import Evaluator
+from .validation import config_validator
 
 
 
@@ -47,18 +49,26 @@ class Trainer:
         #load the pretrained weights is required
         if self.config.model_path and self.config.model_path.strip() not in ["none", ""]:
             #this loads a pretrained model
-            model = Model.load_pretrained(self.config.model_path).to(device)
+            model = self.load_pretrained(model, self.config.model_path).to(device)
 
-            #NEED TO VERIFY THIS STILL WORKS
-            #NEED TO VERIFY THIS STILL WORKS
-            #NEED TO VERIFY THIS STILL WORKS
             #update the params of the trained model with the current config except for these keep params which need to follow the pretrained model
             current_config = vars(self.config).copy()
             loaded_config = vars(model.config)
             #overwrite all loaded params with the self.config properties except for these ones
-            keep_params = ['model_name', 'name', 'max_span_width', 'hidden_size', 'dropout', 'subtoken_pooling', 'span_mode',
-                           'fine_tune', 'max_types', 'max_seq_len', 'num_heads', 'num_transformer_layers', 'ffn_ratio',
-                            'scorer']
+            keep_params = ['model_name', 
+                           'name', 
+                           'max_span_width', 
+                           'hidden_size', 
+                           'dropout', 
+                           'subtoken_pooling', 
+                           'span_mode',
+                           'fine_tune', 
+                           'max_types', 
+                           'max_seq_len', 
+                           'num_heads', 
+                           'num_transformer_layers', 
+                           'ffn_ratio',
+                           'scorer']
             #Overwrite with the keep params
             for param in keep_params:
                 if param in loaded_config:
@@ -66,7 +76,7 @@ class Trainer:
             # Write the updated config back to the model
             model.config = SimpleNamespace(**current_config)        
 
-        #return the model and the optimizer objects
+        #return the model
         return model
 
 
@@ -84,24 +94,18 @@ class Trainer:
 
         param_groups = []
         # Handling the transformer encoder parameters: either freeze or assign learning rate
-        transformer_encoder_params = list(model.transformer_encoder_w_prompt.parameters())
+        trans_encoder_params = list(model.transformer_encoder_w_prompt.parameters())
         if freeze_encoder:
-            for param in transformer_encoder_params:
+            for param in trans_encoder_params:
                 param.requires_grad = False
         else:
-            if transformer_encoder_params:  # Ensure there are parameters to add
-                param_groups.append({
-                    "params": transformer_encoder_params, 
-                    "lr": lr_encoder
-                })
+            if trans_encoder_params:  # Ensure there are parameters to add
+                param_groups.append({"params": trans_encoder_params, "lr": lr_encoder})
 
         # Dynamically assign lr_others to all other parameters
         for name, layer in model.named_children():
             if name != "transformer_encoder_w_prompt" and any(p.requires_grad for p in layer.parameters(recurse=False)):
-                param_groups.append({
-                    "params": layer.parameters(), 
-                    "lr": lr_others
-                })
+                param_groups.append({"params": layer.parameters(), "lr": lr_others})
 
         #make the optimizer
         optimizer = torch.optim.AdamW(param_groups)
@@ -154,35 +158,6 @@ class Trainer:
 
 
 
-    ################################################
-    #save the model code
-    ################################################
-    def save_top_k_checkpoints(self, model: Model, save_path: str, checkpoint: int, top_k: int = 1):
-        """
-        Save the most recent top_k models, I have top_k set to 1 by default, so it just saves the most recent model
-
-        Parameters:
-            model (Model): The model to save.
-            save_path (str): The directory path to save the checkpoints.
-            top_k (int): The number of top checkpoints to keep. Defaults to 1.
-        """
-        # Save the current model and tokenizer
-        model.save_pretrained(os.path.join(save_path, str(checkpoint)))
-        # List all files in the directory
-        files = os.listdir(save_path)
-        # Filter files to keep only the model checkpoints
-        checkpoint_folders = [file for file in files if re.search(r'model_\d+', file)]
-        # Sort checkpoint files by modification time (latest first)
-        checkpoint_folders.sort(key=lambda x: os.path.getmtime(os.path.join(save_path, x)), reverse=True)
-        # Keep only the top-k checkpoints
-        for checkpoint_folder in checkpoint_folders[top_k:]:
-            checkpoint_folder = os.path.join(save_path, checkpoint_folder)
-            checkpoint_files = [os.path.join(checkpoint_folder, f) for f in os.listdir(checkpoint_folder)]
-            for file in checkpoint_files:
-                os.remove(file)
-            os.rmdir(os.path.join(checkpoint_folder))
-
-
     ##########################################################################
     #TRAIN/EVAL
     ##########################################################################
@@ -219,7 +194,7 @@ class Trainer:
             #get next batch and run through model
             x = next(iter_loader_inf)
             with torch.cuda.amp.autocast(dtype=torch.float16):    #forcing data to half precision
-                result = model(x, step, mode='train')
+                result = model(x, mode='train', step=step)
                 loss = result['loss']
             #skip if loss is NaN
             if torch.isnan(loss).any():
@@ -259,12 +234,26 @@ class Trainer:
 
 
 
+    #got to here
+    #got to here
+    #got to here
+    #got to here
+    #got to here
+    #got to here
+    #got to here
+
     def eval_loop(self, model, data_loader, device, step):
+        #gets oe configs
+        pred_thd = self.config.predict_threshold
+        pred_conf = self.config.predict_confidence
+
         model.eval()
         iter_loader = self.load_loader(data_loader, device, infinite=False)
         with torch.no_grad():
+            preds = []
+            pos_labels = []
             for x in iter_loader:
-                result = model(x, step=step, mode='pred_w_labels')
+                result = model(x, mode='pred_w_labels', step=step)
                 '''
                 Here, implement your logic to process outputs, which contain loss and logits + associated data
                 so we would report:
@@ -274,9 +263,44 @@ class Trainer:
                     - rels (head_idx, tail_idx, type)
                 - metrics 
     
-                I am not sure what this returns right now if anything
+
+
+                
+                ############################################################                
+                ok so I know what pos_labels is (full rels, basically merged spans and rels), 
+                this needs to go into the evaluator with the preds, 
+                so we need to work out the format that the preds need to be in
+                currently they are spans and rels, I think we need to merge the preds to be full rels also
+                Check the evaluator first to decide
+                NOTE: the pred loop only calcs the preds, not the pos_labels and doesn't use evaluate
                 '''
-        return 'something'
+                spans, rels = self.predictor(x, result)
+                preds.extend(self.merge(spans, rels))
+                pos_labels.extend(self.get_full_relations(x))
+
+        evaluator = Evaluator(pos_labels, preds)
+        out, f1 = evaluator.evaluate()
+        return out, f1
+
+
+
+    def get_full_relations(self, x):
+        '''
+        This converts the span and relation labels (both being list of tuples)
+        to full relation labels which is a list of tuples of the format:
+        [(head start, head end, head type), (tail start, tail end, tail type), rel_type), (...), (...)...]
+        '''
+        batch_spans =  x['relations']
+        batch_rels = x['relations']
+        batch = len(spans)
+        batch_rels_full = [[] for i in range(batch)]
+        for i in range(batch):
+            rels = batch_rels[i]
+            spans = batch_spans[i]
+            for rel in rels:
+                full_rel = (spans[rel[0]], spans[rel[1]], rel[2])
+                batch_rels_full[i].append(full_rel)
+        return batch_rels_full
 
 
 
@@ -291,12 +315,17 @@ class Trainer:
         device = self.config.device
         predict_loader = loaders['predict']
         log_dir = self.config.log_dir
+        pred_thd = self.config.predict_threshold
+        pred_conf = self.config.predict_confidence
 
         model.eval()
         iter_loader = self.load_loader(predict_loader, device, infinite=False)
+        preds = []
+        pos_labels = []
         with torch.no_grad():
             for x in iter_loader:
                 result = model(x, mode='pred_no_labels')
+                
                 '''
                 Here, implement your logic to process outputs, which contain logits + associated data only
                 so we would report:
@@ -307,88 +336,90 @@ class Trainer:
                 I am not sure what this returns right now if anything
 
                 '''
+
+                #Get span and rel preds
+                spans, rels = self.predictor(x, result)
+                preds.extend(batch_predictions)
+                pos_labels.extend(self.get_full_relations(x))
         
-        return 'something'
-    ########################################################################
-
-
-
-
-
-
-
-    #################################################################
-    #INTEGRATE THIS!!!!!!
-    #INTEGRATE THIS!!!!!!
-    #INTEGRATE THIS!!!!!!
-    #INTEGRATE THIS!!!!!!
-    #INTEGRATE THIS!!!!!!
-    ###########################################################################
-    #Base Functions, these were in basemodel before, moving to the train class
-    ###########################################################################
-    def save_pretrained(self, save_directory: str):
-        """Save the model parameters and config to the specified directory"""
-        save_directory = Path(save_directory)
-        save_directory.mkdir(parents=True, exist_ok=True)
-        torch.save(self.state_dict(), save_directory / "pytorch_model.bin")
-        # Optionally save the configuration file
-        save_to_json(save_directory / 'config.json')
-
-
-    def load_pretrained(self, model_path):
-        """Load model weights from the specified path"""
-        state_dict = torch.load(model_path)
-        self.load_state_dict(state_dict)
-        print(f"Model loaded from {model_path}")
-
-
-    def adjust_logits(self, logits, keep):
-        """Adjust logits based on the keep tensor."""
-        keep = torch.sigmoid(keep)
-        keep = (keep > 0.5).unsqueeze(-1).float()
-        adjusted_logits = logits + (1 - keep) * -1e9
-        return adjusted_logits
-
-
-    def predict(self, x, threshold=0.5, output_confidence=False):
-        """Predict entities and relations."""
-        out = self.forward(x, prediction_mode=True)
-
-        # Adjust relation and entity logits
-        out["span_logits"] = self.adjust_logits(out["span_logits"], out["keep_span"])
-        out["rel_logits"] = self.adjust_logits(out["rel_logits"], out["keep_rel"])
-
-        # Get entities and relations
-        spans, rels = er_decoder(x, 
-                                 out["span_logits"], 
-                                 out["rel_logits"], 
-                                 out["topK_rel_idx"], 
-                                 out["max_top_k"], 
-                                 out["candidate_spans_idx"], 
-                                 threshold=threshold, 
-                                 output_confidence=output_confidence)
         return spans, rels
 
 
-    def evaluate(self, eval_loader, threshold=0.5, batch_size=12, rel_types=None):
-        self.eval()
-        device = next(self.parameters()).device
-        all_preds = []
-        all_trues = []
-        for x in eval_loader:
-            for k, v in x.items():
-                if isinstance(v, torch.Tensor):
-                    x[k] = v.to(device)
-            batch_predictions = self.predict(x, threshold)
-            all_preds.extend(batch_predictions)
-            all_trues.extend(get_relation_with_span(x))
-        evaluator = Evaluator(all_trues, all_preds)
-        out, f1 = evaluator.evaluate()
-        return out, f1
-    ###########################################################################
-    ###########################################################################
-    ###########################################################################
+    def predict_spans(self, id_to_s, logits, span_ids, top_k_spans):
+        #Apply sigmoid function to logits
+        probs = torch.sigmoid(logits)
+        #Initialize list of spans
+        spans = []
+        #Get indices where probability is greater than threshold
+        above_thd_ids = (probs > self.config.predict_thd).nonzero(as_tuple=True)
 
+        #Iterate over indices where probability is greater than threshold
+        for batch_idx, pos, class_idx in zip(*above_thd_ids):
+            #Get span label
+            label = id_to_s[class_idx.item() + 1]
+            if self.config.predict_conf:
+                #Get confidence
+                conf = probs[batch_idx, pos, class_idx].item()
+                #Append entity to list
+                spans.append((tuple(span_ids[batch_idx, pos].tolist()), label, conf))
+            else:
+                spans.append((tuple(span_ids[batch_idx, pos].tolist()), label))
+
+        return spans
+
+
+
+    def predict_rels(self, id_to_r, logits, span_ids, rel_ids, top_k_rels):
+        #Apply sigmoid function to logits
+        probs = torch.sigmoid(logits)
+        #Initialize list of relations
+        rels = [[] for _ in range(len(logits))]
+        #Get indices where probability is greater than threshold
+        above_thd_ids = (probs > self.config.predict_thd).nonzero(as_tuple=True)
+
+        #Iterate over indices where probability is greater than threshold
+        for batch_idx, pos, class_idx in zip(*above_thd_ids):
+            #Get relation label
+            label = id_to_r[class_idx.item() + 1]
+            #Get predicted pair index
+            pred_rel_id = rel_ids[batch_idx, pos].item()
+            #Unravel predicted rel index into head and tail
+            head_id, tail_id = np.unravel_index(pred_rel_id, (top_k_rels, top_k_rels))
+            #Convert head and tail indices to tuples
+            head = tuple(span_ids[batch_idx, head_id].tolist())
+            tail = tuple(span_ids[batch_idx, tail_id].tolist())
+            if self.config.predict_conf:
+                #Get confidence
+                conf = probs[batch_idx, pos, class_idx].item()
+                #Append relation to list
+                rels[batch_idx.item()].append((head, tail, label, conf))
+            else:
+                rels[batch_idx.item()].append((head, tail, label))
+
+        return rels
+
+
+
+
+    def predictor(self,
+                  x, 
+                  out):
+        '''
+        describe this function
+        '''
+        spans = self.predict_spans(x['id_to_s'], 
+                                   out['logits_span'], 
+                                   out['cand_span_ids'],
+                                   out['top_k_spans'])
+
+        rels = self.predict_rels(x['id_to_r'], 
+                                 out['logits_rel'], 
+                                 out['cand_span_ids'],
+                                 out['cand_rel_ids'],
+                                 out['top_k_rels'])
+
+        return spans, rels
+    ########################################################################
 
 
 
@@ -438,27 +469,29 @@ class Trainer:
         return span_indices
 
 
+    def create_type_mappings(self, types):
+        """
+        Creates mappings from type names to IDs and vice versa for labeling tasks.
 
-    def create_type_mappings(self, types: List[str], none_type: str) -> Tuple[Dict[str, int], Dict[int, str]]:
+        This function generates dictionaries to map type names to unique integer IDs and vice versa.  
+        for unilabels => idx 0 is for the none type (the negative case)
+        for multilabels => there is no none type in the types as it is not explicitly given, so idx 0 is for the first pos type
+
+        Parameters:
+        - types (list of str): The list of type names for which to create mappings.
+
+        Returns:
+        - tuple of (dict, dict): 
+            - The first dictionary maps type names to IDs.
+            - The second dictionary maps IDs back to type names.
         """
-        Generic function to get the mapping from type to id for spans or relations
-        input are the list of types as well as the none_type which will be placed at id 0
-        output are the type string to type id (t_to_id) dict and type id to type string (id_to_t) dict
-        """
-        #validate types
-        if not types or types is None:
-            raise Exception('there are no types, can not make mappings')
-        #remove none_type from types if it is there
-        if none_type in types:
-            types.pop(none_type)
-        #make the mappings without the none_type
-        type_to_id = {t:i for i,t in enumerate(types, start=1)}
-        id_to_type = {i:t for t,i in type_to_id.items()}
-        #add the none_type at id 0
-        type_to_id[none_type] = 0
-        id_to_type[0] = none_type
-        
+        # Create type to ID mapping
+        type_to_id = {t: i for i, t in enumerate(types)}
+        # Create ID to type mapping
+        id_to_type = {i: t for t, i in type_to_id.items()}
+
         return type_to_id, id_to_type
+
 
 
     def make_type_mappings_and_span_ids(self):
@@ -468,10 +501,10 @@ class Trainer:
         and relationship types, including creating mapping dictionaries and a list of all possible spans.
 
         Updates the following in self.config:
-        - num_span_types: Number of span types, not including the 'none_span'.
-        - num_rel_types: Number of relationship types, not including the 'none_rel'.
-        - none_span: A placeholder name for non-existent span types.
-        - none_rel: A placeholder name for non-existent relationship types.
+        - span_types => adds the none type to the start of the list for unilabels case
+        - rel_types => adds the none type to the start of the list for the unilabels case
+        - num_span_types: Number of span types   (will be pos and neg types for unilabel and just pos types for multilabel)
+        - num_rel_types: Number of relationship types   (will be pos and neg types for unilabel and just pos types for multilabel)
         - s_to_id: Dictionary mapping from span types to their indices.
         - id_to_s: Dictionary mapping from indices to span types.
         - r_to_id: Dictionary mapping from relationship types to their indices.
@@ -479,28 +512,73 @@ class Trainer:
         - all_span_ids: A list of all possible spans generated from the span types.
 
         No parameters are required as the method operates directly on the class's config attribute.
+
+        NOTE:
+        for span/rel_labels == 'unilabels' => span/rel_types will include the none type at idx 0, num_span/rel_types includes the none type
+        for span/rel_labels == 'multilabels' => there is no none type in the types as it does not need to be explicitly given, so idx 0 is for the first pos type, num_span/rel_types DOES NOT include the none type
         """
-        self.config.none_span = 'none_span'
-        self.config.none_rel  = 'none_rel'
-        
-        self.config.num_span_types = len(self.config.span_types)   #scalar, does not include the none_span (idx 0)
-        self.config.num_rel_types  = len(self.config.rel_types)    #scalar, does not include the none_rel (idx 0)
-        
-        self.config.s_to_id, self.config.id_to_s = self.create_type_mappings(self.config.span_types, self.config.none_span)
-        self.config.r_to_id, self.config.id_to_r = self.create_type_mappings(self.config.rel_types, self.config.none_rel)
+        #add the negative type (none type) for the unilabel case, will take up idx 0
+        #add the none type to start of the types lists, it will not be in the list as validation checks would have rejected it
+        #NOTE: for the multilabel case the none_span/rel is not required explicitly in types
+        if self.config.span_labels == 'unilabel':
+            self.config.span_types = ['none'] + self.config.span_types
+        if self.config.rel_labels == 'unilabel':
+           self.config.rel_types = ['none'] + self.config.rel_types
+
+        #get the num span and rel total types
+        #unilabels => will be pos and neg types
+        #multilabels => just pos types
+        self.config.num_span_types = len(self.config.span_types)
+        self.config.num_rel_types  = len(self.config.rel_types)
+
+        self.config.s_to_id, self.config.id_to_s = self.create_type_mappings(self.config.span_types)
+        self.config.r_to_id, self.config.id_to_r = self.create_type_mappings(self.config.rel_types)
         
         #get all span_ids in seq_len
         self.config.all_span_ids = self.make_all_possible_spans()
 
 
-    def testing_check_loader(self, loader):
-        '''
-        Keep this function, it is for testing
-        '''
-        x = iter(loader)
-        batch = next(x)
-        print(batch.keys())
-        print(batch)
+
+    def save_pretrained(self, model, save_directory: str):
+        """Save the model parameters and config to the specified directory"""
+        save_directory = Path(save_directory)
+        save_directory.mkdir(parents=True, exist_ok=True)
+        torch.save(model.state_dict(), save_directory / "pytorch_model.bin")
+        #Optionally save the configuration file
+        save_to_json(save_directory / 'config.json')
+
+
+    def load_pretrained(self, model, model_path):
+        """Load model weights from the specified path"""
+        state_dict = torch.load(model_path)
+        model.load_state_dict(state_dict)
+        print(f"Model loaded from {model_path}")
+
+
+    def save_top_k_checkpoints(self, model, save_path, checkpoint, top_k = 1):
+        """
+        Save the most recent top_k models, I have top_k set to 1 by default, so it just saves the most recent model
+
+        Parameters:
+            model (Model): The model to save.
+            save_path (str): The directory path to save the checkpoints.
+            top_k (int): The number of top checkpoints to keep. Defaults to 1.
+        """
+        # Save the current model and tokenizer
+        self.save_pretrained(model, os.path.join(save_path, str(checkpoint)))
+        # List all files in the directory
+        files = os.listdir(save_path)
+        # Filter files to keep only the model checkpoints
+        checkpoint_folders = [file for file in files if re.search(r'model_\d+', file)]
+        # Sort checkpoint files by modification time (latest first)
+        checkpoint_folders.sort(key=lambda x: os.path.getmtime(os.path.join(save_path, x)), reverse=True)
+        # Keep only the top-k checkpoints
+        for checkpoint_folder in checkpoint_folders[top_k:]:
+            checkpoint_folder = os.path.join(save_path, checkpoint_folder)
+            checkpoint_files = [os.path.join(checkpoint_folder, f) for f in os.listdir(checkpoint_folder)]
+            for file in checkpoint_files:
+                os.remove(file)
+            os.rmdir(os.path.join(checkpoint_folder))
 
 
     def load_and_prep_data(self):
@@ -514,12 +592,27 @@ class Trainer:
         self.config.span_types      = result['span_types']
         self.config.rel_types       = result['rel_types']
 
+        #validate configs
+        config_validator(self.config)
+
         #add to the config => the span and rel type mapping dicts and the all_possible_spans data
+        #adds the none_span/rel types to the possible types for the unilabel case (see function for details)
         self.make_type_mappings_and_span_ids()
 
         #make the data loaders
         self.data_processor = DataProcessor(self.config)
         return self.data_processor.create_dataloaders(dataset)
+
+
+    def testing_check_loader(self, loader):
+        '''
+        Keep this function, it is for testing
+        '''
+        x = iter(loader)
+        batch = next(x)
+        print(batch.keys())
+        print(batch)
+
     ################################################
     ################################################
     ################################################

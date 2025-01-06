@@ -4,7 +4,6 @@ import yaml
 from pathlib import Path
 
 from modules.train import Trainer
-from modules.validation import config_validator
 
 
 
@@ -45,12 +44,10 @@ def load_config_as_namespace(config_path):
     if config_dict is None:
         return argparse.Namespace()  # Return an empty namespace if config is empty
     
-    #validate configs
-    err = config_validator(config_dict)
-    if err: raise Exception(f'Error: the config file has errors {err}')
+    config = argparse.Namespace(**config_dict)
 
     #add the base path to the configs
-    return argparse.Namespace(**config_dict)
+    return config
 
 
 

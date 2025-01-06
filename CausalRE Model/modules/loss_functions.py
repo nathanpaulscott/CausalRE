@@ -1,66 +1,110 @@
 import torch
+from torch.nn import CrossEntropyLoss, BCEWithLogitsLoss
 import torch.nn.functional as F
 
 '''
 This has the various loss functions used in the model
 '''
 
-def binary_loss(preds, labels, mask, is_logit=True, reduction='sum'):
-    '''
-    Calculates the loss for binary span/rel predictions versus binary span/rel labels, considering only specified spans/rels based on mask.
-    This function supports two types of predictions: raw logits or log softmaxed predictions. It computes loss for 
-    both positive and a subset of negative samples specified by the mask.
 
-    Parameters:
-    - preds_b (torch.Tensor): Binary predictions from the model, of shape (batch, num_items, 2), type float.
-                              These can be raw logits or log softmaxed outputs depending on `is_logit`.
-    - labels (torch.Tensor): True labels, of shape (batch, num_items), type int64/long.
-    - mask (torch.Tensor): A boolean mask of shape (batch, num_items) that indicates which spans/rels
-                           should be considered in the loss computation.
-    - is_logit (bool): Flag indicating the type of predictions:
-                       True if `preds` are raw logits (use cross_entropy loss),
-                       False if `preds` are log softmaxed outputs (use nll_loss).
-    - reduction (str): type of loss reduction to use 'sum'/'ave'/'none', if no reduction a tensor is returned
+
+
+def classification_loss(self, logits, labels, masks, reduction='sum', label_type='unilabel'):
+    if label_type == 'unilabel':
+        return cross_entropy_loss(logits, labels, masks, reduction=reduction)
+    elif label_type == 'multilabel':
+        return binary_cross_entropy_loss(logits, labels, masks, reduction=reduction)
+    else:
+        raise ValueError(f"Unsupported label type: {label_type}")
+    
+
+
+def cross_entropy_loss(logits, labels, mask, reduction='sum'):
+    """
+    Calculates the cross-entropy loss for categorical predictions versus true labels, considering only specified items based on a mask.
+    This function is for uni-label data, where each observation can only belong to one class.
+
+    Args:
+    - logits (torch.Tensor): Predictions from the model, shaped (batch, num_items, num_classes), type float.
+    - labels (torch.Tensor): True labels, shaped (batch, num_items), type int64/long.
+    - mask (torch.Tensor): A boolean mask shaped (batch, num_items) indicating which items should be considered.
+    - reduction (str): Type of loss reduction to use ('none', 'sum', 'mean').
 
     Returns:
-    torch.Tensor: The losses computed for the valid spans/rels.
-                  If reduction is True, returns a scalar sum. Otherwise, returns a tensor of individual losses.
+    - torch.Tensor: The computed loss. Scalar if 'mean' or 'sum', tensor if 'none'.
+    """
+    if reduction not in ['sum', 'mean', 'none']:
+        raise ValueError("Unsupported reduction type. Choose 'none', 'mean', or 'sum'.")
 
-    Usage:
-    loss = binary_loss(predictions, true_labels, mask, is_logit=True)
+    #Initialize CrossEntropyLoss with internal reduction
+    loss_fn = CrossEntropyLoss(reduction=reduction, ignore_index=-1)
 
-    #################################################################################
-    Nathan: this is adapted from the graphER code, I have removed almost all of their stuff, so it is completely different,
-    the only thing remaining that bugs me is the reduction = 'sum', I will leave it there for now, but that may need to go also
-    #################################################################################
-    '''
-    batch, num_items, _ = preds.shape
+    #Flatten the tensors for loss calculation
+    flat_logits = logits.view(-1, logits.shape[-1])  #Flatten to (batch * num_items, num_classes)
+    flat_labels = labels.view(-1)                    #Flatten to (batch * num_items)
+    flat_mask = mask.view(-1)                        #Flatten to (batch * num_items)
 
-    # Determine the loss function
-    loss_func = F.cross_entropy
-    if not is_logit:
-        loss_func = F.nll_loss
+    # Apply the mask by setting labels of masked-out items to -1 for ignoring
+    flat_labels[~flat_mask] = -1  # Set ignored index for invalid entries
 
-    # Flatten the tensors for loss
-    flat_preds = preds.view(-1, 2)   # (batch * num_items, 2)
-    flat_labels = labels.view(-1)      # (batch * num_items)
-    flat_mask = mask.view(-1)          # (batch * num_items)
+    #Calculate the loss using the internal reduction
+    loss = loss_fn(flat_logits, flat_labels)
 
-    # Ignore invalid spans/rels using mask
-    valid_labels = flat_labels
-    valid_labels[~flat_mask] = -1  # Ignore invalid entries with -1
-
-    # Calculate the loss (single pass)
-    loss = loss_func(flat_preds, valid_labels, ignore_index=-1, reduction=reduction)
-
-    #reshape the loss for the no reduction case back to (batch, num_reps)
-    if reduction == 'none': 
-        loss = loss.view(batch, num_items)
-
-    return loss
+    # Reshape loss back to the shape of labels if reduction is 'none'
+    return loss.view_as(labels) if reduction == 'none' else loss
 
 
 
+def binary_cross_entropy_loss(logits, labels, mask, reduction='sum'):
+    """
+    Calculates the binary cross-entropy loss for predictions versus true labels in a multi-label context,
+    considering only specified items based on a mask. Each label is a binary vector where multiple classes can be 1.
+
+    Args:
+    - logits (torch.Tensor): Predictions from the model, of shape (batch, num_items, num_classes), type float.
+                            These should be raw logits
+    - labels (torch.Tensor): Binary ground truth labels, of shape (batch, num_items, num_classes).
+    - mask (torch.Tensor): A boolean mask of shape (batch, num_items) that indicates which items
+                           should be considered in the loss computation.
+    - reduction (str): Type of loss reduction to use ('sum', 'mean', 'none'). If 'none', a tensor of losses is returned.
+
+    Returns:
+    torch.Tensor: The computed loss for the valid items. If reduction is 'none', returns a tensor of individual losses.
+    """
+    if reduction not in ['sum', 'mean', 'none']:
+        raise ValueError("Unsupported reduction type. Choose 'none', 'mean', or 'sum'.")
+
+    # Flatten logits and labels to 2D (batch*num_items, num_classes)
+    flat_logits = logits.view(-1, logits.shape[-1])    #Flatten to (batch * num_items, num_classes)
+    flat_labels = labels.view(-1, labels.shape[-1])    #Flatten to (batch * num_items, num_classes)
+
+    #Initialize BCEWithLogitsLoss with no reduction
+    #NOTE: there is no ignore, so must do not reduction and most loss masking and reduction
+    loss_fn = BCEWithLogitsLoss(reduction='none')
+    #Compute the loss
+    flat_loss = loss_fn(flat_logits, flat_labels)
+
+    # Flatten the mask and expand it to apply to every class output
+    flat_mask = mask.view(-1).unsqueeze(1).expand(-1, logits.shape[-1])
+    # Apply the flattened mask
+    masked_loss = flat_loss * flat_mask.float()
+
+    # Perform the reduction manually
+    if reduction == 'sum':
+        return masked_loss.sum()
+    elif reduction == 'mean':
+        # Calculate mean only over the masked (non-zero) elements
+        return masked_loss.sum() / flat_mask.sum()
+    elif reduction == 'none':
+        # Reshape the masked loss back to the original dimensions if no reduction
+        return masked_loss.view_as(logits)
+
+
+
+
+
+
+#This crap below here will be removed, just leave in for now and remove after you have squeezed what you can from it....
 
 
 def matching_loss_prompt(logits, labels, masks):

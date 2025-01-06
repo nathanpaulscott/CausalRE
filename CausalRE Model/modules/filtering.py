@@ -1,12 +1,16 @@
 import torch
 from torch import nn
-from .loss_functions import binary_loss
+
+from .loss_functions import cross_entropy_loss
+
+
+
 
 class FilteringLayer(nn.Module):
     """
-    A binary classification head for determining whether to keep or discard reps.
+    A binary classification head for determining whether to keep or discard span/rel reps.
     This layer acts as an intermediate keep head outputing two logits per rep
-    which are used to calculate a filtering loss vs the labels and filtering score for keep/discard filtering
+    which are used to calculate a filtering loss vs the binary labels and filtering score for keep/discard filtering
 
     Args:
     - hidden_size (int): The size of the incoming feature dimension from the representations.
@@ -16,9 +20,9 @@ class FilteringLayer(nn.Module):
         self.binary_filter_head = nn.Linear(hidden_size, 2)
 
 
-    def forward(self, reps, masks, labels, force_pos_cases=False, reduction='sum'):
+    def forward(self, reps, masks, labels_b, force_pos_cases=False, reduction='sum'):
         """
-        Forward pass for the FilteringLayer, calculates logits, applies binary classification, computes loss,
+        Forward pass for the FilteringLayer, calculates logits, applies binary classification, computes CELoss,
         and scores the likelihood of each rep being positive or negative.
 
         Args:
@@ -26,9 +30,8 @@ class FilteringLayer(nn.Module):
         - mask (torch.Tensor): A boolean mask with shape (batch, num_reps) bool, where True indicates a rep to use
                                and False indicates a rep to be ignored. 
                                NOTE: you need this, do not rely on the -1 encoded in the labels
-        - labels (torch.Tensor): Labels for each rep with shape (batch, num_reps) int. Labels are 0 for
-                                 negative-cases, potentially -1 for invalids, and positive integers for positive cases.
-        - force_pos_cases: boolean flag => True means ensure pos cases are forced to be +inf in train mode
+        - labels_b (torch.Tensor): int64, binary Labels for each rep with shape (batch, num_reps) bool for unilabel and multilabel (False = neg case, True = pos case) for each rep
+        - force_pos_cases: boolean flag => True means ensure pos cases are forced to be pos_limit in train mode
         - reduction (str): type of loss reduction to use 'sum'/'ave'/'none', if no reduction a tensor is returned for the loss
         
         Returns:
@@ -44,14 +47,11 @@ class FilteringLayer(nn.Module):
         their selection despite potential misclassifications by the logits. This method mirrors certain teacher-forcing
         techniques used in training to guide model behavior.
         """
-        #Extract dimensions
-        batch, num_items, hidden = reps.shape
+        #set limts, use finite numbers to avoid issues
+        neg_limit, pos_limit = -1e9, 1e9
 
         #Get the binary logits for each span/rel (is span/rel or not)
         logits_b = self.binary_filter_head(reps)  # Shape: (batch, num_items, 2)
-
-        #Make the binary int labels from labels
-        labels_b = (labels > 0).to(torch.int64)
 
         #Calc the filter loss (basically the CELoss for the binary labels and logits)
         #only for the training case
@@ -59,7 +59,7 @@ class FilteringLayer(nn.Module):
         if self.training:
             #Compute the loss if in training mode
             #NOTE the logits and labels are flattened and reduction is sum, so the loss output is one scalar for all spans/rels in all obs in the batch
-            filter_loss = binary_loss(logits_b, labels_b, masks, is_logit=True, reduction=reduction)
+            filter_loss = cross_entropy_loss(logits_b, labels_b, masks, reduction=reduction)
 
         #Compute the filter score (difference between positive and negative class logits)
         #does this for eval and training cases
@@ -70,14 +70,17 @@ class FilteringLayer(nn.Module):
         filter_score = logits_b[..., 1] - logits_b[..., 0]  # Shape: [batch, num_items]
 
         #Mask out filter scores for maksed out labels
-        #Nathan: set the masked out spans/rels to -inf => no chance of being a positive case
-        filter_score = filter_score.masked_fill(~masks, float('-inf'))
+        #Nathan: set the masked out spans/rels to neg_limit => no chance of being a positive case
+        filter_score = filter_score.masked_fill(~masks, neg_limit)
         
-        #set the positive label spans/rels to +inf => definitely positive cases
+        #set the positive label spans/rels to pos_limit => definitely positive cases
         #this is a form of teacher forcing, we are guaranteeing that positive span cases make it to the initial graph
         #I put in code to be able to turn this off and also to turn it off after a set number of batches after the model has honed in on a good state (this is what worked best for me in other models)
         if self.training and force_pos_cases:
-            filter_score = filter_score.masked_fill(labels_b > 0, float('inf'))
+            filter_score = filter_score.masked_fill(labels_b > 0, pos_limit)
+
+        #do final clamp to ensure all scores are with in stable limits
+        filter_score = torch.clamp(filter_score, min=neg_limit, max=pos_limit)
 
         #so the return are the scores indicating on a scale of -inf to +inf the confidence of the span being an entity with 0 being 50:50
         #the loss on the other hand is only for training and is basically the CELoss of the binary span classification head, this is part of the final loss calc

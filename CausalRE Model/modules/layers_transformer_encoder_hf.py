@@ -217,7 +217,7 @@ class TransformerEncoderHFPrompt(torch.nn.Module):
             embeddings = self.projection(embeddings)
         ##############################
         
-        return dict(input_ids = input_ids, 
+        return dict(input_ids   = input_ids, 
                     embeddings  = embeddings, 
                     masks       = masks, 
                     cls_reps    = cls_reps,
