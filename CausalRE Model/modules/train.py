@@ -175,8 +175,6 @@ class Trainer:
         save_total_limit = self.config.save_total_limit
         log_dir = self.config.log_dir
 
-        #set model to train mode
-        model.train()
         #get the optimiser and scheduler
         optimizer = self.get_optimizer(model)
         scheduler = self.get_scheduler(optimizer, num_warmup_steps, num_steps)
@@ -194,7 +192,8 @@ class Trainer:
             #get next batch and run through model
             x = next(iter_loader_inf)
             with torch.cuda.amp.autocast(dtype=torch.float16):    #forcing data to half precision
-                result = model(x, mode='train', step=step)
+                model.train()
+                result = model(x, step=step)
                 loss = result['loss']
             #skip if loss is NaN
             if torch.isnan(loss).any():
@@ -218,9 +217,6 @@ class Trainer:
                 #save the model
                 checkpoint = f'model_{step + 1}'
                 self.save_top_k_checkpoints(model, log_dir, checkpoint, save_total_limit)
-                #if val_data_dir != "none":
-                    #get_for_all_path(model, step, log_dir, val_data_dir)
-                model.train()
 
 
         #run the final eval and test loop
@@ -234,46 +230,94 @@ class Trainer:
 
 
 
-    #got to here
-    #got to here
-    #got to here
-    #got to here
-    #got to here
-    #got to here
-    #got to here
-
     def eval_loop(self, model, data_loader, device, step):
-        #gets oe configs
-        pred_thd = self.config.predict_threshold
+        '''
+        The run_type param here will be 'train' so we have labels and calculate loss
+        the only difference is that the loss is disconnected from the graph as the model is run in .eval mode
+        '''
+        #gets the configs
+        pred_thd = self.config.predict_thd
         pred_conf = self.config.predict_confidence
 
-        model.eval()
         iter_loader = self.load_loader(data_loader, device, infinite=False)
+        model.eval()
         with torch.no_grad():
             preds = []
             pos_labels = []
             for x in iter_loader:
-                result = model(x, mode='pred_w_labels', step=step)
+                result = model(x, step=step)
                 '''
-                Here, implement your logic to process outputs, which contain loss and logits + associated data
-                so we would report:
-                - loss (potentially need to breakdown loss also)
-                - predictions:
-                    - spans (start, end, type, potentially show the actual textual span)
-                    - rels (head_idx, tail_idx, type)
-                - metrics 
-    
+                output = dict(
+                    loss                 = total_loss,
+                    ######################################
+                    logits_span          = logits_span,
+                    cand_span_masks      = cand_span_masks,
+                    cand_span_ids        = cand_span_ids,
+                    cand_span_labels     = cand_span_labels,
+                    top_k_spans          = top_k_spans,
+                    ######################################
+                    logits_rel           = logits_rel,
+                    cand_rel_masks       = cand_rel_masks,
+                    cand_rel_ids         = cand_rel_ids,
+                    cand_rel_labels      = cand_rel_labels,
+                    top_k_rels           = top_k_rels,
+                    lost_rel_counts      = lost_rel_counts  #how many positive rels did not get into rel_reps, i.e. not missing due to filtering or misclassification
+                )
+                '''
+                #get preds => the predicted positive cases
+                span_preds, rel_preds = self.predictor(x, result)
+                #get the labels => the actual positive cases
+                #align them and fill out the missing data in each one
+                '''
+                so for the full rel F1 metrics we need the full rels for pred and label (head_start, head_end, head_type, tail_start, tail_end, tail_type, rel_type)
+                I would first get the preds for spans and rels using the appropriate calc for the label type
+                I would then convert the positive preds to actual human readable data, i.e. for spans a list of tuples (start, end, type_string)
+                I would then re-order the preds to the same order as raw labels (x['spans']) and just put in a filler for missed labels with no preds and add the preds with no labels after the labels, add nul vlaues to the raw labels to match the aligned preds length
+                eg. preds = ('4_6_dog', 8_10_cat'), raw_labels = ('8_10_cat', 12_15_d0g') => pred_align = ('8_10_cat','x_x_x', '4_6_dog')
+                    then add nul vals to the raw_labels => raw_labels_align = ('8_10_cat', 12_15_d0g', 'x_x_x')
+                You can return the pres unaligned to the user
+                You can used the pred_align and labels_align for the metrics calc, i.e. you only make these if you have labels
 
+                Then for rels, do the preds, if multilabel, use sigmoid and thd
+                then split out to human readable data for the pos rels
+                i.e. each 1 in each binary vector becomes one rel, (head, tail, type)
+                Then we have to lookup the span start, end, span_type from the head and tail idx (these are idx in the cand_span_ids)
+                If the span was predicted as a neg, we read that (none)
 
+                Anyway, so we form the pred rels which is a list of full rel tuples including span data
+                We can output to the user or just output the spans list for each obs and the rels list for each obs with the head and tail idx aligned.
+                Think about this
+                for the metrics, we have to form the full rels for the labels and preds and then align them and then run metrics on them
                 
-                ############################################################                
-                ok so I know what pos_labels is (full rels, basically merged spans and rels), 
-                this needs to go into the evaluator with the preds, 
-                so we need to work out the format that the preds need to be in
-                currently they are spans and rels, I think we need to merge the preds to be full rels also
-                Check the evaluator first to decide
-                NOTE: the pred loop only calcs the preds, not the pos_labels and doesn't use evaluate
-                '''
+
+                #in summary
+                1) do preds for spans and rels
+                2) convert to python obs => make the span and full rel tuples from the preds, then make the final rel tuples and decide which ones to return to the user
+                NOTE: this is involved and processing requires a lot of mapping back to the raw indices as well as dealing with multilabel and unilabel cases etc...
+                3) if have labels => make the span and full rel tuples from the raw annotations (spans use as is, rels convert to full)
+                4) align the span labels/preds to the labels order adding extra preds to the end filling unmathced labels/preds with some kind of filler for labels not in preds and vice versa
+                5) flatten and run metrics on this
+                6) you can return extra data to the user from labels, such as which spans and rels were lost, which labels were incorrectly predicted, which we correctly predicted
+                
+                
+                I would throw his code for this stuff
+                
+
+                '''        
+
+
+                #I have the loss already here, so do not need to do anythign there...
+                #I need the preds
+                #then format the preds and labels for metrics, now remember we will have lost rels so 
+                #the rel_labels from the model while being aligned with the preds will miss some of the rels
+                #so you need to acount for these in the metrics potentially you can do the alignment again from the raw labels
+                #just form the labels and then align the preds with this somehow for the metrics
+                #I think you need to form the span and rel labels into what ever format you need in the preprocessing step
+                #This makes it easy to do it now for metrics the preds and labels just need to be 2 flattened lists for the batch of pred ints (unilabels) bool (multilabels).
+                #Actually it doesn't make much sense to premake these, just make them as you need them
+                #work out the code the long way first and then see if you can speed it up later
+                #inputs => preds (tensor), mask or perhaps preds as a list of lists....think
+
                 spans, rels = self.predictor(x, result)
                 preds.extend(self.merge(spans, rels))
                 pos_labels.extend(self.get_full_relations(x))
@@ -309,7 +353,8 @@ class Trainer:
     ##########################################################################
     def predict_loop(self, model, loaders):
         '''
-        This is the training function
+        This is the predict loop, the run_type param is 'predict' so the model will run without labels and not calculate loss
+        The loss returned from the model will be None
         '''
         #read some params from config
         device = self.config.device
@@ -318,13 +363,13 @@ class Trainer:
         pred_thd = self.config.predict_threshold
         pred_conf = self.config.predict_confidence
 
-        model.eval()
         iter_loader = self.load_loader(predict_loader, device, infinite=False)
         preds = []
         pos_labels = []
+        model.eval()
         with torch.no_grad():
             for x in iter_loader:
-                result = model(x, mode='pred_no_labels')
+                result = model(x)
                 
                 '''
                 Here, implement your logic to process outputs, which contain logits + associated data only
@@ -345,27 +390,59 @@ class Trainer:
         return spans, rels
 
 
-    def predict_spans(self, id_to_s, logits, span_ids, top_k_spans):
-        #Apply sigmoid function to logits
-        probs = torch.sigmoid(logits)
-        #Initialize list of spans
-        spans = []
-        #Get indices where probability is greater than threshold
-        above_thd_ids = (probs > self.config.predict_thd).nonzero(as_tuple=True)
 
-        #Iterate over indices where probability is greater than threshold
-        for batch_idx, pos, class_idx in zip(*above_thd_ids):
-            #Get span label
-            label = id_to_s[class_idx.item() + 1]
+    def predict_spans_unilabel(self, span_logits, span_ids):
+        '''
+        Extracts the span predictions for unilabel classification in a list of lists of tuples form,
+        where each list corresponds to a batch item.
+        '''
+        preds, probs = self.predict_unilabel(span_logits)  # Get predictions and probabilities
+        #Initialize the list to hold batch-wise span information
+        spans = [[] for _ in range(span_logits.shape[0])]  # batch_size is the first dimension
+        #Find indices where predictions are positive (ignoring class 0, the "none" class)
+        #will return 2 tensors of same length with that dims idx for each pos case 
+        batch_indices, span_indices = torch.where(preds > 0)
+        for batch_idx, span_idx in zip(batch_indices, span_indices):
+            # Extract span details
+            span_start = span_ids[batch_idx, span_idx, 0].item()
+            span_end = span_ids[batch_idx, span_idx, 1].item()
+            label = self.config.id_to_s[preds[batch_idx, span_idx].item()]  # Map class index to label string
             if self.config.predict_conf:
-                #Get confidence
-                conf = probs[batch_idx, pos, class_idx].item()
-                #Append entity to list
-                spans.append((tuple(span_ids[batch_idx, pos].tolist()), label, conf))
+                # Include confidence score if required
+                conf = probs[batch_idx, span_idx].item()
+                spans[batch_idx.item()].append(((span_start, span_end, label), conf))
             else:
-                spans.append((tuple(span_ids[batch_idx, pos].tolist()), label))
+                spans[batch_idx.item()].append((span_start, span_end, label))
 
         return spans
+
+
+    def predict_spans_multilabel(self, span_logits, span_ids):
+        '''
+        Extracts the span predictions for multilabel classification in a list of lists of tuples form,
+        where each list corresponds to a batch item.
+        '''
+        preds, probs = self.predict_multilabel(span_logits, self.config.predict_thd)  # Get predictions and probabilities
+        #Initialize the list to hold batch-wise span information
+        spans = [[] for _ in range(span_logits.shape[0])]  # batch_size is the first dimension
+        #Find indices where predictions are positive
+        #will return 3 tensors of same length with that dims idx for each pos case 
+        batch_indices, span_indices, label_indices = torch.where(preds == 1)
+        for batch_idx, span_idx, label_idx in zip(batch_indices, span_indices, label_indices):
+            #Extract span details
+            span_start = span_ids[batch_idx, span_idx, 0].item()
+            span_end = span_ids[batch_idx, span_idx, 1].item()
+            label = self.config.id_to_s[label_idx.item()]  # Map label index to label string
+            if self.config.predict_conf:
+                #Include confidence score if required
+                conf = probs[batch_idx, span_idx, label_idx].item()
+                spans[batch_idx.item()].append(((span_start, span_end, label), conf))
+            else:
+                spans[batch_idx.item()].append((span_start, span_end, label))
+
+        return spans
+
+
 
 
 
@@ -399,24 +476,68 @@ class Trainer:
         return rels
 
 
+    def predict_unilabel(self, logits):
+        """
+        Convert logits to single class predictions by applying softmax
+        and then taking the argmax, along with the maximum probability
+        for each predicted class.
+        
+        Args:
+            logits (torch.Tensor): Logits tensor of shape (batch_size, num_classes).
+        
+        Returns:
+            torch.Tensor: Predicted class indices tensor of shape (batch_size,).
+            torch.Tensor: Maximum class probabilities tensor of shape (batch_size,).
+        """
+        # Apply softmax to convert logits to probabilities
+        probs = torch.softmax(logits, dim=1)
+        # Get the predicted class index
+        preds = torch.argmax(probs, dim=1)
+        # Gather the max probabilities for the predicted classes
+        max_probs = torch.max(probs, dim=1)[0]  # [0] to select values only, [1] would give indices which are `preds`
+        return preds, max_probs
 
 
-    def predictor(self,
-                  x, 
-                  out):
+    def predict_multilabel(self, logits, thd=0.5):
+        """
+        Convert logits to multilabel predictions by applying sigmoid
+        and then using a threshold to determine label assignment.
+
+        Args:
+            logits (torch.Tensor): Logits tensor of shape (batch_size, num_labels).
+            thd (float): Threshold for determining label assignment.
+
+        Returns:
+            torch.Tensor: Predicted labels tensor of shape (batch_size, num_labels),
+                        where each element is 0 or 1.
+            torch.Tensor: Probabilities tensor of shape (batch_size, num_labels),
+                        representing the probability of each label.
+        """
+        # Apply sigmoid to convert logits to probabilities
+        probs = torch.sigmoid(logits)
+        # Apply threshold to determine label assignments
+        preds = (probs >= thd).int()
+        return preds, probs
+
+
+    def predictor(self, out):
         '''
         describe this function
         '''
-        spans = self.predict_spans(x['id_to_s'], 
-                                   out['logits_span'], 
-                                   out['cand_span_ids'],
-                                   out['top_k_spans'])
+        if self.config.span_labels == 'unilabel':
+            spans = self.predict_spans_unilabel(out['logits_span'], out['cand_span_ids'])
+        elif self.config.span_labels == 'multilabel':
+            spans = self.predict_spans_multilabel(out['logits_span'], out['cand_span_ids'])
 
-        rels = self.predict_rels(x['id_to_r'], 
-                                 out['logits_rel'], 
-                                 out['cand_span_ids'],
-                                 out['cand_rel_ids'],
-                                 out['top_k_rels'])
+
+        #to do this part
+        #to do this part
+        #to do this part
+        #to do this part
+        if self.config.rel_labels == 'unilabel':
+            rels = self.predict_rels_unilabel(out['logits_rel'], out['cand_rel_ids'])
+        elif self.config.rel_labels == 'multilabel':
+            rels = self.predict_rels_multilabel(out['logits_rel'], out['cand_rel_ids'])
 
         return spans, rels
     ########################################################################

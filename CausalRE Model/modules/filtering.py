@@ -20,6 +20,42 @@ class FilteringLayer(nn.Module):
         self.binary_filter_head = nn.Linear(hidden_size, 2)
 
 
+
+    def apply_filter_scores_to_logits(self, logits, filter_score, thd):
+        '''
+        Adjusts logits based on a filter_score (-inf to inf).  
+        Effectively masking out logits that fail a specified threshold. 
+        This method is specifically used to do final pruning on the graph node and edge reps.
+        The filter scores are converted to probs via a sigmoid function, then compared to a thd from 0 to 1
+        if the prob > thd, then the span/rel is not pruned
+
+        Args:
+            logits (torch.Tensor): The original logits from the output heads.
+                                   Shape should be (batch_size, top_k_spans/rels, num_classes),
+                                   where num_classes depends on the specific task.
+            filter_score (torch.Tensor): (-inf to inf) derived from the differenc ein binary logits from a binary head keep head
+                                        indicates the likelihood that each node/edge should be kept.
+                                        Shape should be (batch_size, top_k_spans/rels).
+            thd (float): A threshold value (0 to 1) used to decide whether nodes or edges are kept.
+                            Nodes or edges with a keep probability (sigmoid of filter_score)
+                            less than this threshold are effectively masked out.
+
+        Returns:
+            torch.Tensor: The adjusted logits, where logits for nodes/edges not meeting the keep
+                        threshold are set to a very large negative value (close to zero
+                        influence in subsequent softmax). The shape is the same as the input logits.
+        '''
+        #set limts, use finite numbers to avoid issues
+        neg_limit, pos_limit = -1e9, 1e9
+        
+        keep_prob = torch.sigmoid(filter_score)     # (batch, top_k_spans/rels)   float (between 0 and 1)
+        keep_mask = (keep_prob > thd).unsqueeze(-1).float()    # (batch, top_k_spans/rels)   float (0.0 to not keep or 1.0 to keep)
+        adjusted_logits = logits + (1 - keep_mask) * neg_limit
+        return adjusted_logits
+
+
+
+
     def forward(self, reps, masks, labels_b, force_pos_cases=False, reduction='sum'):
         """
         Forward pass for the FilteringLayer, calculates logits, applies binary classification, computes CELoss,
@@ -33,7 +69,7 @@ class FilteringLayer(nn.Module):
         - labels_b (torch.Tensor): int64, binary Labels for each rep with shape (batch, num_reps) bool for unilabel and multilabel (False = neg case, True = pos case) for each rep
         - force_pos_cases: boolean flag => True means ensure pos cases are forced to be pos_limit in train mode
         - reduction (str): type of loss reduction to use 'sum'/'ave'/'none', if no reduction a tensor is returned for the loss
-        
+
         Returns:
         - filter_score (torch.Tensor): A tensor with shape (batch, num_reps) representing the confidence scores of
                                       reps being positive cases. Scores range from -inf to +inf, with positive values
@@ -53,14 +89,6 @@ class FilteringLayer(nn.Module):
         #Get the binary logits for each span/rel (is span/rel or not)
         logits_b = self.binary_filter_head(reps)  # Shape: (batch, num_items, 2)
 
-        #Calc the filter loss (basically the CELoss for the binary labels and logits)
-        #only for the training case
-        filter_loss = 0
-        if self.training:
-            #Compute the loss if in training mode
-            #NOTE the logits and labels are flattened and reduction is sum, so the loss output is one scalar for all spans/rels in all obs in the batch
-            filter_loss = cross_entropy_loss(logits_b, labels_b, masks, reduction=reduction)
-
         #Compute the filter score (difference between positive and negative class logits)
         #does this for eval and training cases
         #so basically it ranges from -inf to +inf.  
@@ -73,14 +101,23 @@ class FilteringLayer(nn.Module):
         #Nathan: set the masked out spans/rels to neg_limit => no chance of being a positive case
         filter_score = filter_score.masked_fill(~masks, neg_limit)
         
-        #set the positive label spans/rels to pos_limit => definitely positive cases
-        #this is a form of teacher forcing, we are guaranteeing that positive span cases make it to the initial graph
-        #I put in code to be able to turn this off and also to turn it off after a set number of batches after the model has honed in on a good state (this is what worked best for me in other models)
-        if self.training and force_pos_cases:
-            filter_score = filter_score.masked_fill(labels_b > 0, pos_limit)
-
         #do final clamp to ensure all scores are with in stable limits
         filter_score = torch.clamp(filter_score, min=neg_limit, max=pos_limit)
+
+        #Calc the filter loss (basically the CELoss for the binary labels and logits)
+        #also adjust the scores to force pos cases to +inf
+        #only for the case we have labels (mode in ['train', 'pred_w_labels'])
+        filter_loss = 0
+        if labels_b is not None:
+            #set the positive label spans/rels to pos_limit => force_pos_cases
+            #this is a form of teacher forcing, we are guaranteeing that positive span cases make it to the initial graph
+            #I put in code to be able to turn this off and also to turn it off after a set number of batches after the model has honed in on a good state (this is what worked best for me in other models)
+            if force_pos_cases:
+                filter_score = filter_score.masked_fill(labels_b > 0, pos_limit)
+
+            #Compute the loss if in training mode
+            #NOTE: the logits and labels are flattened and reduction is sum, so the loss output is one scalar for all spans/rels in all obs in the batch
+            filter_loss = cross_entropy_loss(logits_b, labels_b, masks, reduction=reduction)
 
         #so the return are the scores indicating on a scale of -inf to +inf the confidence of the span being an entity with 0 being 50:50
         #the loss on the other hand is only for training and is basically the CELoss of the binary span classification head, this is part of the final loss calc

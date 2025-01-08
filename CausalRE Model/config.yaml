@@ -1,7 +1,7 @@
 #####################################################################
 #Run Config
 #####################################################################
-run_type: train                         #'train' for training, you need 3 labeled splits in the data json file if so.  'predict' for inference, you need one unlabelled split in the data json file if so
+run_type: train                         #'train'/'predict'.  For train you need 3 labeled splits in the data json file (train/val/test) each split needs the tokens key along with the spans and relations keys for the labels. 'predict' is unlabelled inference, you need one unlabelled split in the data json file (split is 'predict' and only keys are 'tokens').
 
 #####################################################################
 #Directory Paths
@@ -15,9 +15,7 @@ data_path: "data/sample data.json"      #the dataset file
 #####################################################################
 neg_sample_rate: 10                     #the percentage of neg cases to select for training  (from 0 to 100)
 min_neg_sample_limit: 100               #the lower limit of neg cases selected per obs is the min of the number of valid neg cases and (the max of this and the number of selected neg cases).  
-node_keep_thd: 0.5                      #applied to the sigmoid of the node logits part of the graph keep head logits
-edge_keep_thd: 0.5                      #applied to the sigmoid of the edge logits part of the graph keep_head logits
-predict_thd: 0.5                        #the predict threshold
+predict_thd: 0.5                        #used in the multilabel case, for the final class predictions, applied to the sigmoid  of each class logits, range is 0 to 1, lower => easy to predict a class, higher => harder to predict a class
 predict_conf: False                     #the predict confidence
 span_labels: unilabel                   #unilabel/multilabel => unilabel = 1 label per span, uses CELoss.  multilabel = multiple labels per span, uses BCELoss
 rel_labels: multilabel                  #unilabel/multilabel => unilabel = 1 label per rel, uses CELoss.  multilabel = multiple labels per rel, uses BCELoss
@@ -62,6 +60,17 @@ add_top_k_spans: 10                     #add to the result of the min(seq_len, m
 max_top_k_rels: 100                     #max number of rels to choose per obs for the initial graph, if the number available goes below this, then that is the limit.  This is the hard limit only overridden by the percentile filter
 rel_score_percentile: 90                #only include rels with a score in this percentile, increase this to prune more, decrease to prune less (0, 100)
 
+##############
+#lost rel handling
+##############
+lost_rel_oss_calc: count                #count/add.  method used to generate the lost rel loss, i.e. loss from positive rels not having any logits due to misclassification in the span filter head.
+                                        #Count means the lost rel loss is lost_rel_alpha*(count of lost rels). simpler, but harder to fit in with other losses.  
+                                        #Add means the labels (all 0) and the logits (all -1e9) are added to the labels/logits for each of the lost rels.  More complex but easier to fit in with other losses.
+lost_rel_logit: -1e9                    #set the logits for all classes of the lost rel logits to this value, should be a large neg number 
+                                        #if label is 0 and lost_rel_logit = -1e9 => BCELoss = -(0 * log(sigmoid(-1e9)) + (1-0) * log(1-sigmoid(-1e9)) = -log(1) ~ 0
+                                        #if label is 1 and lost_rel_logit = -1e9 => BCELoss = -(1 * log(sigmoid(-1e9)) + (1-1) * log(1-sigmoid(-1e9)) = -log(0) ~ 0
+lost_rel_alpha: 1                       #increases the influence lost rels from missed span fitlering has on the loss
+
 ###############
 #rel rep config
 ###############
@@ -84,6 +93,12 @@ graph_prune_log: post_loss              #where to apply the final graph pruning,
                                         #post_loss => apply to span/edge logits after final loss at the end of the forward method
 use_graph_reps: True                    #True => use the node/edge reps output from the graph transformer, these will be enriched embeddings but also include the node/edge identifiers mixed in
                                         #False => use the pre-graph transformer span/rel reps, as output, only use the filtering scores and loss from the graph transformer
+
+###############
+#graph filtering params                 #these are to make it easier or harder to prune nodes/edges from the graph using the node/edge filter_scores
+###############
+node_keep_thd: 0.5                      #applied to the sigmoid of the node filter_score, i.e. node filter probs.  Used to decide whether to keep the node or not (final graph pruning), range is 0 to 1, lower => less filtering, higher => more filtering
+edge_keep_thd: 0.5                      #applied to the sigmoid of the edge filter_score, i.e. edge filter probs.  Used to decide whether to keep the edge or not (final graph pruning), range is 0 to 1, lower => less filtering, higher => more filtering
 
 #####################################################################
 #Training Parameters
