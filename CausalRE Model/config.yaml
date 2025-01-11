@@ -17,8 +17,9 @@ neg_sample_rate: 10                     #the percentage of neg cases to select f
 min_neg_sample_limit: 100               #the lower limit of neg cases selected per obs is the min of the number of valid neg cases and (the max of this and the number of selected neg cases).  
 predict_thd: 0.5                        #used in the multilabel case, for the final class predictions, applied to the sigmoid  of each class logits, range is 0 to 1, lower => easy to predict a class, higher => harder to predict a class
 predict_conf: False                     #the predict confidence
-span_labels: unilabel                   #unilabel/multilabel => unilabel = 1 label per span, uses CELoss.  multilabel = multiple labels per span, uses BCELoss
+span_labels: unilabel                   #unilabel/multilabel => unilabel = 1 label per span, uses CELoss.  multilabel = multiple labels per span, uses BCELoss => NOTE: only unilabel is allowed currently for spans
 rel_labels: multilabel                  #unilabel/multilabel => unilabel = 1 label per rel, uses CELoss.  multilabel = multiple labels per rel, uses BCELoss
+f1_ave: micro                           "micro/macro...  for the metrics
 
 #####################################################################
 #Model Configuration

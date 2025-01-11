@@ -227,7 +227,7 @@ class Model(nn.Module):
             cand_span_ids = cand_sw_span_ids
         ############################################
     
-        return cand_span_ids, top_k_spans, span_idx_to_keep, span_to_cand_span_map
+        return cand_span_ids, cand_w_span_ids, top_k_spans, span_idx_to_keep, span_to_cand_span_map
     
 
 
@@ -333,6 +333,7 @@ class Model(nn.Module):
         num_rel_types   = self.config.num_rel_types     #scalar, includes the none type (idx 0) for unilabel and only pos types for multilabel
         rel_type_reps   = result['rel_type_reps']       #(batch, num_rel_types, hidden) => float, no mask needed
         cls_reps        = result['cls_reps']            #will be None for flair
+        w2sw_map        = result['w2sw_map']            #a list of dicts, one dict per batch obs mapping word token idx to sw token idx 
         #NOTE: if use_prompt = false, the span_type_reps and rel_type_reps will be None here
         #NOTE: for prompting, if unilabels the type reps will include the none type rep, if multilabels the type reps will only be for the positive types
         
@@ -376,11 +377,13 @@ class Model(nn.Module):
                                                                     self.binarize_labels(span_labels), 
                                                                     force_pos_cases = self.set_force_pos(self.config.span_force_pos, step),
                                                                     reduction = 'sum')           
-
-        cand_span_ids, top_k_spans, span_idx_to_keep, span_to_cand_span_map = self.prune_spans(filter_score_span, 
-                                                                                               w_span_ids, 
-                                                                                               sw_span_ids,
-                                                                                               batch_ids) 
+        #prune the spans to top_k_spans
+        #NOTE: we return the cand_span_ids which are the ids of the w or sw tokens dependent on pooling (to be used for the rel reps etc..)
+        #however we also return the cand_w_span_ids as we need to pass these back to the calling function for preds and label evalutaion
+        cand_span_ids, cand_w_span_ids, top_k_spans, span_idx_to_keep, span_to_cand_span_map = self.prune_spans(filter_score_span, 
+                                                                                                                w_span_ids, 
+                                                                                                                sw_span_ids,
+                                                                                                                batch_ids) 
         #filter the reps, masks and labels
         cand_span_reps = span_reps[batch_ids, span_idx_to_keep]   # shape: (batch, top_k_spans, hidden)
         cand_span_masks = span_masks[batch_ids, span_idx_to_keep]    # shape: (batch, top_k_spans)
@@ -557,6 +560,7 @@ class Model(nn.Module):
         - cand_span_masks, 
         - cand_span_labels, 
         - cand_span_ids
+        - cand_w_span_ids
         rels
         - edge_reps, 
         - filter_score_edges,
@@ -624,16 +628,15 @@ class Model(nn.Module):
             ######################################
             logits_span          = logits_span,
             cand_span_masks      = cand_span_masks,
-            cand_span_ids        = cand_span_ids,
+            cand_w_span_ids      = cand_w_span_ids,    #need to return the word token span ids for usage in evaluation (not the cand_span_ids as that could be w or sw aligned dependent on pooling)
             cand_span_labels     = cand_span_labels,
-            top_k_spans          = top_k_spans,
             ######################################
             logits_rel           = logits_rel,
             cand_rel_masks       = cand_rel_masks,
             cand_rel_ids         = cand_rel_ids,
             cand_rel_labels      = cand_rel_labels,
-            top_k_rels           = top_k_rels,
-            lost_rel_counts      = lost_rel_counts  #how many positive rels did not get into rel_reps, i.e. not missing due to filtering or misclassification
+            lost_rel_counts      = lost_rel_counts,  #how many positive rels did not get into rel_reps, i.e. not missing due to filtering or misclassification
+            w2sw_map             = w2sw_map
         )
 
         return output
