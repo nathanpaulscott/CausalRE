@@ -1,5 +1,5 @@
 import torch
-
+import copy
 
 
 
@@ -9,7 +9,31 @@ class Predictor:
     '''
     def __init__(self, config):
         self.config = config
-    
+        self.reset_data()
+
+
+    def reset_data(self):
+        self.all_preds_out = {'spans': [], 'rels': [], 'rels_mod': []}
+
+
+    def remove_span_types_from_full_rels(self, full_rels):
+        '''
+        This removes the span types from the full rels as this is required for some analysis
+        '''
+        return [[(rel[0],rel[1],rel[3],rel[4],rel[6]) for rel in obs] for obs in full_rels]
+
+
+    def prep_and_add_batch_preds(self, span_preds, rel_preds):
+        '''
+        function to add the batch of preds (list of list of tuples) to the internal store to be returned later
+        '''
+        #make the rel_preds without the span types
+        rel_preds_mod = self.remove_span_types_from_full_rels(rel_preds)
+        #add to the output dicts
+        self.all_preds_out['spans'].extend(span_preds)
+        self.all_preds_out['rels'].extend(rel_preds)
+        self.all_preds_out['rels_mod'].extend(rel_preds_mod)
+
 
     def predict_unilabel(self, logits):
         """
@@ -122,7 +146,7 @@ class Predictor:
         '''
         preds, probs = self.predict_unilabel(rel_logits)  # Adjust this method to return predictions and probs for relations
         rels = [[] for _ in range(rel_logits.shape[0])]
-        conf = [[] for _ in range(span_logits.shape[0])]  # batch_size is the first dimension
+        conf = [[] for _ in range(rel_logits.shape[0])]  # batch_size is the first dimension
         #Find indices where predictions are positive (ignoring class 0, the "none" class)
         batch_indices, rel_indices = torch.where(preds > 0)
         for batch_idx, rel_idx in zip(batch_indices, rel_indices):
@@ -170,7 +194,7 @@ class Predictor:
         '''
         preds, probs = self.predict_multilabel(rel_logits, self.config.predict_thd)  # Get predictions and probabilities
         rels = [[] for _ in range(rel_logits.shape[0])]
-        conf = [[] for _ in range(span_logits.shape[0])]  # batch_size is the first dimension
+        conf = [[] for _ in range(rel_logits.shape[0])]  # batch_size is the first dimension
         # Find indices where predictions are positive
         batch_indices, rel_indices, rel_type_indices = torch.where(preds == 1)
         for batch_idx, rel_idx, rel_type_idx in zip(batch_indices, rel_indices, rel_type_indices):
@@ -196,21 +220,46 @@ class Predictor:
 
 
 
-    def predict(self, out):
-        '''
-        describe this function
-        NOTE:
-        not supporting multilabel for spans, read the validation section comments
+    def predict_spans(self, out):
+        """
+        Predict spans from model output based on configuration.
+        """
         if self.config.span_labels == 'unilabel':
-            spans = self.predict_spans_unilabel(out['logits_span'], out['cand_w_span_ids'])
+            return self.predict_spans_unilabel(out['logits_span'], out['cand_w_span_ids'])
         elif self.config.span_labels == 'multilabel':
-            spans = self.predict_spans_multilabel(out['logits_span'], out['cand_w_span_ids'])
-        '''
-        spans, span_conf = self.predict_spans_unilabel(out['logits_span'], out['cand_w_span_ids'])
-        
-        if self.config.rel_labels == 'unilabel':
-            rels, rel_conf = self.predict_rels_unilabel(out['logits_rel'], out['cand_rel_ids'])
-        elif self.config.rel_labels == 'multilabel':
-            rels, rel_conf = self.predict_rels_multilabel(out['logits_rel'], out['cand_rel_ids'])
+            raise ValueError('multilabel not supported for spans')
+            #return self.predict_spans_multilabel(out['logits_span'], out['cand_w_span_ids'])
 
-        return spans, rels
+
+    def predict_rels(self, out):
+        """
+        Predict relationships from model output based on configuration.
+        """
+        if self.config.rel_labels == 'unilabel':
+            return self.predict_rels_unilabel(out['logits_rel'], out['cand_rel_ids'])
+        elif self.config.rel_labels == 'multilabel':
+            return self.predict_rels_multilabel(out['logits_rel'], out['cand_rel_ids'])
+
+
+
+    def predict(self, out, return_and_reset_results=False):
+        """
+        Runs predictions for spans and relations based on the model output and configuration.
+        Handles both unilabel and multilabel predictions as configured.
+        Args:
+            out (dict): Model output containing logits and candidate ids.
+            return_and_reset_results (bool): If True, returns and resets internal prediction storage.
+
+        Returns:
+            dict: A deep copy of all predictions if return_and_reset_results is True, otherwise None.
+        """
+        spans, span_conf = self.predict_spans(out)
+        rels, rel_conf = self.predict_rels(out)
+        #prep and add to the all_preds_out object
+        self.prep_and_add_batch_preds(spans, rels)
+        #return data and reset if requested
+        if return_and_reset_results:
+            result = copy.deepcopy(self.all_preds_out)
+            self.reset_data()
+            return result
+

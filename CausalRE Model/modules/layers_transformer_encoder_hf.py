@@ -2,7 +2,7 @@ from typing import Tuple, List, Dict, Union
 import torch
 import torch.nn as nn
 from transformers import AutoModel, AutoTokenizer
-from .data_processor import PromptProcessor
+from .prompt_processor import PromptProcessor
 
 
 class TransformerEncoderHFPrompt(torch.nn.Module):

@@ -20,7 +20,7 @@ from .data_processor import DataProcessor
 from .utils import import_data, load_from_json, save_to_json
 from .evaluator import Evaluator
 from .predictor import Predictor
-from .validation import config_validator
+from .validator import Validator
 
 
 
@@ -227,6 +227,11 @@ class Trainer:
         checkpoint = f'model_{step + 1}'
         self.save_top_k_checkpoints(model, log_dir, checkpoint, save_total_limit)
 
+        return dict(
+            result_eval = result_eval,
+            result_test = result_test
+        )
+
 
     def print_metrics_summary(self, result, msg):
         print(f'Eval_type: {msg}\n-------------------------------')
@@ -249,42 +254,19 @@ class Trainer:
         model.eval()
         with torch.no_grad():
             for x in iter_loader:
-                result = model(x, step=step)
+                with torch.cuda.amp.autocast(dtype=torch.float16):    #forcing data to half precision
+                    result = model(x, step=step)
                 #get preds => the predicted positive cases
                 #NOTE: the rel_preds are the full rels with the span start,end,type info
-                span_preds, rel_preds = predictor.predict(result)
+                preds = predictor.predict(result, return_and_reset_results=True)
                 #prepare and add the batch of preds and labels to the evaluator
-                evaluator.prep_and_add_batch(span_preds, rel_preds, x['spans'], x['relations'])
+                evaluator.prep_and_add_batch(preds, x['spans'], x['relations'])
         
-        #run the evaluator on whole dataset results and return a dict with the metrics and preds
+        #run the evaluator on whole dataset results (stored in the evaluator object) and return a dict with the metrics and preds
         result = evaluator.evaluate()
         self.print_metrics_summary(result, msg)
         return result
             
-
-
-    def make_full_relations_from_raw_annotations(self, x):
-        '''
-        #THIS IS BALL PARK FOR EXTRACTING THE RAW ANNOTATED DATA INTO FULL RELATIONS
-        #THIS IS BALL PARK FOR EXTRACTING THE RAW ANNOTATED DATA INTO FULL RELATIONS
-        #THIS IS BALL PARK FOR EXTRACTING THE RAW ANNOTATED DATA INTO FULL RELATIONS
-        This converts the span and relation raw annotations (both being list of list of tuples)
-        to full relation labels which is a list of list tuples of the format:
-        [[(head start, head end, head type, tail start, tail end, tail type, rel_type), (...), (...)...]]
-        '''
-        batch_spans =  x['spans']
-        batch_rels = x['relations']
-        batch = len(spans)
-        batch_rels_full = [[] for i in range(batch)]
-        for i in range(batch):
-            rels = batch_rels[i]
-            spans = batch_spans[i]
-            for rel in rels:
-                full_rel = (spans[rel[0]], spans[rel[1]], rel[2])
-                batch_rels_full[i].append(full_rel)
-        return batch_rels_full
-
-
 
     ##########################################################################
     #PREDICT
@@ -297,40 +279,24 @@ class Trainer:
         #read some params from config
         device = self.config.device
         predict_loader = loaders['predict']
-        log_dir = self.config.log_dir
-        pred_thd = self.config.predict_threshold
-        pred_conf = self.config.predict_confidence
+
+        #make the predictor, no evaluator as have no labels
+        predictor = Predictor(self.config)
 
         iter_loader = self.load_loader(predict_loader, device, infinite=False)
-        preds = []
-        pos_labels = []
         model.eval()
         with torch.no_grad():
             for x in iter_loader:
-                result = model(x)
-                
-                '''
-                Here, implement your logic to process outputs, which contain logits + associated data only
-                so we would report:
-                - predictions:
-                    - spans (start, end, type, potentially show the actual textual span)
-                    - rels (head_idx, tail_idx, type)
-    
-                I am not sure what this returns right now if anything
+                with torch.cuda.amp.autocast(dtype=torch.float16):    #forcing data to half precision
+                    result = model(x)
+                #make the predictions for the batch and add to the predictor object    
+                predictor.predict(result)
 
-                '''
-
-                #Get span and rel preds
-                spans, rels = self.predictor(x, result)
-                preds.extend(batch_predictions)
-                pos_labels.extend(self.get_full_relations(x))
-        
-        return spans, rels
+        #return the final predict results from the predictor object
+        return predictor.all_preds_out
 
 
 
-
-    predictor = 
 
 
 
@@ -504,7 +470,8 @@ class Trainer:
         self.config.rel_types       = result['rel_types']
 
         #validate configs
-        config_validator(self.config)
+        config_validator = Validator(self.config)
+        config_validator.validate()
 
         #add to the config => the span and rel type mapping dicts and the all_possible_spans data
         #adds the none_span/rel types to the possible types for the unilabel case (see function for details)
@@ -533,10 +500,13 @@ class Trainer:
 
         #kick off the train_loop or predict_loop
         if self.config.run_type == 'train': 
-            self.train_loop(model, loaders)
+            result = self.train_loop(model, loaders)
+            #this has the results_eval and result_test in a dict
 
         elif self.config.run_type == 'predict': 
-            self.predict_loop(model, loaders)
+            result = self.predict_loop(model, loaders)
+            #you may want to reformat the preds here to a format that is importable by my js tool for viewing
+            #i.e. the standard spans/relations format, where the rels just have the head/tail index in the spans list etc...
 
         else:
             raise Exception("Error - run_type must be either 'train' or 'predict'")
@@ -544,12 +514,6 @@ class Trainer:
 
 
 
-    def testing_check_loader(self, loader):
-        '''
-        Keep this function, it is for testing
-        '''
-        x = iter(loader)
-        batch = next(x)
-        print(batch.keys())
-        print(batch)
+
+
 

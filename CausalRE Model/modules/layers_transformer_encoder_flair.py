@@ -2,7 +2,7 @@ from typing import List
 import torch
 from flair.data import Sentence as flair_sent
 from flair.embeddings import TransformerWordEmbeddings as flair_transformer
-from .data_processor import PromptProcessor
+from .prompt_processor import PromptProcessor
 
 class TransformerEncoderFlairPrompt(torch.nn.Module):
     '''

@@ -128,17 +128,17 @@ class Evaluator:
 
 
 
-    def prep_and_add_batch(self, span_preds, rel_preds, span_labels_raw, rel_labels_raw):
+    def prep_and_add_batch(self, preds, span_labels_raw, rel_labels_raw):
         #get the labels => the actual positive cases
         #NOTE: the rel_labels are the full rels with the span start,end,type info
         span_labels, rel_labels = self.prepare_labels(span_labels_raw, rel_labels_raw)
         #make the rel_labels and preds without the span types
-        rel_preds_mod = self.remove_span_types_from_full_rels(rel_preds)
+        #rel_preds_mod = self.remove_span_types_from_full_rels(rel_preds)
         rel_labels_mod = self.remove_span_types_from_full_rels(rel_labels)
         #align and flatten
-        span_preds, span_labels = self.align_preds_and_labels(span_preds, span_labels, 3)
-        rel_preds, rel_labels = self.align_preds_and_labels(rel_preds, rel_labels, 7)
-        rel_preds_mod, rel_labels_mod = self.align_preds_and_labels(rel_preds_mod, rel_labels_mod, 5)
+        span_preds, span_labels = self.align_preds_and_labels(preds['spans'], span_labels, 3)
+        rel_preds, rel_labels = self.align_preds_and_labels(preds['rels'], rel_labels, 7)
+        rel_preds_mod, rel_labels_mod = self.align_preds_and_labels(preds['rels_mod'], rel_labels_mod, 5)
         #add to the output dicts
         self.all_preds['spans'].extend(span_preds)
         self.all_labels['spans'].extend(span_labels)

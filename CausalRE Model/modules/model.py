@@ -8,11 +8,11 @@ import torch.nn.init as init
 #custom imports
 from .layers_transformer_encoder_flair import TransformerEncoderFlairPrompt
 from .layers_transformer_encoder_hf import TransformerEncoderHFPrompt
+from .layers_filtering import FilteringLayer
 from .layers_other import LstmSeq2SeqEncoder, TransformerEncoderTorch, GraphEmbedder, OutputLayer
 from .loss_functions import classification_loss
 from .span_rep import SpanRepLayer
-from .filtering import FilteringLayer
-from .data_processor import RelationProcessor
+from .rel_processor import RelationProcessor
 from .rel_rep import RelationRepLayer
 
 
