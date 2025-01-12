@@ -126,19 +126,7 @@ class ModelManager:
 
 
 class Optimizer:
-    def __init__(self, config):
-        self.config = config
-
-
-    ################################################
-    #get the optimiser
-    ################################################
-    def get_optimizer(self, model):
-        """
-        Sets learning rates for the encoder and all other layers, with an option to freeze the encoder.
-        """
-        config = self.config
-
+    def __init__(self, config, model):
         lr_encoder = float(config.lr_encoder)
         lr_others = float(config.lr_others)
         freeze_encoder = config.freeze_encoder
@@ -165,19 +153,13 @@ class Optimizer:
 
 
 
-class Scheduler:
-    def __init__(self, config):
-        self.config = config
 
-    ################################################
-    #get the scheduler
-    ################################################
-    def get_scheduler(self, optimizer, num_warmup_steps, num_steps):
+
+class Scheduler:
+    def __init__(self, config, optimizer, num_warmup_steps, num_steps):
         '''
         Setup the learning rate scheduler
         '''
-        config = self.config
-
         scheduler_type = config.scheduler_type, 
         if scheduler_type == "cosine":
             scheduler = get_cosine_schedule_with_warmup(
@@ -212,3 +194,4 @@ class Scheduler:
                 f"Invalid scheduler_type value: '{scheduler_type}' \n Supported scheduler types: 'cosine', 'linear', 'constant', 'polynomial', 'inverse_sqrt'"
             )
         return scheduler
+    

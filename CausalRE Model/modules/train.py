@@ -8,10 +8,8 @@ from tqdm import tqdm
 ###############################################
 #custom imports
 from .data_processor import DataProcessor
-from .utils import import_data, load_from_json, save_to_json
 from .evaluator import Evaluator
 from .predictor import Predictor
-from .validator import Validator
 from .model_manager import ModelManager, Optimizer, Scheduler
 from .data_preparation import DataPreparation
 
@@ -96,17 +94,17 @@ class Trainer:
         log_dir = config.log_dir
 
         #get the optimiser and scheduler
-        optimizer = Optimizer(config).get_optimizer(model)
-        scheduler = Scheduler(config).get_scheduler(optimizer, num_warmup_steps, num_steps)
+        optimizer = Optimizer(config, model)
+        scheduler = Scheduler(config, optimizer, num_warmup_steps, num_steps)
         scaler = torch.cuda.amp.GradScaler()
 
         #get the loaders
         train_loader = loaders['train']
         val_loader = loaders['val']
         test_loader = loaders['test']
+
         #make an infinitely iterable from train loader
         iter_loader_inf = self.load_loader(train_loader, device, infinite=True)
-
         for step in pbar:
             loss = self.train_step(model, optimizer, scheduler, scaler, iter_loader_inf)
             if loss is None: continue
@@ -210,9 +208,8 @@ class Trainer:
 
 
 
-    ################################################
-    #main orchestration function for training/eval
-    ################################################
+
+
     def run(self):
         #load and prepare data
         #this also updates the main_configs with some key parameters
@@ -225,8 +222,8 @@ class Trainer:
         loaders = data_processor.create_dataloaders(dataset)
 
         #get the model
-        model_manager = ModelManager(self.config) 
-        model = model_manager.get_model()
+        self.model_manager = ModelManager(self.config) 
+        model = self.model_manager.get_model()
 
         #kick off the train_loop or predict_loop
         if self.config.run_type == 'train': 

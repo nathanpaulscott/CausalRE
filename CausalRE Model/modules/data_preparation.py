@@ -1,5 +1,4 @@
 from .utils import import_data
-from .data_processor import DataProcessor
 from .validator import Validator
 
 
@@ -10,7 +9,7 @@ class DataPreparation:
     def __init__(self, main_configs):
         #need the main configs object here as we actually are going to update it
         self.main_configs = main_configs 
-
+        self.config = main_configs.as_namespace
 
 
     def make_all_possible_spans(self, max_seq_len, max_span_width):
@@ -131,8 +130,7 @@ class DataPreparation:
         ))
 
         #validate the imported configs
-        config_validator = Validator(self.main_configs)
-        config_validator.validate()
+        Validator(self.config).validate()
 
         #add to the config => the span and rel type mapping dicts and the all_possible_spans data
         #adds the none_span/rel types to the possible types for the unilabel case (see function for details)
@@ -140,8 +138,3 @@ class DataPreparation:
 
         return dataset
 
-        '''
-        #make the data loaders
-        self.data_processor = DataProcessor(self.main_configs)
-        return self.data_processor.create_dataloaders(dataset)
-        '''
