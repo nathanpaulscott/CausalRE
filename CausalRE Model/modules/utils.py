@@ -94,7 +94,7 @@ def save_to_json(data, filename):
 
 
 
-def import_data(data_path, config):
+def import_data(data_path, main_configs):
     """
     Load a source dataset from a JSON file and extract its schema.
 
@@ -145,6 +145,7 @@ def import_data(data_path, config):
     Raises:
         KeyError: If the 'schema' key is missing from the JSON.
     """
+    config = main_configs.as_namespace()
     #make the absolute data path
     data_path = str(config.app_path / config.data_path)
     #Load the JSON file into a Python object

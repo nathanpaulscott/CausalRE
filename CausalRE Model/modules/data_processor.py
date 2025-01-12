@@ -16,7 +16,7 @@ class DataProcessor(object):
     def __init__(self, config):
         self.config = config
         #set the has_labels flag based on the self.config.run_type being train (not predict)
-        self.has_labels = config.run_type == 'train'
+        self.has_labels = self.config.run_type == 'train'
 
 
     def batch_list_to_dict_converter(self, batch):

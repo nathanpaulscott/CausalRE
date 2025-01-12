@@ -2,9 +2,10 @@ import torch
 import argparse
 import yaml
 from pathlib import Path
+from types import SimpleNamespace
 
 from modules.train import Trainer
-
+from modules.config_manager import Config
 
 
 
@@ -20,34 +21,30 @@ def create_parser():
 
 
 
-def load_config_as_namespace(config_path):
+def load_config(config_path, app_path, device):
     """
-    Load a YAML configuration file and convert it into a namespace for easy attribute access.
-    Args:
-        config_path: Path object: Path to the YAML configuration file.
-    Returns:
-        argparse.Namespace: A namespace populated with configurations loaded from the file.
-    Raises:
-        FileNotFoundError: If the YAML file does not exist.
-        yaml.YAMLError: If there is an error parsing the YAML file.
+    Load a YAML configuration file to a config object containing a namespace
     """
     if not config_path.exists():
         raise FileNotFoundError(f"The configuration file {str(config_path)} does not exist.")
-
     try:
         with config_path.open("r") as f:
             config_dict = yaml.safe_load(f)
     except yaml.YAMLError as e:
         print(f"Error parsing YAML file: {e}")
         raise
-
     if config_dict is None:
-        return argparse.Namespace()  # Return an empty namespace if config is empty
+        raise ValueError('the config is blank, exiting....')
     
-    config = argparse.Namespace(**config_dict)
+    #make the config object
+    main_configs = Config(config_dict)
+    main_configs.update(dict(
+        app_path   = app_path,
+        device     = device
+        ))
+    
+    return main_configs
 
-    #add the base path to the configs
-    return config
 
 
 
@@ -71,15 +68,15 @@ if __name__ == "__main__":
     #get the configs
     parser = create_parser()
     args = parser.parse_args()
-    #load the config file
+    
+    #load the config file to a config object
     app_path = Path(__file__).parent
     config_path = app_path / args.config
-    config = load_config_as_namespace(config_path)
-    #add key properties to config
-    config.app_path = app_path
-    config.device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    main_configs = load_config(config_path, app_path, device)
+    
     #make the Trainer object to orchestrate the training/inference
-    trainer = Trainer(config)
+    trainer = Trainer(main_configs)
     #run the trainer
     trainer.run()
 

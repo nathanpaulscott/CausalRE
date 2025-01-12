@@ -3,6 +3,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 import torch.nn.init as init
+from types import SimpleNamespace
+import copy
+
 
 ###############################################
 #custom imports
@@ -17,14 +20,14 @@ from .rel_rep import RelationRepLayer
 
 
 
-
 class Model(nn.Module):
     def __init__(self, config):
         super().__init__()
-        self.config = config
+        #create a locally mutable version of the config namespace
+        self.config = SimpleNamespace(**config.get_data_copy())
         #special token definition
-        self.config.s_token = "<<S>>"
-        self.config.r_token = "<<R>>"
+        self.config.s_token   = "<<S>>"
+        self.config.r_token   = "<<R>>"
         self.config.sep_token = "<<SEP>>"
         ######################################
         
@@ -45,29 +48,29 @@ class Model(nn.Module):
         #thus I suspect this layer is not neccessary if bert was setup correctly, but it woudl be good to test it
         #additionlly this gives me an idea for using a bigru for incorporating gloabl context into the token reps => see my notes on this in te grapher folder!!
         self.rnn = LstmSeq2SeqEncoder(
-            input_size      = config.hidden_size,
-            hidden_size     = config.hidden_size // 2,
+            input_size      = self.config.hidden_size,
+            hidden_size     = self.config.hidden_size // 2,
             num_layers      = 1,
             bidirectional   = True
         )
 
 
         #span width embeddings (in word widths)
-        self.width_embeddings = nn.Embedding(config.max_span_width, config.width_embedding_size)
+        self.width_embeddings = nn.Embedding(self.config.max_span_width, self.config.width_embedding_size)
         #span representations
         #this forms the span reps from the token reps using the method defined by config.span_mode,
         self.span_rep_layer = SpanRepLayer(
-            span_mode             = config.span_mode,
-            max_seq_len           = config.max_seq_len,       #in word widths    
-            max_span_width        = config.max_span_width,    #in word widths
-            pooling               = config.subtoken_pooling,     #whether we are using pooling or not
+            span_mode             = self.config.span_mode,
+            max_seq_len           = self.config.max_seq_len,       #in word widths    
+            max_span_width        = self.config.max_span_width,    #in word widths
+            pooling               = self.config.subtoken_pooling,     #whether we are using pooling or not
             #the rest are in kwargs
-            hidden_size           = config.hidden_size,
+            hidden_size           = self.config.hidden_size,
             width_embeddings      = self.width_embeddings,    #in word widths
-            dropout               = config.dropout,
-            ffn_ratio             = config.ffn_ratio, 
-            use_span_pos_encoding = config.use_span_pos_encoding,    #whether to use span pos encoding in addition to full seq pos encoding
-            cls_flag              = config.model_source == 'HF'    #whether we will have a cls token rep
+            dropout               = self.config.dropout,
+            ffn_ratio             = self.config.ffn_ratio, 
+            use_span_pos_encoding = self.config.use_span_pos_encoding,    #whether to use span pos encoding in addition to full seq pos encoding
+            cls_flag              = self.config.model_source == 'HF'    #whether we will have a cls token rep
         )
 
         #define the relation processor to process the raw x['relations'] data once we have our initial cand_span_ids
@@ -76,29 +79,29 @@ class Model(nn.Module):
         #relation representation
         #this forms the rel reps from the cand_span_reps after the span reps have been filtered for the initial graph
         self.rel_rep_layer = RelationRepLayer(
-            rel_mode           = config.rel_mode,    #what kind of rel_rep generation algo to use 
-            hidden_size        = config.hidden_size, 
-            ffn_ratio          = config.ffn_ratio,
-            dropout            = config.dropout,
-            pooling            = config.subtoken_pooling,     #whether we are using pooling or not
+            rel_mode           = self.config.rel_mode,    #what kind of rel_rep generation algo to use 
+            hidden_size        = self.config.hidden_size, 
+            ffn_ratio          = self.config.ffn_ratio,
+            dropout            = self.config.dropout,
+            pooling            = self.config.subtoken_pooling,     #whether we are using pooling or not
         )
 
         # filtering layer for spans and relations
-        self.span_filter_head = FilteringLayer(config.hidden_size)
-        self.rel_filter_head = FilteringLayer(config.hidden_size)
+        self.span_filter_head = FilteringLayer(self.config.hidden_size)
+        self.rel_filter_head = FilteringLayer(self.config.hidden_size)
 
         # graph embedder
-        self.graph_embedder = GraphEmbedder(config.hidden_size)
+        self.graph_embedder = GraphEmbedder(self.config.hidden_size)
         
         # transformer layer
         self.trans_layer = TransformerEncoderTorch(
-            config.hidden_size,
-            num_heads=config.num_heads,
-            num_layers=config.num_transformer_layers
+            self.config.hidden_size,
+            num_heads  = self.config.num_heads,
+            num_layers = self.config.num_transformer_layers
         )
 
         #this will replace the keep head
-        self.graph_filter_head = FilteringLayer(config.hidden_size)
+        self.graph_filter_head = FilteringLayer(self.config.hidden_size)
         
         #final output heads
         '''
@@ -106,15 +109,15 @@ class Model(nn.Module):
         for unilabels the output dim will be num pos span/rel types + 1 for the none type
         for multilabels the output dim will be the num pos span/rel types with no none type
         '''
-        self.output_head_span = OutputLayer(num_types   = config.num_span_types,
-                                            hidden_size = config.hidden_size,
-                                            dropout     = config.dropout,
-                                            use_prompt  = config.use_prompt)
+        self.output_head_span = OutputLayer(num_types   = self.config.num_span_types,
+                                            hidden_size = self.config.hidden_size,
+                                            dropout     = self.config.dropout,
+                                            use_prompt  = self.config.use_prompt)
         
-        self.output_head_rel = OutputLayer(num_types    = config.num_rel_types,
-                                           hidden_size  = config.hidden_size,
-                                           dropout      = config.dropout,
-                                           use_prompt   = config.use_prompt)
+        self.output_head_rel = OutputLayer(num_types    = self.config.num_rel_types,
+                                           hidden_size  = self.config.hidden_size,
+                                           dropout      = self.config.dropout,
+                                           use_prompt   = self.config.use_prompt)
 
         self.init_weights()
 

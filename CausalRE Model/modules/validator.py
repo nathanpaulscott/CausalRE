@@ -8,8 +8,8 @@ class Validator:
     '''
     class to validate the incoming config data
     '''
-    def __init__(self, config):
-        self.config = config
+    def __init__(self, main_configs):
+        self.config = main_configs.as_namespace()
 
 
     def validate(self):
