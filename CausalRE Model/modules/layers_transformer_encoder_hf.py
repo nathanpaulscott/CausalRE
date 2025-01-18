@@ -13,7 +13,7 @@ class TransformerEncoderHFPrompt(torch.nn.Module):
     The performance loss from not splitting the tokenizer is minimal for small to moderate sized datasets.    
     '''
     def __init__(self, config):
-        super(TransformerEncoderHFPrompt).__init__()
+        super().__init__()
 
         self.config = config
 
@@ -149,7 +149,7 @@ class TransformerEncoderHFPrompt(torch.nn.Module):
         sw_span_ids = torch.zeros_like(span_ids) 
         for b in range(batch_size):
             for s in range(num_spans):
-                start, end = span_ids[b, s, 0], span_ids[b, s, 1]
+                start, end = span_ids[b, s, 0].item(), span_ids[b, s, 1].item()
                 # Skip padding and problematic spans
                 if (start == 0 and end == 0) or start not in w2sw_map[b] or end-1 not in w2sw_map[b]:
                     continue

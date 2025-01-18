@@ -60,10 +60,13 @@ class Trainer:
     def train_step(self, model, optimizer, scheduler, scaler, iter_loader_inf, step):
         optimizer.zero_grad()
         x = next(iter_loader_inf)
-        with torch.cuda.amp.autocast(dtype=torch.float16):
-            model.train()
+        model.train()
+        if self.config.num_precision == 'half':
+            with torch.cuda.amp.autocast(dtype=torch.float16):
+                result = model(x, step=step)
+        else:
             result = model(x, step=step)
-            loss = result['loss']
+        loss = result['loss']
 
         if torch.isnan(loss).any():
             print(f"Warning: NaN loss detected at step {step}. Skipping...")
@@ -76,11 +79,14 @@ class Trainer:
         return loss
 
 
-
+    '''
+    got here
+    '''
     def train_loop(self, model, loaders):
         '''
         This is the training and eval loop
         '''
+        self.config.logger.write('Starting the Train Loop', 'info')
         config = self.config
 
         #read some params from config
@@ -91,11 +97,11 @@ class Trainer:
         num_warmup_steps = int(num_steps * warmup_ratio) if warmup_ratio < 1 else int(warmup_ratio)
         eval_every = config.eval_every
         save_total_limit = config.save_total_limit
-        log_dir = config.log_dir
+        log_folder = config.log_folder
 
         #get the optimiser and scheduler
-        optimizer = Optimizer(config, model)
-        scheduler = Scheduler(config, optimizer, num_warmup_steps, num_steps)
+        optimizer = Optimizer(config, model).return_object
+        scheduler = Scheduler(config, optimizer, num_warmup_steps, num_steps).return_object
         scaler = torch.cuda.amp.GradScaler()
 
         #get the loaders
@@ -106,7 +112,7 @@ class Trainer:
         #make an infinitely iterable from train loader
         iter_loader_inf = self.load_loader(train_loader, device, infinite=True)
         for step in pbar:
-            loss = self.train_step(model, optimizer, scheduler, scaler, iter_loader_inf)
+            loss = self.train_step(model, optimizer, scheduler, scaler, iter_loader_inf, step)
             if loss is None: continue
 
             description = f"step: {step} | epoch: {step // len(train_loader)} | loss: {loss.item():.2f}"
@@ -116,13 +122,13 @@ class Trainer:
             if (step + 1) % eval_every == 0:
                 result = self.eval_loop(model, val_loader, device, step=step, msg='interim_val')
                 checkpoint = f'model_{step + 1}'
-                self.model_manager.save_top_k_checkpoints(model, log_dir, checkpoint, save_total_limit)
+                self.model_manager.save_top_k_checkpoints(model, log_folder, checkpoint, save_total_limit)
 
         #run the final eval and test loop
         result_eval = self.eval_loop(model, val_loader, device, step=None, msg='final_val')
         result_test = self.eval_loop(model, test_loader, device, step=None, msg='final_test')
         checkpoint = f'model_{step + 1}'
-        self.model_manager.save_top_k_checkpoints(model, log_dir, checkpoint, save_total_limit)
+        self.model_manager.save_top_k_checkpoints(model, log_folder, checkpoint, save_total_limit)
 
         return dict(
             result_eval = result_eval,
@@ -182,6 +188,7 @@ class Trainer:
         This is the predict loop, the run_type param is 'predict' so the model will run without labels and not calculate loss
         The loss returned from the model will be None
         '''
+        self.config.logger.write('Starting the Predict Loop', 'info')
         config = self.config
 
         #read some params from config
@@ -206,7 +213,20 @@ class Trainer:
     ##############################################################
     ##############################################################
 
-
+    #testing
+    def check_loaders(self, loaders):
+        # Check the loaders here
+        # Fetch the first batch from the training loader to inspect
+        N = 20
+        train_iterator = iter(loaders['train'])
+        for i in range(N):
+            batch = next(train_iterator)
+        print(f'batch {N} from training data loader:')
+        for key, value in batch.items():
+            if isinstance(value, torch.Tensor):
+                print(f"{key}: Tensor of shape {value.shape}")
+            else:
+                print(f"{key}: {value}")
 
 
 
@@ -215,11 +235,18 @@ class Trainer:
         #this also updates the main_configs with some key parameters
         data_preparation = DataPreparation(self.main_configs)             #needs to modify the main_configs
         dataset = data_preparation.load_and_prep_data()
-
+        
         #make the data loaders
         #needs to be done here as the previous funtcion updated the main_configs
         data_processor = DataProcessor(self.config) 
         loaders = data_processor.create_dataloaders(dataset)
+
+        #check the loaders here
+        testing = True
+        if testing: self.check_loaders(loaders)
+
+        #send config to log
+        self.config.logger.write('Configs Snapshot:\n' + self.main_configs.dump_as_json_str, 'info')
 
         #get the model
         self.model_manager = ModelManager(self.config) 

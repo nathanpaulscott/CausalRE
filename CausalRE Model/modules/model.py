@@ -30,6 +30,7 @@ class Model(nn.Module):
         self.config.r_token   = "<<R>>"
         self.config.sep_token = "<<SEP>>"
         ######################################
+        self.num_limit = 6.5e4 if self.config.num_precision == 'half' else 1e9
         
         
         #make the modified transformer encoder with prompt addition/removal and subtoken pooling functionality
@@ -56,7 +57,8 @@ class Model(nn.Module):
 
 
         #span width embeddings (in word widths)
-        self.width_embeddings = nn.Embedding(self.config.max_span_width, self.config.width_embedding_size)
+        #NOTE: the number of embeddings needs to be max_span_width + 1 as the first one (idx 0) can be used for widths of length 0 (which are to be ignored, i.e. these are masked out spans anyway)
+        self.width_embeddings = nn.Embedding(self.config.max_span_width + 1, self.config.width_embedding_size)
         #span representations
         #this forms the span reps from the token reps using the method defined by config.span_mode,
         self.span_rep_layer = SpanRepLayer(
@@ -87,8 +89,9 @@ class Model(nn.Module):
         )
 
         # filtering layer for spans and relations
-        self.span_filter_head = FilteringLayer(self.config.hidden_size)
-        self.rel_filter_head = FilteringLayer(self.config.hidden_size)
+        self.span_filter_head = FilteringLayer(self.config.hidden_size, self.num_limit)
+        self.rel_filter_head = FilteringLayer(self.config.hidden_size, self.num_limit)
+
 
         # graph embedder
         self.graph_embedder = GraphEmbedder(self.config.hidden_size)
@@ -101,7 +104,7 @@ class Model(nn.Module):
         )
 
         #this will replace the keep head
-        self.graph_filter_head = FilteringLayer(self.config.hidden_size)
+        self.graph_filter_head = FilteringLayer(self.config.hidden_size, self.num_limit)
         
         #final output heads
         '''
@@ -159,7 +162,7 @@ class Model(nn.Module):
         span_type_reps = result['span_type_reps']   #embeddings for the span types
         rel_type_reps  = result['rel_type_reps']    #embeddings for the rel types
         cls_reps       = result['cls_reps']         #embeddings for the CLS sw token, only if we are using HF
-        sw_span_ids    = result['sw_span_ids']      #tensor (batch, max_seq_len_batch*max_span_width, 2) => x['span_ids'] with values mapped using w2sw_map to the sw token start, end. Only if we are HF with no pooling.
+        sw_span_ids    = result['sw_span_ids']      #tensor (batch, batch_max_seq_len*max_span_width, 2) => x['span_ids'] with values mapped using w2sw_map to the sw token start, end. Only if we are HF with no pooling.
         w2sw_map       = result['w2sw_map']         #w2sw mapping for the non-prompt and non special token word tokens to subword tokens. Only if we are HF with no pooling.
         '''
         ok so got here, we have 3 cases:
@@ -192,49 +195,94 @@ class Model(nn.Module):
 
 
 
+
+    def calc_top_k_spans(self):
+        '''
+        Determine a value for top_k_spans for this batch
+        ---------------------
+        SL = batch_match_seq_len    (could be self.config,max_seq_len, but coudl also be less, depends on the batch)
+        W = max_span_width          (from self.config.max_span_width)
+        W_mod = min(SL, W)
+        ---------------------
+        => num_spans = SL * W  (this includes those spans at that start in the seq len but end outside it)
+        => num_spans_available = SL * W_mod - W_mod*(W_mod-1)/2    (start/end in the batch_max_seq_len, potentially not in the actual seq len of that obs, but inside the batch_max_seq_len)
+        '''
+        #first determine the number of spans inside the batch_max_seq_len, these are spans that are possible to shortlist
+        #NOTE: that some of them could be maksed out, but at least they exist in the token_reps tensor
+        S = self.batch_max_seq_len
+        W_mod = min(S, self.config.max_span_width)
+        num_spans_available = S * W_mod - W_mod*(W_mod-1)/2
+        top_k_spans = min(num_spans_available, self.config.max_top_k_spans)
+        return top_k_spans
+        
+
+
+
+
+    def calc_top_k_rels(self, rel_scores):
+        """
+        Dynamically determines the number of top relationships to include in the graph based on a percentile threshold of relationship scores.
+
+        This function calculates the threshold score at a specified percentile of the relationship scores provided. It then counts how many relationships exceed this threshold and limits the count based on the maximum number allowed by the configuration. 
+        The function ensures that the number of relationships considered does not exceed the actual number of relationships available.
+
+        Args:
+            rel_scores (torch.Tensor): A tensor containing the scores of relationships, where higher scores indicate a stronger likelihood of the relationship being significant. These scores should range from -inf to +inf.
+            config (ConfigClass): An object containing configuration parameters, including:
+                rel_score_percentile (float): The percentile (between 0 and 1) used to determine the threshold score for including relationships. For example, 0.95 means the top 5% of scores are considered.
+                max_top_k_rels (int): The maximum number of relationships to include, providing an upper bound to prevent excessive computation.
+
+        Returns:
+            int: The number of relationships to include, which is the minimum of the number of relationships exceeding the score threshold, the maximum number allowed, and the total number of relationships available.
+
+        Example:
+            >>> rel_scores = torch.tensor([0.1, 0.4, 0.35, 0.8, 0.95])
+            >>> config = ConfigClass(rel_score_percentile=0.8, max_top_k_rels=3)
+            >>> dynamic_top_k_rels(rel_scores, config)
+            2  # Only two scores exceed the 80th percentile threshold in this example.
+        """
+        if self.config.num_precision == 'half':
+            #quantile doesn't support half precision
+            rel_score_thd = torch.quantile(rel_scores.to(dtype=torch.float32), self.config.rel_score_percentile/100)
+        else:
+            rel_score_thd = torch.quantile(rel_scores, self.config.rel_score_percentile/100)
+        valid_rels_mask = rel_scores >= rel_score_thd
+        valid_rels_count = valid_rels_mask.sum().item()
+        top_k_rels = min(valid_rels_count, self.config.max_top_k_rels, rel_scores.shape[1])
+        return top_k_rels
+
+
+
+
     def prune_spans(self, 
                     filter_score_span, 
-                    w_span_ids, 
-                    sw_span_ids,
-                    batch_ids):
+                    top_k_spans):
         '''
-        filter the spans down to top_k_spans with the span filter scores
+        select the top K spans for the initial graph based on the span filter scores
         '''
-        #We now select the top K spans for the initial graph based on the span filter scores
         #first sort the filter_score_span tensor descending
         #NOTE [1] is to get the idx as opposed to the values as torch.sort returns a tuple (vals, idx)
         sorted_span_idx = torch.sort(filter_score_span, dim=-1, descending=True)[1]
-        #next determine how many to shortlist (the K in top K), for longer sequences, it will be maxed at 64 spans per obs
-        top_k_spans = min(self.max_seq_len, self.config.max_top_k_spans) + self.config.add_top_k_spans
         
         '''
         select the top_k spans from each obs and form the cand_span tensors (with the spans to use for the initial graph)
-        This will create new tensors of length top_k_spans.shape[1] (dim 1) with the same order of span_idx as in teh top_k_spans tensor
-        NOTE: these candidate tensors are smaller than the span_rep tensors, so it saves memory!!!, otherwise, I do not see the reason fro doing this, you coudl literally, just pass the span_idx_to_keeo
+        This will create new tensors of length top_k_spans.shape[1] (dim 1) with the same order of span_idx as in the top_k_spans tensor
+        NOTE: these candidate tensors are smaller than the span_rep tensors, so it saves memory!!!, otherwise, I do not see the reason fro doing this, you coudl literally, just pass the span_idx_to_keep
         '''
         #get the span idx for selection into the cand_span tensors
         span_idx_to_keep = sorted_span_idx[:, :top_k_spans]    #(batch, top_k_spans)
-        #make the mapping from span_ids idx to cand_span_ids idx using the span_idx_to_keep shortlist
-        span_to_cand_span_map = torch.full((self.batch, self.num_spans), -1, dtype=torch.int32, device=self.device)
+
+        #extra processing
+        #make the mapping from span_ids idx to cand_span_ids idx using the span_idx_to_keep shortlist.  This needs to be returned
+        span_to_cand_span_map = torch.full((self.batch, self.num_spans), -1, dtype=torch.long, device=self.device)
         cand_span_indices = torch.arange(top_k_spans, device=self.device).expand(self.batch, -1)  # Shape (batch, top_k_spans)
-        span_to_cand_span_map[batch_ids, span_idx_to_keep] = cand_span_indices   #shape (batch, num_spans)
+        span_to_cand_span_map[self.batch_ids, span_idx_to_keep] = cand_span_indices   #shape (batch, num_spans)
         
-        #do the selection
-        #get tensors for span_id (w_span_ids => map span boundaries to word tokens, sw_span_ids => map span boundaries to sw tokens, span_ids = w_span_ids for pooling or sw_span_ids)
-        cand_w_span_ids = w_span_ids[self.batch_ids, span_idx_to_keep, :]  # shape: (batch, top_k_spans, 2)
-        #set cand_span_ids to either cand_w_span_ids or cand_sw_span_ids
-        ############################################
-        cand_span_ids = cand_w_span_ids
-        if self.config.subtoken_pooling == 'none':
-            cand_sw_span_ids = sw_span_ids[batch_ids, span_idx_to_keep, :]  # shape: (batch, top_k_spans, 2)
-            cand_span_ids = cand_sw_span_ids
-        ############################################
-    
-        return cand_span_ids, cand_w_span_ids, top_k_spans, span_idx_to_keep, span_to_cand_span_map
-    
+        return span_idx_to_keep, span_to_cand_span_map
 
 
-    def prune_rels(self, filter_score_rel):
+
+    def prune_rels(self, filter_score_rel, top_k_rels):
         '''
         filter the rels down to top_k_rels with the rel filter scores
         '''
@@ -242,13 +290,10 @@ class Model(nn.Module):
         #NOTE [1] is to get the idx as opposed to the values as torch.sort returns a tuple
         sorted_rel_idx = torch.sort(filter_score_rel, dim=-1, descending=True)[1]    #(batch, top_k_spans**2)
         #do the relation pruning
-        #Calculate a dynamic top_k for relations
-        #returns a scalar which should be << top_k_spans**2
-        top_k_rels = self.rel_processor.dynamic_top_k_rels(filter_score_rel, self.config)
         #Select the top_k relationships for processing
         rel_idx_to_keep = sorted_rel_idx[:, :top_k_rels]   #(batch, top_k_rels)
 
-        return rel_idx_to_keep, top_k_rels
+        return rel_idx_to_keep
 
 
 
@@ -264,9 +309,9 @@ class Model(nn.Module):
             return None
         
         if len(labels.shape) == 3:  # Multilabel case, all zero vector is a neg case, otherwise its a pos case
-            return labels.any(dim=-1).to(torch.int64)  # Aggregate multilabels to binary
+            return labels.any(dim=-1).to(torch.long)  # Aggregate multilabels to binary
         else:  # Unilabel case, any label > 0 is a pos case otherwise a neg case
-            return (labels > 0).to(torch.int64)
+            return (labels > 0).to(torch.long)
 
 
     def set_force_pos(self, force_pos, step):
@@ -288,12 +333,14 @@ class Model(nn.Module):
 
     def prune_graph_logits(self, logits_span, filter_score_nodes, logits_rel, filter_score_edges):
         '''
-        NOTE: the pruning is done by biasing the logits to very negative (-1e9) for nodes/edges that we want to prune out
+        NOTE: the pruning is done by biasing the logits to very negative (-1e9 or -6.5e4) for nodes/edges that we want to prune out
               this effectively masks out these nodes/edges from all downstream loss/prediction functions
         '''
         logits_span = self.graph_filter_head.apply_filter_scores_to_logits(logits_span, filter_score_nodes, self.config.node_keep_thd)
         logits_rel = self.graph_filter_head.apply_filter_scores_to_logits(logits_rel, filter_score_edges, self.config.edge_keep_thd)
         return logits_span, logits_rel
+
+
 
 
     ##################################################################################
@@ -304,9 +351,9 @@ class Model(nn.Module):
         x is a batch, which is a dict, with the keys being of various types as described below:
         x['tokens']     => list of ragged lists of strings => the raw word tokenized seq data as strings
         x['seq_length'] => tensor (batch) the length of tokens for each obs
-        x['span_ids']   => tensor (batch, max_seq_len_batch*max_span_width, 2) => the span_ids truncated to the max_seq_len_batch * max_span_wdith
-        x['span_masks'] => tensor (batch, max_seq_len_batch*max_span_width) => 1 for spans to be used (pos cases + selected neg cases), 0 for pad, invalid and unselected neg cases  => if no labels, will be all 1 for valid/non pad spans, no neg sampling
-        x['span_labels']=> tensor (batch, max_seq_len_batch*max_span_width) int for unilabels.  (batch, max_seq_len_batch*max_span_width, num_span_types) bool for multilabels.  Padded with 0.
+        x['span_ids']   => tensor (batch, batch_max_seq_len*max_span_width, 2) => the span_ids truncated to the batch_max_seq_len * max_span_wdith
+        x['span_masks'] => tensor (batch, batch_max_seq_len*max_span_width) => 1 for spans to be used (pos cases + selected neg cases), 0 for pad, invalid and unselected neg cases  => if no labels, will be all 1 for valid/non pad spans, no neg sampling
+        x['span_labels']=> tensor (batch, batch_max_seq_len*max_span_width) int for unilabels.  (batch, batch_max_seq_len*max_span_width, num_span_types) bool for multilabels.  Padded with 0.
         x['spans']      => list of ragged list of tuples => the positive cases for each obs  => list of empty lists if no labels
         x['relations']  => list of ragged list of tuples => the positive cases for each obs  => list of empty lists if no labels
         x['orig_map']   => list of dicts for the mapping of the orig span idx to the span_ids dim 1 idx (for pos cases only, is needed in the model for rel tensor generation later) => list of empty dicts if no labels
@@ -325,12 +372,12 @@ class Model(nn.Module):
         #Run the transformer encoder and lstm encoder layers
         result = self.transformer_and_lstm_encoder(x)
         #read in data from results or x
-        token_reps      = result['token_reps']          #(batch, max_seq_len_batch, hidden) => float, sw or w token aligned depedent pooling   
-        token_masks     = result['token_masks']         #(batch, max_seq_len_batch) => bool, sw or w token aligned depedent pooling   
-        w_span_ids      = x['span_ids']                 #(batch, max_seq_len_batch * max_span_width, 2) => int, w aligned span_ids
-        sw_span_ids     = result['sw_span_ids']         #(batch, max_seq_len_batch * max_span_width, 2) => int, sw aligned span_ids => None if pooling
-        span_masks      = x['span_masks']               #(batch, max_seq_len_batch * max_span_width) => bool
-        span_labels     = x['span_labels']              #(batch, max_seq_len_batch * max_span_width) int or (batch, max_seq_len_batch * max_span_width, num_span_types) bool
+        token_reps      = result['token_reps']          #(batch, batch_max_seq_len, hidden) => float, sw or w token aligned depedent pooling   
+        token_masks     = result['token_masks']         #(batch, batch_max_seq_len) => bool, sw or w token aligned depedent pooling   
+        w_span_ids      = x['span_ids']                 #(batch, batch_max_seq_len * max_span_width, 2) => int, w aligned span_ids
+        sw_span_ids     = result['sw_span_ids']         #(batch, batch_max_seq_len * max_span_width, 2) => int, sw aligned span_ids => None if pooling
+        span_masks      = x['span_masks']               #(batch, batch_max_seq_len * max_span_width) => bool
+        span_labels     = x['span_labels']              #(batch, batch_max_seq_len * max_span_width) int or (batch, batch_max_seq_len * max_span_width, num_span_types) bool
         num_span_types  = self.config.num_span_types    #scalar, includes the none type (idx 0) for unilabel and only pos types for multilabel
         span_type_reps  = result['span_type_reps']      #(batch, num_span_types, hidden) => float, no mask needed
         num_rel_types   = self.config.num_rel_types     #scalar, includes the none type (idx 0) for unilabel and only pos types for multilabel
@@ -344,22 +391,23 @@ class Model(nn.Module):
         # SPANS ###############################################
         #######################################################
         #generate the span reps from the token reps and the span start/end idx and outputs a tensor of shape (batch, num_spans, hidden), 
-        #i.e. the span reps are grouped by start idx (remember seq_len * max_span_width == num_spans)
-        #output will be shape (batch, max_seq_len_batch * max_span_width, hidden) => float
+        #i.e. the span reps are grouped by start idx
+        #NOTE: for all further analyses => num_spans is the total num spans including those that end outside the max seq len, they are just masked out
+        #span_reps shape (batch, batch_max_seq_len * max_span_width, hidden) => float
         span_reps = self.span_rep_layer(token_reps, 
                                         w_span_ids  = w_span_ids, 
                                         span_masks  = span_masks, 
                                         sw_span_ids = sw_span_ids, 
                                         cls_reps    = cls_reps,
-                                        span_widths = w_span_ids[:,:,1] - w_span_ids[:,:,0])
+                                        span_widths = w_span_ids[:,:,1] - w_span_ids[:,:,0],
+                                        neg_limit   = -self.num_limit)
 
         #get some dims add to self for convenience
-        self.batch, self.max_seq_len, _ = token_reps.shape
-        _, self.num_spans, _ = span_reps.shape
+        self.batch, self.batch_max_seq_len, _ = token_reps.shape
+        self.num_spans = span_reps.shape[1]
         self.device = token_reps.device
-
-        batch_ids = torch.arange(self.batch, device=self.device).unsqueeze(-1)  # shape: (batch, 1)
-
+        self.batch_ids = torch.arange(self.batch, dtype=torch.long, device=self.device).unsqueeze(-1)  # shape: (batch, 1)
+        
         #choose the top K spans per obs for the initial graph
         ###########################################################
         #Compute span filtering scores and binary CELoss for spans (only calcs for span within span_mask)
@@ -380,17 +428,22 @@ class Model(nn.Module):
                                                                     self.binarize_labels(span_labels), 
                                                                     force_pos_cases = self.set_force_pos(self.config.span_force_pos, step),
                                                                     reduction = 'sum')           
+        #get top_k_spans
+        top_k_spans = self.calc_top_k_spans()
         #prune the spans to top_k_spans
-        #NOTE: we return the cand_span_ids which are the ids of the w or sw tokens dependent on pooling (to be used for the rel reps etc..)
-        #however we also return the cand_w_span_ids as we need to pass these back to the calling function for preds and label evalutaion
-        cand_span_ids, cand_w_span_ids, top_k_spans, span_idx_to_keep, span_to_cand_span_map = self.prune_spans(filter_score_span, 
-                                                                                                                w_span_ids, 
-                                                                                                                sw_span_ids,
-                                                                                                                batch_ids) 
+        span_idx_to_keep, span_to_cand_span_map = self.prune_spans(filter_score_span, top_k_spans) 
         #filter the reps, masks and labels
-        cand_span_reps = span_reps[batch_ids, span_idx_to_keep]   # shape: (batch, top_k_spans, hidden)
-        cand_span_masks = span_masks[batch_ids, span_idx_to_keep]    # shape: (batch, top_k_spans)
-        cand_span_labels = span_labels[batch_ids, span_idx_to_keep] if has_labels else None  # shape: (batch, top_k_spans) unilabels or (batch, top_k_spans, num_span_types) multilabels
+        cand_span_reps = span_reps[self.batch_ids, span_idx_to_keep]   # shape: (batch, top_k_spans, hidden)
+        cand_span_masks = span_masks[self.batch_ids, span_idx_to_keep]    # shape: (batch, top_k_spans)
+        cand_span_labels = span_labels[self.batch_ids, span_idx_to_keep] if has_labels else None  # shape: (batch, top_k_spans) unilabels or (batch, top_k_spans, num_span_types) multilabels
+        cand_w_span_ids = w_span_ids[self.batch_ids, span_idx_to_keep, :]  # shape: (batch, top_k_spans, 2)
+        #set cand_span_ids to either cand_w_span_ids or cand_sw_span_ids
+        cand_span_ids = cand_w_span_ids
+        if self.config.subtoken_pooling == 'none':
+            cand_sw_span_ids = sw_span_ids[self.batch_ids, span_idx_to_keep, :]  # shape: (batch, top_k_spans, 2)
+            cand_span_ids = cand_sw_span_ids
+
+
         ###############################################################
         # RELATIONS ###################################################
         ###############################################################
@@ -461,11 +514,10 @@ class Model(nn.Module):
         #as well as rel_masks, rel_ids of shape (batch, top_k_spans**2), (batch, top_k_spans**2, 2) respectively
         #if has_labels, it also returns the lost_rel_cnts tensor of shape (batch) which is one int per batch obs indicating the number fo rels that had annotations but did not make it to get rel_ids as they were filtered out byt the span filtering
         #we will add a lost rel penalty loss for this
-        rel_ids, rel_masks, rel_labels, lost_rel_counts = self.rel_processor.get_cand_rel_tensors(cand_span_ids,         #the span start,end tuple for each selected span (batch, top_k_spans, 2)
-                                                                                                  cand_span_masks,       #the span mask for each selected span  (batch, top_k_spans)
-                                                                                                  x['relations'],        #the raw relations data.  NOTE: will be None for no labels
-                                                                                                  x['orig_map'],         #maps raw span idx to span_ids idx.  NOTE: will be None for no labels  
-                                                                                                  span_to_cand_span_map) #the mapping from span_ids to cand_span_ids for each batch item (batch, num_spans)
+        rel_ids, rel_masks, rel_labels, lost_rel_counts, lost_rel_penalty = self.rel_processor.get_cand_rel_tensors(cand_span_masks,       #the span mask for each selected span  (batch, top_k_spans)
+                                                                                                                    x['relations'],        #the raw relations data.  NOTE: will be None for no labels
+                                                                                                                    x['orig_map'],         #maps raw span idx to span_ids idx.  NOTE: will be None for no labels  
+                                                                                                                    span_to_cand_span_map) #the mapping from span_ids to cand_span_ids for each batch item (batch, num_spans)
 
         '''
         Make the relation reps, has several options, based on config.rel_mode:
@@ -475,11 +527,12 @@ class Model(nn.Module):
         4+) working on more options, see code for details
         '''
         #output shape (batch, top_k_spans**2, hidden)
-        rel_reps = self.rel_rep_layer(cand_span_reps, 
-                                      cand_span_ids, 
-                                      token_reps, 
-                                      token_masks,
-                                      rel_masks)
+        rel_reps = self.rel_rep_layer(cand_span_reps = cand_span_reps, 
+                                      cand_span_ids  = cand_span_ids, 
+                                      token_reps     = token_reps, 
+                                      token_masks    = token_masks,
+                                      rel_masks      = rel_masks,
+                                      neg_limit      = -self.num_limit)
 
         #Compute filtering scores for relations and sort them in descending order
         ###############################################################
@@ -497,12 +550,14 @@ class Model(nn.Module):
                                                                  self.binarize_labels(rel_labels),
                                                                  force_pos_cases = self.set_force_pos(self.config.rel_force_pos, step),
                                                                  reduction = 'sum')           
+        #Calculate the number of rels to shortlist
+        top_k_rels = self.calc_top_k_rels(filter_score_rel)   #returns a scalar which should be << top_k_spans**2
         #prune the rels
-        rel_idx_to_keep, top_k_rels = self.prune_rels(filter_score_rel)
-        cand_rel_reps   = rel_reps[batch_ids, rel_idx_to_keep]    #(batch, top_k_rels, hidden)  float
-        cand_rel_masks  = rel_masks[batch_ids, rel_idx_to_keep]      #(batch, top_k_rels)  bool
-        cand_rel_ids    = rel_ids[batch_ids, rel_idx_to_keep]     #(batch, top_k_rels, 2) int
-        cand_rel_labels = rel_labels[batch_ids, rel_idx_to_keep] if has_labels else None     #(batch, top_k_rels) int for unilabel or (batch, top_k_rels, num rel types) int for multilabel 
+        rel_idx_to_keep = self.prune_rels(filter_score_rel, top_k_rels)
+        cand_rel_reps   = rel_reps[self.batch_ids, rel_idx_to_keep]    #(batch, top_k_rels, hidden)  float
+        cand_rel_masks  = rel_masks[self.batch_ids, rel_idx_to_keep]      #(batch, top_k_rels)  bool
+        cand_rel_ids    = rel_ids[self.batch_ids, rel_idx_to_keep]     #(batch, top_k_rels, 2) int
+        cand_rel_labels = rel_labels[self.batch_ids, rel_idx_to_keep] if has_labels else None     #(batch, top_k_rels) int for unilabel or (batch, top_k_rels, num rel types) int for multilabel 
 
         #Generate the node and edge reps
         #this basically superimposes a node identifier to the span_reps and an edge identifier to the rel_reps
@@ -604,22 +659,24 @@ class Model(nn.Module):
         if has_labels:
             #Compute losses for spans and rels final classifier heads using the span/rel type reps
             #NOTE: uses CELoss for unilabels and BCELoss for multilabels
+            #def classification_loss(self, logits, labels, masks, reduction='sum', label_type='unilabel'):
             pred_span_loss = classification_loss(logits_span, 
                                                  cand_span_labels, 
                                                  cand_span_masks, 
-                                                 reduction='sum', 
-                                                 label_type=self.config.span_labels)
+                                                 reduction  = 'sum', 
+                                                 label_type = self.config.span_labels)
             pred_rel_loss = classification_loss(logits_rel, 
                                                 cand_rel_labels, 
                                                 cand_rel_masks, 
-                                                reduction='sum', 
-                                                label_type=self.config.rel_labels)
-            #get the lost rel_loss 
-            lost_rel_loss = lost_rel_counts.sum() * self.config.lost_rel_alpha
+                                                reduction  = 'sum', 
+                                                label_type = self.config.rel_labels)
+            #get the lost rel_loss
+            lost_rel_loss = lost_rel_penalty * self.config.lost_rel_alpha
             #Compute structure loss and total loss, not filter_loss_graph is a tensor, so we have to reduce it with sum here
             structure_loss = (filter_loss_graph * graph_masks.float()).sum()
             #get the total loss
             total_loss = sum([filter_loss_span, filter_loss_rel, lost_rel_loss, pred_span_loss, pred_rel_loss, structure_loss])
+
         #########################################################
 
         #prune graph pre loss calc

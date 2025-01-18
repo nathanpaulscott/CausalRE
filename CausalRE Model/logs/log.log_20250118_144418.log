@@ -1,0 +1,136 @@
+2025-01-18 14:44:18,155 - INFO - root - Start...
+2025-01-18 14:44:18,155 - INFO - root - Loading and Preparing Data
+2025-01-18 14:44:18,188 - INFO - root - 
+seq_len and span_width stats, use these to tune max_seq_len and max_span_widths....
+-------------------------------
+seq_len stats (max, mean, sd): 132, 30.56, 14.03
+span_width stats (max, mean, sd): 116, 14.8, 11.04
+-------------------------------
+2025-01-18 14:44:18,188 - WARNING - root - WARNING!! Can not import 0.95% of the annotated spans (27 spans) due to max_seq_len and max_span_lenght limits.
+These spans and associated relations will be ignored, you should assess whether this is a significant issue or not.
+-------------------------------
+2025-01-18 14:44:18,188 - INFO - root - 
+"train_obs38_span1_7_65"
+"train_obs38_span2_0_53"
+"train_obs57_span1_25_84"
+"train_obs76_span1_0_58"
+"train_obs93_span0_0_64"
+"train_obs155_span0_17_92"
+"train_obs165_span1_0_55"
+"train_obs204_span1_0_65"
+"train_obs204_span3_0_53"
+"train_obs386_span1_0_82"
+"train_obs416_span0_0_66"
+"train_obs417_span1_44_132"
+"train_obs417_span2_0_116"
+"val_obs24_span0_9_63"
+"val_obs157_span1_0_55"
+"val_obs194_span1_0_59"
+"val_obs215_span0_3_81"
+"val_obs280_span0_14_73"
+"val_obs311_span0_24_80"
+"val_obs377_span0_9_70"
+"test_obs24_span0_9_63"
+"test_obs157_span1_0_55"
+"test_obs194_span1_0_59"
+"test_obs215_span0_3_81"
+"test_obs280_span0_14_73"
+"test_obs311_span0_24_80"
+"test_obs377_span0_9_70"
+2025-01-18 14:44:18,436 - INFO - root - Making the Dataloaders
+2025-01-18 14:44:18,504 - INFO - root - Configs Snapshot:
+{
+    "app_path"                    : "d:\\A.Nathan\\1a.UWA24-Hons\\Honours Project\\0a.Code\\0a.Nathan Model",
+    "clear_tensor_period"         : 10,
+    "data_format"                 : "id",
+    "data_path"                   : "data/sample data.json",
+    "device"                      : "cuda",
+    "dropout"                     : 0.1,
+    "dump_missed_spans_on_import" : true,
+    "edge_keep_thd"               : 0.5,
+    "eval_batch_size"             : 2,
+    "eval_every"                  : 100,
+    "f1_ave"                      : "micro",
+    "ffn_ratio"                   : 4,
+    "freeze_encoder"              : true,
+    "graph_force_pos"             : false,
+    "graph_id_method"             : "add",
+    "graph_prune_loc"             : "post_loss",
+    "hidden_size"                 : 768,
+    "id_to_r"                     : {
+        "0"                       : "causal",
+        "1"                       : "causal_test"
+    },
+    "id_to_s"                     : {
+        "0"                       : "none",
+        "1"                       : "event",
+        "2"                       : "other_test",
+        "3"                       : "state"
+    },
+    "log_folder"                  : "logs",
+    "lost_rel_alpha"              : 1,
+    "lost_rel_penalty_incr"       : {},
+    "lr_encoder"                  : "1e-5",
+    "lr_others"                   : "5e-5",
+    "max_seq_len"                 : 130,
+    "max_span_width"              : 50,
+    "max_top_k_rels"              : 100,
+    "max_top_k_spans"             : 64,
+    "min_neg_sample_limit"        : 100,
+    "model_name"                  : "bert-base-uncased",
+    "model_path"                  : "none",
+    "model_source"                : "HF",
+    "neg_sample_rate"             : 10,
+    "node_keep_thd"               : 0.5,
+    "num_heads"                   : 4,
+    "num_precision"               : "half",
+    "num_rel_types"               : 2,
+    "num_span_types"              : 4,
+    "num_steps"                   : 30000,
+    "num_transformer_layers"      : 2,
+    "output_layer_type"           : "ffn",
+    "pos_force_step_limit"        : "none",
+    "predict_conf"                : false,
+    "predict_thd"                 : 0.5,
+    "print_log"                   : true,
+    "r_to_id"                     : {
+        "causal"                  : 0,
+        "causal_test"             : 1
+    },
+    "rel_force_pos"               : false,
+    "rel_labels"                  : "multilabel",
+    "rel_mode"                    : "no_context",
+    "rel_score_percentile"        : 90,
+    "rel_types"                   : [
+        "causal",
+        "causal_test"
+    ],
+    "run_type"                    : "train",
+    "s_to_id"                     : {
+        "event"                   : 1,
+        "none"                    : 0,
+        "other_test"              : 2,
+        "state"                   : 3
+    },
+    "save_total_limit"            : 20,
+    "scheduler_type"              : "cosine",
+    "shuffle_train"               : false,
+    "span_force_pos"              : true,
+    "span_labels"                 : "unilabel",
+    "span_mode"                   : "spert",
+    "span_types"                  : [
+        "none",
+        "event",
+        "other_test",
+        "state"
+    ],
+    "subtoken_pooling"            : "none",
+    "train_batch_size"            : 2,
+    "use_graph_reps"              : true,
+    "use_prompt"                  : true,
+    "use_span_pos_encoding"       : false,
+    "warmup_ratio"                : 0.1,
+    "width_embedding_size"        : 200
+}
+2025-01-18 14:44:18,506 - INFO - root - Making the model
+2025-01-18 14:44:22,119 - INFO - root - Starting the Train Loop

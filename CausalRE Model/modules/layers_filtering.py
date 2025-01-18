@@ -15,10 +15,12 @@ class FilteringLayer(nn.Module):
     Args:
     - hidden_size (int): The size of the incoming feature dimension from the representations.
     """
-    def __init__(self, hidden_size):
+    def __init__(self, hidden_size, num_limit):
         super().__init__()
         self.binary_filter_head = nn.Linear(hidden_size, 2)
-
+        #set the pos and neg num limits based on the model number preicsion
+        self.pos_limit = num_limit
+        self.neg_limit = -num_limit
 
 
     def apply_filter_scores_to_logits(self, logits, filter_score, thd):
@@ -45,12 +47,9 @@ class FilteringLayer(nn.Module):
                         threshold are set to a very large negative value (close to zero
                         influence in subsequent softmax). The shape is the same as the input logits.
         '''
-        #set limts, use finite numbers to avoid issues
-        neg_limit, pos_limit = -1e9, 1e9
-        
         keep_prob = torch.sigmoid(filter_score)     # (batch, top_k_spans/rels)   float (between 0 and 1)
         keep_mask = (keep_prob > thd).unsqueeze(-1).float()    # (batch, top_k_spans/rels)   float (0.0 to not keep or 1.0 to keep)
-        adjusted_logits = logits + (1 - keep_mask) * neg_limit
+        adjusted_logits = logits + (1 - keep_mask) * self.neg_limit
         return adjusted_logits
 
 
@@ -83,9 +82,6 @@ class FilteringLayer(nn.Module):
         their selection despite potential misclassifications by the logits. This method mirrors certain teacher-forcing
         techniques used in training to guide model behavior.
         """
-        #set limts, use finite numbers to avoid issues
-        neg_limit, pos_limit = -1e9, 1e9
-
         #Get the binary logits for each span/rel (is span/rel or not)
         logits_b = self.binary_filter_head(reps)  # Shape: (batch, num_items, 2)
 
@@ -99,10 +95,10 @@ class FilteringLayer(nn.Module):
 
         #Mask out filter scores for maksed out labels
         #Nathan: set the masked out spans/rels to neg_limit => no chance of being a positive case
-        filter_score = filter_score.masked_fill(~masks, neg_limit)
+        filter_score = filter_score.masked_fill(~masks, self.neg_limit)
         
         #do final clamp to ensure all scores are with in stable limits
-        filter_score = torch.clamp(filter_score, min=neg_limit, max=pos_limit)
+        filter_score = torch.clamp(filter_score, min=self.neg_limit, max=self.pos_limit)
 
         #Calc the filter loss (basically the CELoss for the binary labels and logits)
         #also adjust the scores to force pos cases to +inf
@@ -113,7 +109,11 @@ class FilteringLayer(nn.Module):
             #this is a form of teacher forcing, we are guaranteeing that positive span cases make it to the initial graph
             #I put in code to be able to turn this off and also to turn it off after a set number of batches after the model has honed in on a good state (this is what worked best for me in other models)
             if force_pos_cases:
-                filter_score = filter_score.masked_fill(labels_b > 0, pos_limit)
+                filter_score = filter_score.masked_fill(labels_b > 0, self.pos_limit)
+                
+                #FOR TESTING, to force pos to NOT be in the top_k
+                #filter_score = filter_score.masked_fill(labels_b > 0, self.neg_limit)
+                #FOR TESTING
 
             #Compute the loss if in training mode
             #NOTE: the logits and labels are flattened and reduction is sum, so the loss output is one scalar for all spans/rels in all obs in the batch

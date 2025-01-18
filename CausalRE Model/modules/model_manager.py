@@ -14,7 +14,7 @@ import copy
 
 ###############################################
 #custom imports
-from .utils import import_data, load_from_json, save_to_json
+from .utils import load_from_json, save_to_json
 from .model import Model
 
 
@@ -77,6 +77,8 @@ class ModelManager:
         This sets up the model
         loads the model if one is given or it creates a new one
         '''
+        self.config.logger.write('Making the model', 'info')
+
         if device is None:
             device = self.config.device
         
@@ -121,6 +123,10 @@ class ModelManager:
         return model
 
 
+##########################################################
+##########################################################
+##########################################################
+##########################################################
 
 
 
@@ -146,13 +152,17 @@ class Optimizer:
             if name != "transformer_encoder_w_prompt" and any(p.requires_grad for p in layer.parameters(recurse=False)):
                 param_groups.append({"params": layer.parameters(), "lr": lr_others})
 
-        #make the optimizer
-        optimizer = torch.optim.AdamW(param_groups)
+        # Create the optimizer
+        self.optimizer = torch.optim.AdamW(param_groups)
 
-        return optimizer
+    @property
+    def return_object(self):
+        return self.optimizer
 
-
-
+##########################################################
+##########################################################
+##########################################################
+##########################################################
 
 
 class Scheduler:
@@ -160,7 +170,7 @@ class Scheduler:
         '''
         Setup the learning rate scheduler
         '''
-        scheduler_type = config.scheduler_type, 
+        scheduler_type = config.scheduler_type
         if scheduler_type == "cosine":
             scheduler = get_cosine_schedule_with_warmup(
                 optimizer,
@@ -193,5 +203,8 @@ class Scheduler:
             raise ValueError(
                 f"Invalid scheduler_type value: '{scheduler_type}' \n Supported scheduler types: 'cosine', 'linear', 'constant', 'polynomial', 'inverse_sqrt'"
             )
-        return scheduler
+        self.scheduler = scheduler
     
+    @property
+    def return_object(self):
+        return self.scheduler

@@ -92,12 +92,50 @@ class FFNProjectionLayer(nn.Module):
 
 
 
+class MHAttentionTorch(nn.Module):
+    '''
+    Just a single layer MHA block usig the torch implementation, this is from my spert code, have not integrated it
+    I think you can align this code with the current project and reuse it in various places, like the attention pooling for spans/rels etc..
+    I think you can align this code with the current project and reuse it in various places, like the attention pooling for spans/rels etc..
+    I think you can align this code with the current project and reuse it in various places, like the attention pooling for spans/rels etc..
+    I think you can align this code with the current project and reuse it in various places, like the attention pooling for spans/rels etc..
+    I think you can align this code with the current project and reuse it in various places, like the attention pooling for spans/rels etc..
+    '''
+    def __init__(self, embed_dim, num_heads, dropout=0.1):
+        super().__init__()
+        self.multihead_attention = nn.MultiheadAttention(embed_dim, num_heads, batch_first=True, dropout=dropout, )
+        self.layer_norm = nn.LayerNorm(embed_dim)
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(self, query, key, value, attn_mask=None, key_padding_mask=None):
+        '''
+        regarding the attention masks
+        attn_mask is for the query, you ONLY need this for causal masking, DO NOT use for pad masking
+        key_padding_mask is for the K and is specifically for masking, use this for dealing with masking
+        '''
+
+        # Apply attention
+        attn_output, _ = self.multihead_attention(
+            query, key, value,
+            need_weights=False,
+            key_padding_mask=key_padding_mask,
+            #attn_mask=attn_mask
+        )
+        #dropout
+        attn_output = self.dropout(attn_output)
+        #Add & Norm
+        output = self.layer_norm(query + attn_output)
+        return output
+
+
+
+
 class TransformerEncoderTorch(nn.Module):
     '''
     Just makes a torch transformer encoder as per attention is all you need
     '''
     def __init__(self, d_model, num_heads, num_layers, ffn_mul=4, dropout=0.1):
-        super(TransformerEncoderTorch, self).__init__()
+        super().__init__()
 
         if num_layers > 0:
             self.transformer_encoder = self.torch_transformer_encoder(d_model, num_heads, num_layers, ffn_mul, dropout)
@@ -138,7 +176,7 @@ class GraphTransformerModel(nn.Module):
     Not used currently
     '''
     def __init__(self, d_model, num_heads, num_layers, ffn_mul=4, dropout=0.1):
-        super(GraphTransformerModel, self).__init__()
+        super().__init__()
         self.transformer = TransformerEncoderTorch(d_model, num_heads, num_layers, ffn_mul, dropout)
 
     def forward(self, node_reps, edge_reps, node_masks, edge_masks):
@@ -166,6 +204,7 @@ class GraphTransformerModel(nn.Module):
         return enriched_node_reps, enriched_edge_reps
 
 
+
 class LstmSeq2SeqEncoder(nn.Module):
     def __init__(self, 
                  input_size, 
@@ -173,7 +212,7 @@ class LstmSeq2SeqEncoder(nn.Module):
                  num_layers=1, 
                  dropout=0., 
                  bidirectional=False):
-        super(LstmSeq2SeqEncoder, self).__init__()
+        super().__init__()
 
         self.lstm = nn.LSTM(input_size      = input_size,
                             hidden_size     = hidden_size,
@@ -277,7 +316,7 @@ class OutputLayer(nn.Module):
         torch.Tensor: The output tensor.  In both modes the shape is (batch, num_items, num_types) float and both cases we can consider the outputs to be logits => range (-inf, +inf)
     """
     def __init__(self, num_types=None, hidden_size=768, dropout=0.1, use_prompt=True):
-        super(OutputLayer, self).__init__()
+        super().__init__()
         self.use_prompt = use_prompt
         
         if not use_prompt:
@@ -294,3 +333,9 @@ class OutputLayer(nn.Module):
         else:
             item_reps = self.dropout(item_reps)
             return self.output_head(item_reps)
+
+
+
+
+
+

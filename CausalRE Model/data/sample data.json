@@ -29,6 +29,66 @@
         "train": [
             {
                 "tokens": [
+                    "A",
+                    "56-year-old",
+                    "was",
+                    "killed",
+                    "in",
+                    "Dujiangyan",
+                    "during",
+                    "a",
+                    "rescue",
+                    "attempt",
+                    "on",
+                    "the",
+                    "Lingyanshan",
+                    "Ropeway",
+                    ",",
+                    "where",
+                    "due",
+                    "to",
+                    "the",
+                    "earthquake",
+                    "11",
+                    "tourists",
+                    "from",
+                    "Taiwan",
+                    "had",
+                    "been",
+                    "trapped",
+                    "inside",
+                    "cable",
+                    "cars",
+                    "since",
+                    "May",
+                    "13",
+                    "."
+                ],
+                "spans": [
+                    {
+                        "id": "E0",
+                        "start": 18,
+                        "end": 34,
+                        "type": "event"
+                    },
+                    {
+                        "id": "E1",
+                        "start": 0,
+                        "end": 16,
+                        "type": "event"
+                    }
+                ],
+                "relations": [
+                    {
+                        "id": "R0",
+                        "head": "E0",
+                        "tail": "E1",
+                        "type": "causal"
+                    }
+                ]
+            },
+            {
+                "tokens": [
                     "''",
                     ":10",
                     "The",
@@ -231,66 +291,6 @@
                     }
                 ],
                 "relations": []
-            },
-            {
-                "tokens": [
-                    "A",
-                    "56-year-old",
-                    "was",
-                    "killed",
-                    "in",
-                    "Dujiangyan",
-                    "during",
-                    "a",
-                    "rescue",
-                    "attempt",
-                    "on",
-                    "the",
-                    "Lingyanshan",
-                    "Ropeway",
-                    ",",
-                    "where",
-                    "due",
-                    "to",
-                    "the",
-                    "earthquake",
-                    "11",
-                    "tourists",
-                    "from",
-                    "Taiwan",
-                    "had",
-                    "been",
-                    "trapped",
-                    "inside",
-                    "cable",
-                    "cars",
-                    "since",
-                    "May",
-                    "13",
-                    "."
-                ],
-                "spans": [
-                    {
-                        "id": "E0",
-                        "start": 18,
-                        "end": 34,
-                        "type": "event"
-                    },
-                    {
-                        "id": "E1",
-                        "start": 0,
-                        "end": 16,
-                        "type": "event"
-                    }
-                ],
-                "relations": [
-                    {
-                        "id": "R0",
-                        "head": "E0",
-                        "tail": "E1",
-                        "type": "causal"
-                    }
-                ]
             },
             {
                 "tokens": [

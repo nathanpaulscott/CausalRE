@@ -15,7 +15,7 @@ class TransformerEncoderFlairPrompt(torch.nn.Module):
      
     '''
     def __init__(self, config):
-        super(TransformerEncoderFlairPrompt).__init__()
+        super().__init__()
 
         self.config = config
         #handle the no subtoken pooling case, reject as flair doesn't support no pooling

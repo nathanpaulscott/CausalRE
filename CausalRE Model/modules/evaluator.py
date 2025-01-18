@@ -1,12 +1,13 @@
 import torch
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score, precision_recall_fscore_support, confusion_matrix
-import copy
+
+from .metrics import Metrics
+
 
 
 class Evaluator:
     def __init__(self, config):
         self.config = config
+        self.metrics = Metrics(config)
         self.all_preds = {'spans': [], 'rels': [], 'rels_mod': []}
         self.all_labels = {'spans': [], 'rels': [], 'rels_mod': []}
 
@@ -96,37 +97,6 @@ class Evaluator:
         return output
 
 
-    def run_metrics(self, preds, labels):
-        '''
-        this gets the current overall metrics for use during training
-
-        inputs:
-            - aligned, cpu'd, numpy'd, flattened, filtered preds list
-            - aligned, cpu'd, numpy'd, flattened, filtered labels list
-            - params object
-
-        outputs:
-            - metrics dict
-
-        '''
-        if len(labels) == 0:
-            accuracy, precision, recall, f1 = 0,0,0,0
-        else:
-            # Calculate overall  metrics
-            accuracy = accuracy_score(labels, preds)
-            precision, recall, f1, _ = precision_recall_fscore_support(labels, preds, average=self.config.f1_ave, zero_division=0)
-
-        metrics = dict(support   = len(labels),
-                       accuracy  = accuracy,
-                       precision = precision,
-                       recall    = recall,
-                       f1        = f1)
-        metrics['msg'] = f"S: {metrics['support']:.2%}\tP: {metrics['precision']:.2%}\tR: {metrics['recall']:.2%}\tF1: {metrics['f1']:.2%}\n"
-        
-        return metrics
-
-
-
 
     def prep_and_add_batch(self, preds, span_labels_raw, rel_labels_raw):
         #get the labels => the actual positive cases
@@ -157,10 +127,11 @@ class Evaluator:
         flat_rel_labels     = self.flatten_and_stringify(self.all_labels['rels'])
         flat_rel_mod_preds  = self.flatten_and_stringify(self.all_preds['rels_mod'])
         flat_rel_mod_labels = self.flatten_and_stringify(self.all_labels['rels_mod'])
+        
         # Compute metrics
-        span_metrics    = self.run_metrics(flat_span_preds, flat_span_labels)
-        rel_metrics     = self.run_metrics(flat_rel_preds, flat_rel_labels)
-        rel_mod_metrics = self.run_metrics(flat_rel_mod_preds, flat_rel_mod_labels)
+        span_metrics    = self.metrics.run_metrics(flat_span_preds, flat_span_labels)
+        rel_metrics     = self.metrics.run_metrics(flat_rel_preds, flat_rel_labels)
+        rel_mod_metrics = self.metrics.run_metrics(flat_rel_mod_preds, flat_rel_mod_labels)
 
         return dict(span_metrics    = span_metrics,
                     rel_metrics     = rel_metrics,

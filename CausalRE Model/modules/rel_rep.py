@@ -107,7 +107,7 @@ class RelRepBetweenContext(nn.Module):
                                             dropout = dropout)
         #no weight init required as is handled by the FFNLayer
 
-    def forward(self, cand_span_reps, cand_span_ids, token_reps, token_masks, rel_masks, **kwargs):
+    def forward(self, cand_span_reps, cand_span_ids, token_reps, token_masks, rel_masks, neg_limit=None, **kwargs):
         '''
         Args:
             cand_span_reps (torch.Tensor): Tensor of shape (batch, top_k_spans, hidden) containing 
@@ -159,7 +159,7 @@ class RelRepBetweenContext(nn.Module):
         valid_token_mask = token_masks.unsqueeze(1).unsqueeze(1)
         combined_context_mask = combined_context_mask & valid_token_mask
         #Apply the token masks to token representations, broadcast and maxpool
-        context_reps, _ = token_reps.unsqueeze(1).unsqueeze(1).masked_fill(~combined_context_mask.unsqueeze(-1), float('-inf')).max(dim=3)  # (batch, top_k_spans, top_k_spans, hidden)
+        context_reps, _ = token_reps.unsqueeze(1).unsqueeze(1).masked_fill(~combined_context_mask.unsqueeze(-1), neg_limit).max(dim=3)  # (batch, top_k_spans, top_k_spans, hidden)
         ####################################################
 
         # Concatenate head, tail, and context representations
@@ -183,7 +183,7 @@ class RelRepWindowContext(nn.Module):
     The "window" context is derived by selecting tokens within a specified window before and after the span:
     - For each span, the context before and after within the window size is pooled (max or average based on the configuration).
     - Tokens within the span are explicitly excluded from the context window.
-    - Tokens masked out by the token mask are set to -inf prior to pooling to exclude them from contributing to the pooled output.
+    - Tokens masked out by the token mask are set to neg_limit prior to pooling to exclude them from contributing to the pooled output.
 
     Attributes:
         out_layer (nn.Module): A feedforward projection layer (FFNProjectionLayer) that projects the concatenated
@@ -205,7 +205,7 @@ class RelRepWindowContext(nn.Module):
                                             dropout = dropout)
         
 
-    def forward(self, cand_span_reps, cand_span_ids, token_reps, token_masks, **kwargs):
+    def forward(self, cand_span_reps, cand_span_ids, token_reps, token_masks, neg_limit=None, **kwargs):
         batch, top_k_spans, hidden = cand_span_reps.shape  # (batch, top_k_spans, hidden)
 
         # Span representation expansion for relational context
@@ -242,9 +242,9 @@ class RelRepWindowContext(nn.Module):
         combined_context_mask = combined_context_mask & valid_token_mask    # (batch, top_k_spans, top_k_spans, seq_len)
 
         #this expands the token reps to (batch, top_k_spans, top_k_spans, seq_len, hidden)
-        #then applies the rel_specific context mask to set masked out tokens to -inf
+        #then applies the rel_specific context mask to set masked out tokens to neg_limit
         #then max pools over the seq dim (dim 3)
-        context_reps, _ =   token_reps.unsqueeze(1).unsqueeze(1).masked_fill(~combined_context_mask.unsqueeze(-1), float('-inf')).max(dim=3)  # (batch, top_k_spans, top_k_spans, hidden)
+        context_reps, _ =   token_reps.unsqueeze(1).unsqueeze(1).masked_fill(~combined_context_mask.unsqueeze(-1), neg_limit).max(dim=3)  # (batch, top_k_spans, top_k_spans, hidden)
         ####################################################
 
         # Concatenate head, tail, and combined context representations
@@ -296,15 +296,16 @@ class RelationRepLayer(nn.Module):
 
     def forward(self, **kwargs):
         '''
+        called with...
         rel_reps = self.rel_rep_layer(cand_span_reps, 
                                       cand_span_ids, 
                                       token_reps, 
-                                      token_masks)   
+                                      token_masks,
+                                      rel_masks)   
         '''
         result = self.rel_rep_layer(**kwargs)
 
         return result
-
 
 
 
@@ -348,7 +349,7 @@ def test_relation_rep_layers():
                      [8,15],
                      [1,5],
                      [12,16]]]
-    cand_span_ids = torch.tensor(cand_span_ids, dtype=torch.int)
+    cand_span_ids = torch.tensor(cand_span_ids, dtype=torch.long)
 
 
 

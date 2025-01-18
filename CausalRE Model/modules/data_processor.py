@@ -67,12 +67,12 @@ class DataProcessor(object):
             seq_length    = seq_length,     #tensor (batch) the length of tokens for each obs
             span_ids      = span_ids,       #tensor (batch, max_seq_len_batch*max_span_width, 2) int => the span_ids truncated to the max_seq_len in the batch* max_span_wdith
             span_masks    = span_masks,     #tensor (batch, max_seq_len_batch*max_span_width) bool => True for valid selected spans, False for rest (padding, invalid spans, unselected neg cases)
-            span_labels   = span_labels    #tensor (batch, max_seq_len_batch*max_span_width) int for unilabels.  (batch, max_seq_len_batch*max_span_width, num_span_types) bool for multilabels
+            span_labels   = span_labels     #tensor (batch, max_seq_len_batch*max_span_width) int for unilabels.  (batch, max_seq_len_batch*max_span_width, num_span_types) bool for multilabels
         )
 
 
 
-    def calc_neg_samples_count(valid_neg_indices, neg_sample_rate, min_limit):
+    def calc_neg_samples_count(self, valid_neg_indices, neg_sample_rate, min_limit):
         '''
         Calculate the number of negative samples to select based on the available indices, a specified sample rate, 
         and a minimum limit. This function ensures that the number of selected samples does not exceed the number 
@@ -238,10 +238,11 @@ class DataProcessor(object):
         self.config.all_span_ids, self.config.s_to_id, self.config.id_to_s, self.config.r_to_id, self.config.id_to_r
         '''
         #get teh neg sampling config params
-        neg_sample_rate = self.config.neg_sample_rate, 
+        neg_sample_rate = self.config.neg_sample_rate
         min_neg_sample_limit = self.config.min_neg_sample_limit
         
-        #Get the maximum length for the word tokens and truncate
+        #Get the max seq length for the batch and truncate to config.max_seq_len if needed
+        #####################################################################
         #NOTE: this needs to be as low as possible for model speed, but not so small that it uneccessarily truncates input sequences
         #NOTE: the encoder transformer will later also truncate the encoder specific token sequences (max_enc_seq_len, bert is 512 sw tokens, bigbird is 4096 bigbird tokens)
         #Also remember the mapping of word tokens to encoder tokens will vary between models and input tokens, 
@@ -266,34 +267,32 @@ class DataProcessor(object):
             span_masks = self.generate_span_mask_for_obs(span_ids, seq_len)
             spans, relations, span_labels, orig_map = None, None, None, None
 
-        #do label processing and neg sampling if we have labels
+        #do label processing and neg sampling as we have labels
         else:
             #make the mapping from original span idx to the idx in the span_ids tensor
             #Map span tuples in span_ids to the index in span_ids for quick lookup
             len_span_ids = len(span_ids)
             span_to_ids_map = {span: idx for idx, span in enumerate(span_ids)}
-            
-            #convert spans and rels to list of tuples from list of dicts
-            spans = [(x['start'], x['end'], x['type']) for x in obs['spans']]
-            relations = [(x['head'], x['tail'], x['type']) for x in obs['relations']]
-            
+            #spans = obs['spans']
+            #relations = obs['relations']
+
             #Create a mapping from original span index in annotations to the span index in span_ids (all possible spans in tokens)
             orig_map = {}
-            for i, span in enumerate(spans):
+            for i, span in enumerate(obs['spans']):
                 span_tuple = (span[0], span[1])
-                orig_map[i] = span_to_ids_map[span_tuple]
+                orig_map[i] = span_to_ids_map.get(span_tuple, False)
 
             #make the span_labels data which aligns the annotated spans data to the span_ids
             #NOTE: labels will be all negative for the 'predict' case
             if self.config.span_labels == 'unilabel':
                 #make the unilabel span_labels, when converted to tensor will be shape (num_possible_spans)
-                span_labels = self.make_span_labels_unilabels(len_span_ids, spans, orig_map)
+                span_labels = self.make_span_labels_unilabels(len_span_ids, obs['spans'], orig_map)
                 #move to tensors
                 span_labels = torch.tensor(span_labels, dtype=torch.long)    #shape => (num_possible_spans) for unilabel
 
             elif self.config.span_labels == 'multilabel':
                 #make the multilabel span_labels, when converted to tensor will be shape (num_possible_spans, num_span_types)
-                span_labels = self.make_span_labels_multilabels(len_span_ids, self.config.num_span_types, spans, orig_map)
+                span_labels = self.make_span_labels_multilabels(len_span_ids, self.config.num_span_types, obs['spans'], orig_map)
                 #move to tensors
                 span_labels = torch.tensor(span_labels, dtype=torch.bool)    #shape => (num_possible_spans, num_span_types) for multilabel
 
@@ -307,11 +306,11 @@ class DataProcessor(object):
         #Return a dictionary with the preprocessed observations
         return dict(
             tokens      = tokens,             #the word tokens of the input seq
-            spans       = spans,              #the simplified list of span tuples [(start, end, type), ...]   NOTE: None for no labels
-            relations   = relations,          #the simplified list of rel tuples [(head, tail, type), ...]    NOTE: None for no labels
+            spans       = obs['spans'],       #the simplified list of span tuples [(start, end, type), ...]   NOTE: None for no labels
+            relations   = obs['relations'],   #the simplified list of rel tuples [(head, tail, type), ...]    NOTE: None for no labels
             span_ids    = span_ids,           #tensor (seq_len*max_span_width, 2) all possible span (start,end) tuples starting within tokens
-            span_labels  = span_labels,        #tensor (seq_len*max_span_width) int for unilabel, (seq_len*max_span_width, num span types) bool for multilabel.  The span labels aligning with each element in span_idx.  NOTE: None for no labels
-            span_masks   = span_masks,          #tensor (seq_len*max_span_width) the span mask aligning with each element in span_idx, 1 if the span is valid and selected for use   NOTE: 1 for all valid spans and 0 for pad and invalid spans
+            span_labels = span_labels,        #tensor (seq_len*max_span_width) int for unilabel, (seq_len*max_span_width, num span types) bool for multilabel.  The span labels aligning with each element in span_idx.  NOTE: None for no labels
+            span_masks  = span_masks,         #tensor (seq_len*max_span_width) the span mask aligning with each element in span_idx, 1 if the span is valid and selected for use   NOTE: 1 for all valid spans and 0 for pad and invalid spans
             orig_map    = orig_map,           #this makes the dict mapping the original span idx in spans to the dim 0 idx in the span_ids tensor here      NOTE: None if no labels
             seq_length  = seq_len,            #length of tokens, a scalar
         )
@@ -345,6 +344,8 @@ class DataProcessor(object):
         Returns:
             one DataLoader per data key: A PyTorch DataLoader instance.
         """
+        self.config.logger.write('Making the Dataloaders', 'info')
+
         #make the loaders    
         if self.config.run_type == 'train':
             loaders = dict(

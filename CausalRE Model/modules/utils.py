@@ -1,25 +1,96 @@
 import torch
-import json, random, os
+import json, random, os, gc, time, types, logging
 import numpy as np
 from pathlib import Path
+from datetime import datetime
 
+
+
+##########################################
+#general utilities
+##########################################
+def get_time():
+    current_time = datetime.now()
+    formatted_time = current_time.strftime("%Y-%m-%d_%H-%M-%S")
+    return formatted_time
+
+
+class measure_time():
+    '''
+    usage:
+    meas= measure_time()
+
+    #to start the meas...
+    meas.start()
+
+    #to end the meas...
+    meas.stop()
+    '''
+    def __init__(self):
+        pass
+
+    def start(self):
+        self.t_start = time.time()
+
+    def stop(self):
+        if self.t_start is None:
+            print("Can't do time measurement as you did not call .start() first")
+        else:
+            print(f'delay is {round((time.time()-self.t_start)*1000,3)} ms')
+            self.t_start = None
 
 
 
 def set_all_seeds(seed=42):
-    random.seed(seed)                # Python random module
-    np.random.seed(seed)             # Numpy module
-    torch.manual_seed(seed)          # PyTorch random number generator
-    torch.cuda.manual_seed(seed)     # CUDA random number generator if using GPU
-    torch.cuda.manual_seed_all(seed) # CUDA random number generator for all GPUs
-    torch.backends.cudnn.deterministic = True  # Makes CUDA operations deterministic
-    torch.backends.cudnn.benchmark = False     # Disables CUDA convolution benchmarking for reproducibility
+    #Python RNG
+    random.seed(seed)
+    #Numpy RNG
+    np.random.seed(seed)
+    #PyTorch RNGs
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
     os.environ['PYTHONHASHSEED'] = str(seed)  # Sets Python hash seed
 
 
 
+
+def clear_gpu_tensors(tensors):
+    '''
+    usage:
+    if step % selfconfig.clear_tensor_period == 0:
+        tensors_to_clear = a list of the tensor names to clear
+        clear_gpu_tensors(tensors_to_clear)
+    '''
+    for tensor in tensors:
+        del tensor
+    gc.collect()
+    torch.cuda.empty_cache()
+
+
+
+def not_class(x):
+    #determines if an object is not a class
+    if isinstance(x, (int, float, str, dict, list, tuple, set, frozenset, types.FunctionType, types.LambdaType)):
+        return True
+    return False
+
+
+
+def print_overwrite(msg):
+    '''
+    prints a line but overwrites the last written line
+    '''
+    print(f'\r{msg}', end='')
+
+
+
+
 ##################################################################################
-#Generic functions
+#import/export json
 ##################################################################################
 ##################################################################################
 def check_utf_encoding(file_path):
@@ -80,6 +151,9 @@ def save_to_json(data, filename):
         IOError: If there are issues writing to the file.
     """
     try:
+        # Ensure directory exists
+        os.makedirs(os.path.dirname(filename), exist_ok=True)
+        
         with open(filename, 'w') as f:
             json.dump(data, f, indent=4)
     except TypeError as e:
@@ -92,125 +166,104 @@ def save_to_json(data, filename):
         print(f"An unexpected error occurred: {e}")
         raise
 
+###################################################################
 
 
-def import_data(data_path, main_configs):
-    """
-    Load a source dataset from a JSON file and extract its schema.
 
-    Args:
-        config => the config namespace
-        
-    Input JSON Format (train):
-        - Outer dictionary with 2 keys: 'data', 'schema'.
-            - 'data' is a dict of 3 keys: 'train', 'val', 'test'
-                - each key contains a list of dicts, each dict with 3 keys:
-                    - 'tokens': List of word tokens for the input text
-                    - 'spans': list of dictionaries, where each dictionary represents a span with 4 keys:
-                        - 'id': Span ID (format: E_obs_idx_span_idx).
-                        - 'start': Character index of the span start in the raw text.
-                        - 'end': Character index of the span end in the raw text (not inclusive, true end index).
-                        - 'type': The type of the span.
-                    - 'relations': List of dictionaries, where each dict represents a directed relation with 4 keys:
-                        - 'id': Relation ID.
-                        - 'head': Span ID of the head entity.
-                        - 'tail': Span ID of the tail entity.
-                        - 'type': The type of the relation.
-            - 'schema': dict with 2 keys:
-                - 'span_types': List of dictionaries, each defining a span type with:
-                    - 'name': The name of the span type.
-                    - 'color': The color specification (e.g., rgba(1,2,3,0.3)).
-                - 'relation_types': List of dictionaries, each defining a relation type with:
-                    - 'name': The name of the relation type.
-                    - 'color': The color specification.
+#############################################################################
+#gradient ecking
+#############################################################################
+def check_grads(model):
+    for name, param in model.named_parameters():
+        if param.grad is not None:
+            if torch.any(torch.isnan(param.grad)):
+                print(f"NaN gradient at {name}")
 
-    Input JSON Format (predict):
-        - Outer dictionary with 2 keys: 'data', 'schema'.
-            - 'data' is a dict of 1 key: 'predict'
-                - the only key contains a list of dicts, each dict has one key:
-                    - 'tokens': List of word tokens for the input text
-            - 'schema': dict with 2 keys:
-                - 'span_types': List of dictionaries, each defining a span type with:
-                    - 'name': The name of the span type.
-                    - 'color': The color specification (e.g., rgba(1,2,3,0.3)).
-                - 'relation_types': List of dictionaries, each defining a relation type with:
-                    - 'name': The name of the relation type.
-                    - 'color': The color specification.
 
-    Returns:
-        tuple: A tuple containing:
-            - data (dict): The dataset without the schema key.
-            - schema (dict): The extracted schema.
 
-    Raises:
-        KeyError: If the 'schema' key is missing from the JSON.
-    """
-    config = main_configs.as_namespace()
-    #make the absolute data path
-    data_path = str(config.app_path / config.data_path)
-    #Load the JSON file into a Python object
-    result = load_from_json(data_path)
-    
-    #do validity checks for data
-    ######################################
-    splits = ['train', 'val', 'test']
-    keys = ['tokens', 'spans', 'relations']
-    if config.run_type == 'predict':
-        splits = ['predict']
-        keys = ['tokens']
-    try:
-        if result is None or 'data' not in result: raise Exception
-        splits = ['train', 'val', 'test']
-        keys = ['tokens', 'spans', 'relations']
-        for split in splits:
-            if split not in result['data']: raise Exception
-            for item in result['data'][split]:
-                for key in keys:
-                    if key not in item: raise Exception
+def check_grads_and_show_stats(model):
+    print("Gradient Statistics:")
+    for name, param in model.named_parameters():
+        if param.grad is not None:
+            grad = param.grad
+            grad_min = grad.min().item()
+            grad_max = grad.max().item()
+            grad_mean = grad.mean().item()
+            grad_std = grad.std().item()
+            has_nan = torch.any(torch.isnan(grad)).item()
 
-    except Exception as e:
-        raise ValueError(f"Invalid data provided. Ensure it contains these splits: '{','.join(splits)}' and each item in each split contains these keys: '{','.join(keys)}'")
+            # Printing gradient stats
+            msg = 'contains NaNs' if has_nan else ''
+            print(f"{name}: Min:{grad_min}, Max:{grad_max}, Mean:{grad_mean}, Std: {grad_std}, {msg}")
 
-    #ensure that we only select the desired data in the dataset
-    dataset = {}
-    if config.run_type == 'train':
-        dataset = dict(
-            train   = [dict(tokens    = x['tokens'],
-                            spans     = x['spans'],
-                            relations = x['relations'])
-                            for x in result['data']['train']],
-            val     = [dict(tokens    = x['tokens'],
-                            spans     = x['spans'],
-                            relations = x['relations'])
-                            for x in result['data']['val']],
-            test    = [dict(tokens    = x['tokens'],
-                            spans     = x['spans'],
-                            relations = x['relations'])
-                            for x in result['data']['test']]
-        )
-   
-    elif config.run_type == 'predict':
-        dataset = dict(
-            predict   = [{'tokens': x['tokens']} for x in result['data']['train']],
-        )
-    ######################################
 
-    #do schema validity checks
-    ######################################
-    if 'schema' not in result:
-        raise KeyError("The provided JSON file does not contain the required 'schema' key.")
-    #Extract the schema
-    schema = result['schema']
-    #do validity checks
-    if 'span_types' not in schema or 'relation_types' not in schema:
-        raise ValueError("Invalid schema provided. Ensure it contains 'span_types' and 'relation_types'.")
-    #Extract and sort span and relation types, ensuring uniqueness and sorting
-    span_types = sorted({x['name'] for x in schema['span_types']})
-    rel_types = sorted({x['name'] for x in schema['relation_types']})
-    ######################################
 
-    return dict(
-        dataset         = dataset,
-        span_types      = span_types,
-        rel_types       = rel_types
-    )
+# Function to calculate the gradient norms
+def calculate_gradient_metrics(model):
+    grad_norms = {}
+    grad_stdevs = {}
+    max_grads = {}
+    has_nans = {}
+    total_norm = 0.0
+    for name, parameter in model.named_parameters():
+        if parameter.grad is not None:
+            grad_data = parameter.grad.data.view(-1)  # Flatten the gradient data for easier computation
+            param_norm = grad_data.norm(2)  # L2 norm
+            param_stdev = grad_data.std()  # Standard deviation
+            max_grad = grad_data.abs().max()  # Maximum absolute value
+            has_nan = torch.any(torch.isnan(grad_data))
+
+            grad_norms[name] = param_norm.item()
+            grad_stdevs[name] = param_stdev.item()
+            max_grads[name] = max_grad.item()
+            has_nans[name] = has_nan.item()
+            total_norm += param_norm.item() ** 2  # Sum of squares for the overall norm
+
+    total_norm = total_norm ** 0.5  # Compute the square root of the total norm
+    return grad_norms, grad_stdevs, max_grads, has_nans, total_norm
+
+###################################################################
+
+
+###################################################################
+#load and save model weights code (from my spert code, maybe will itegrate this, I know it works)
+###################################################################
+
+def save_weights(model, model_dest, model_name, full=False):
+    #save it
+    if full:
+        #save the full model
+        model_path_full = model_dest + '/' + model_name + '_full.pth'
+        os.makedirs(model_dest, exist_ok=True)
+        torch.save(model, model_path_full)
+    else:
+        #save the state dict only
+        model_path_full = model_dest + '/' + model_name + '_wt.pth'
+
+        print(model_path_full)
+        os.makedirs(model_dest, exist_ok=True)
+        torch.save(model.state_dict(), model_path_full)
+
+
+
+def load_weights(model_name, model_source, full=False, new_model=None, device=None):
+    if full:
+        #load the full model
+        model_path_full = model_source + '/' + model_name + '_full.pth'
+        if os.path.exists(model_path_full):
+            new_model = torch.load(model_path_full, map_location=device)
+        else:
+            return None, 'no model file'
+    else:
+        if new_model is None:
+            raise ValueError("new_model must be provided if full=False")
+        #load the state dict only
+        model_path_full = model_source + '/' + model_name + '_wt.pth'
+        if os.path.exists(model_path_full):
+            new_model.load_state_dict(torch.load(model_path_full, map_location=device))
+        else:
+            return None, 'no model file'
+
+    return new_model, None
+###################################################################
+
