@@ -13,6 +13,14 @@ class Evaluator:
 
 
 
+    def remove_span_types_from_full_rels(self, full_rels):
+        '''
+        This removes the span types from the full rels as this is required for some analysis
+        '''
+        return [[(rel[0],rel[1],rel[3],rel[4],rel[6]) for rel in obs] for obs in full_rels]
+
+
+
     def prepare_labels(self, span_labels_raw, rel_labels_raw):
         '''
         This extracts the raw annotations for alignment with the preds 
@@ -22,8 +30,8 @@ class Evaluator:
         rel_labels => list of list of tuples [[(head_span_start, head_span_end, head_span_type, tail_span_start, tail_span_end, tail_span_type, rel_type),...],...]
         '''
         batch = len(span_labels_raw)
-        span_labels = [[] for x in batch] 
-        rel_labels = [[] for x in batch]
+        span_labels = [[] for x in range(batch)] 
+        rel_labels  = [[] for x in range(batch)]
         #fill the span and rel labels
         for batch_idx in range(batch):
             for start, end, span_type in span_labels_raw[batch_idx]:
@@ -35,14 +43,6 @@ class Evaluator:
                 rel_labels[batch_idx].append((head_span_start, head_span_end, head_span_type, tail_span_start, tail_span_end, tail_span_type, rel_type))
 
         return span_labels, rel_labels
-
-
-
-    def remove_span_types_from_full_rels(self, full_rels):
-        '''
-        This removes the span types from the full rels as this is required for some analysis
-        '''
-        return [[(rel[0],rel[1],rel[3],rel[4],rel[6]) for rel in obs] for obs in full_rels]
 
 
 
@@ -99,6 +99,10 @@ class Evaluator:
 
 
     def prep_and_add_batch(self, preds, span_labels_raw, rel_labels_raw):
+        '''
+        This takes in the formatted preds (positive cases only as list of list of tuples each for spans and rels) and the raw labels
+        It preps them and aligns them and adds them to the evaluator output dicts for preds and labels
+        '''
         #get the labels => the actual positive cases
         #NOTE: the rel_labels are the full rels with the span start,end,type info
         span_labels, rel_labels = self.prepare_labels(span_labels_raw, rel_labels_raw)

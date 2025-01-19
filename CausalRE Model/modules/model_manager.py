@@ -35,14 +35,14 @@ class ModelManager:
         save_directory.mkdir(parents=True, exist_ok=True)
         torch.save(model.state_dict(), save_directory / "pytorch_model.bin")
         #Optionally save the configuration file
-        save_to_json(save_directory / 'config.json')
+        #save_to_json(save_directory / 'config.json')
 
 
     def load_pretrained(self, model, model_path):
         """Load model weights from the specified path"""
         state_dict = torch.load(model_path)
         model.load_state_dict(state_dict)
-        print(f"Model loaded from {model_path}")
+        self.config.logger.write(f"Model loaded from {model_path}")
 
 
     def save_top_k_checkpoints(self, model, save_path, checkpoint, top_k = 1):
@@ -54,6 +54,8 @@ class ModelManager:
             save_path (str): The directory path to save the checkpoints.
             top_k (int): The number of top checkpoints to keep. Defaults to 1.
         """
+        self.config.logger.write('Saving Checkpoints...')
+
         # Save the current model and tokenizer
         self.save_pretrained(model, os.path.join(save_path, str(checkpoint)))
         # List all files in the directory
@@ -71,13 +73,12 @@ class ModelManager:
             os.rmdir(os.path.join(checkpoint_folder))
 
 
-
     def get_model(self, device=None):
         '''
         This sets up the model
         loads the model if one is given or it creates a new one
         '''
-        self.config.logger.write('Making the model', 'info')
+        self.config.logger.write('Making the model')
 
         if device is None:
             device = self.config.device

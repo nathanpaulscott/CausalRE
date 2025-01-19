@@ -54,8 +54,8 @@ if __name__ == "__main__":
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
     #for debugging only
-    os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
-    os.environ['TORCH_USE_CUDA_DSA'] = "1"
+    #os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
+    #os.environ['TORCH_USE_CUDA_DSA'] = "1"
 
     #get the configs
     parser = create_parser()
@@ -77,8 +77,8 @@ if __name__ == "__main__":
     #set up the logger
     config = main_configs.as_namespace
     log_folder = str(config.app_path / config.log_folder)
-    logger = Logger(log_folder, 'log.log', enable_console_output=config.print_log)
-    logger.write('Start...', 'info')
+    logger = Logger(log_folder, enable_console_output=config.print_log)
+    logger.write('Start...')
     #add logger to main_configs
     main_configs.update({'logger': logger})
 

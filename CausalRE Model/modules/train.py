@@ -12,7 +12,7 @@ from .evaluator import Evaluator
 from .predictor import Predictor
 from .model_manager import ModelManager, Optimizer, Scheduler
 from .data_preparation import DataPreparation
-
+from .utils import clear_gpu_tensors
 
 
 
@@ -56,9 +56,7 @@ class Trainer:
     ##############################################################
     #TRAIN/EVAL
     ##############################################################
-
-    def train_step(self, model, optimizer, scheduler, scaler, iter_loader_inf, step):
-        optimizer.zero_grad()
+    def train_step(self, model, scaler, iter_loader_inf, step):
         x = next(iter_loader_inf)
         model.train()
         if self.config.num_precision == 'half':
@@ -69,28 +67,29 @@ class Trainer:
         loss = result['loss']
 
         if torch.isnan(loss).any():
-            print(f"Warning: NaN loss detected at step {step}. Skipping...")
+            self.config.logger.write(f"Warning: NaN loss detected at step {step}. Skipping...", level='warning')
             return None
 
-        scaler.scale(loss).backward()
-        scaler.step(optimizer)
-        scaler.update()
-        scheduler.step()
+        scaler.scale(loss).backward()  # Accumulate gradients
+
+        #clear tensors to free up GPU memory
+        if (step + 1) % self.config.clear_tensor_steps == 0:
+            #self.config.logger.write(' Clearing tensors')
+            clear_gpu_tensors([v for k,v in result.items() if k != 'loss'])
+
         return loss
 
 
-    '''
-    got here
-    '''
     def train_loop(self, model, loaders):
         '''
         This is the training and eval loop
         '''
-        self.config.logger.write('Starting the Train Loop', 'info')
+        self.config.logger.write('Starting the Train Loop')
         config = self.config
 
         #read some params from config
         device = config.device
+        acc_steps = config.accumulation_steps
         num_steps = config.num_steps
         pbar = tqdm(range(num_steps))
         warmup_ratio = config.warmup_ratio
@@ -111,41 +110,56 @@ class Trainer:
 
         #make an infinitely iterable from train loader
         iter_loader_inf = self.load_loader(train_loader, device, infinite=True)
+        optimizer.zero_grad()    # Zero out gradients for next accumulation
         for step in pbar:
-            loss = self.train_step(model, optimizer, scheduler, scaler, iter_loader_inf, step)
-            if loss is None: continue
+            loss = self.train_step(model, scaler, iter_loader_inf, step)
+            if loss is None: continue  # Skip step if NaN loss
+
+            if (step + 1) % acc_steps == 0 or step == num_steps - 1:
+                self.config.logger.write(' Applying accumulated gradients ...')
+                scaler.step(optimizer)   # Update model parameters
+                scaler.update()          # Update the scale for next iteration
+                optimizer.zero_grad()    # Zero out gradients for next accumulation
+                scheduler.step()         # Scheduler step, if using a learning rate scheduler
 
             description = f"step: {step} | epoch: {step // len(train_loader)} | loss: {loss.item():.2f}"
+            self.config.logger.write(description, 'info', output_to_console=False)   #no output to console for this one
             pbar.set_description(description)
             
             #runs eval and saves the model
             if (step + 1) % eval_every == 0:
-                result = self.eval_loop(model, val_loader, device, step=step, msg='interim_val')
+                result = self.eval_loop(model, val_loader, device, step=step)
+                self.config.logger.write(self.make_metrics_summary(result, msg='interim_val '))
+                #save the model
                 checkpoint = f'model_{step + 1}'
                 self.model_manager.save_top_k_checkpoints(model, log_folder, checkpoint, save_total_limit)
 
         #run the final eval and test loop
-        result_eval = self.eval_loop(model, val_loader, device, step=None, msg='final_val')
-        result_test = self.eval_loop(model, test_loader, device, step=None, msg='final_test')
+        result_val = self.eval_loop(model, val_loader, device)
+        result_test = self.eval_loop(model, test_loader, device)
+        #write summary to log
+        self.config.logger.write(self.make_metrics_summary(result_val, msg='final_val '))
+        self.config.logger.write(self.make_metrics_summary(result_test, msg='final_test '))
+        #save the model
         checkpoint = f'model_{step + 1}'
         self.model_manager.save_top_k_checkpoints(model, log_folder, checkpoint, save_total_limit)
 
         return dict(
-            result_eval = result_eval,
+            result_val = result_val,
             result_test = result_test
         )
 
 
-    def print_metrics_summary(self, result, msg):
-        print(f'Eval_type: {msg}\n-------------------------------')
-        print(f"Span Metrics:    {result['span_metrics']['msg']}")
-        print(f"Rel Metrics:     {result['rel_metrics']['msg']}")
-        print(f"Rel_mod Metrics: {result['rel_mod_metrics']['msg']}")
-        print('-------------------------------')
+    def make_metrics_summary(self, result, msg):
+        msg = f'Eval_type: {msg}\n-------------------------------\n'
+        msg += f"Span Metrics:    {result['span_metrics']['msg']}"
+        msg += f"Rel Metrics:     {result['rel_metrics']['msg']}"
+        msg += f"Rel_mod Metrics: {result['rel_mod_metrics']['msg']}"
+        msg += '-------------------------------'
+        return msg
 
 
-
-    def eval_loop(self, model, data_loader, device, step=None, msg=None):
+    def eval_loop(self, model, data_loader, device, step=None):
         '''
         The run_type param here will be 'train' so we have labels and calculate loss
         the only difference is that the loss is disconnected from the graph as the model is run in .eval mode
@@ -158,8 +172,10 @@ class Trainer:
         
         iter_loader = self.load_loader(data_loader, device, infinite=False)
         model.eval()
+        eval_step = 0
+        total_eval_steps = len(data_loader)
         with torch.no_grad():
-            for x in iter_loader:
+            for x in tqdm(iter_loader, desc=f"Eval({total_eval_steps} batches)", leave=True):
                 with torch.cuda.amp.autocast(dtype=torch.float16):    #forcing data to half precision
                     result = model(x, step=step)
                 #get preds => the predicted positive cases
@@ -167,15 +183,35 @@ class Trainer:
                 preds = predictor.predict(result, return_and_reset_results=True)
                 #prepare and add the batch of preds and labels to the evaluator
                 evaluator.prep_and_add_batch(preds, x['spans'], x['relations'])
-        
+
+                #clear tensors to free up GPU memory
+                eval_step += 1
+                if (eval_step + 1) % self.config.clear_tensor_steps == 0:
+                    #self.config.logger.write(f' Eval step {eval_step}, clearing tensors')
+                    clear_gpu_tensors([v for k,v in result.items()])
+                
+                #TEMP
+                #TEMP
+                #TEMP
+                if eval_step > 15:
+                    break
+                #TEMP
+                #TEMP
+                #TEMP
         #run the evaluator on whole dataset results (stored in the evaluator object) and return a dict with the metrics and preds
         result = evaluator.evaluate()
-        self.print_metrics_summary(result, msg)
         return result
     ##############################################################
     ##############################################################
     ##############################################################
-
+    '''
+    got an issue in the eval loop 
+    in the predictor
+    see error below
+    
+    
+    
+    '''
 
 
     ##############################################################
@@ -188,7 +224,7 @@ class Trainer:
         This is the predict loop, the run_type param is 'predict' so the model will run without labels and not calculate loss
         The loss returned from the model will be None
         '''
-        self.config.logger.write('Starting the Predict Loop', 'info')
+        self.config.logger.write('Starting the Predict Loop')
         config = self.config
 
         #read some params from config
@@ -198,14 +234,22 @@ class Trainer:
         #make the predictor, no evaluator as have no labels
         predictor = Predictor(config)
 
+        pred_step = 0
+        total_pred_steps = len(predict_loader)
         iter_loader = self.load_loader(predict_loader, device, infinite=False)
         model.eval()
         with torch.no_grad():
-            for x in iter_loader:
+            for x in tqdm(iter_loader, desc=f"Pred({total_pred_steps} batches)", leave=True):
                 with torch.cuda.amp.autocast(dtype=torch.float16):    #forcing data to half precision
                     result = model(x)
                 #make the predictions for the batch and add to the predictor object    
                 predictor.predict(result)
+
+                #clear tensors to free up GPU memory
+                pred_step += 1
+                if (pred_step + 1) % self.config.clear_tensor_steps == 0:
+                    #self.config.logger.write(f' Eval step {eval_step}, clearing tensors')
+                    clear_gpu_tensors([v for k,v in result.items()])
 
         #return the final predict results from the predictor object
         return predictor.all_preds_out
@@ -246,7 +290,7 @@ class Trainer:
         if testing: self.check_loaders(loaders)
 
         #send config to log
-        self.config.logger.write('Configs Snapshot:\n' + self.main_configs.dump_as_json_str, 'info')
+        self.config.logger.write('Configs Snapshot:\n' + self.main_configs.dump_as_json_str)
 
         #get the model
         self.model_manager = ModelManager(self.config) 

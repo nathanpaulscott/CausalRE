@@ -58,7 +58,8 @@ def set_all_seeds(seed=42):
 
 
 
-def clear_gpu_tensors(tensors):
+
+def clear_gpu_tensors(tensors, clear_cache = True):
     '''
     usage:
     if step % selfconfig.clear_tensor_period == 0:
@@ -66,9 +67,12 @@ def clear_gpu_tensors(tensors):
         clear_gpu_tensors(tensors_to_clear)
     '''
     for tensor in tensors:
-        del tensor
+        if tensor is not None:
+            del tensor
     gc.collect()
-    torch.cuda.empty_cache()
+    if torch.cuda.is_available() and clear_cache:
+        torch.cuda.empty_cache()  # Clears the GPU cache
+
 
 
 

@@ -4,8 +4,8 @@ from sklearn.metrics import accuracy_score, precision_recall_fscore_support, con
 
 
 class Metrics:
-    def __init__(self, configs):
-        self.configs = configs
+    def __init__(self, config):
+        self.config = config
 
 
     def run_metrics(self, preds, labels):
@@ -32,8 +32,7 @@ class Metrics:
                        precision = precision,
                        recall    = recall,
                        f1        = f1)
-        metrics['msg'] = f"S: {metrics['support']:.2%}\tP: {metrics['precision']:.2%}\tR: {metrics['recall']:.2%}\tF1: {metrics['f1']:.2%}\n"
-        
+        metrics['msg'] = f"S: {metrics['support']}\tAcc: {metrics['accuracy']:.2%}\tP: {metrics['precision']:.2%}\tR: {metrics['recall']:.2%}\tF1: {metrics['f1']:.2%}\n"        
         return metrics
 
 
