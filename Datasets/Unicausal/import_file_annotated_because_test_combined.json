@@ -1,0 +1,1011 @@
+{
+    "data": [
+        {
+            "raw_text": "(Chatterbox would prefer not to invoke the phrase \"intellectual dishonesty,\" because it's pompous and falsely suggests that only intellectuals can be intellectually dishonest.",
+            "annotated_text": "(<ARG1>Chatterbox would prefer not to invoke the phrase \"intellectual dishonesty</ARG1>,\" because <ARG0>it's pompous and falsely suggests that only intellectuals can be intellectually dishonest</ARG0>.",
+            "tokens": [
+                "(",
+                "Chatterbox",
+                "would",
+                "prefer",
+                "not",
+                "to",
+                "invoke",
+                "the",
+                "phrase",
+                "``",
+                "intellectual",
+                "dishonesty",
+                ",",
+                "''",
+                "because",
+                "it",
+                "'s",
+                "pompous",
+                "and",
+                "falsely",
+                "suggests",
+                "that",
+                "only",
+                "intellectuals",
+                "can",
+                "be",
+                "intellectually",
+                "dishonest",
+                "."
+            ],
+            "tokens_annotated": [
+                "(",
+                "<ARG1>",
+                "Chatterbox",
+                "would",
+                "prefer",
+                "not",
+                "to",
+                "invoke",
+                "the",
+                "phrase",
+                "``",
+                "intellectual",
+                "dishonesty",
+                "</ARG1>",
+                ",",
+                "''",
+                "because",
+                "<ARG0>",
+                "it",
+                "'s",
+                "pompous",
+                "and",
+                "falsely",
+                "suggests",
+                "that",
+                "only",
+                "intellectuals",
+                "can",
+                "be",
+                "intellectually",
+                "dishonest",
+                "</ARG0>",
+                "."
+            ],
+            "label": "1",
+            "spans": [
+                {
+                    "id": "E0",
+                    "start": 15,
+                    "end": 28,
+                    "type": "event"
+                },
+                {
+                    "id": "E1",
+                    "start": 1,
+                    "end": 12,
+                    "type": "event"
+                }
+            ],
+            "relations": [
+                {
+                    "id": "R0",
+                    "head": "E0",
+                    "tail": "E1",
+                    "type": "causal"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "And",
+                "because",
+                "it",
+                "published",
+                "an",
+                "editorial",
+                "Feb.",
+                "22",
+                "taunting",
+                "the",
+                "rest",
+                "of",
+                "the",
+                "press",
+                "for",
+                "not",
+                "following",
+                "it",
+                "on",
+                "the",
+                "story",
+                "--",
+                "and",
+                "still",
+                "did",
+                "n't",
+                "mention",
+                "the",
+                "pardon",
+                "--",
+                "it",
+                "scores",
+                "an",
+                "extra",
+                "two",
+                "points",
+                "."
+            ],
+            "spans": [
+                {
+                    "id": "E0",
+                    "start": 2,
+                    "end": 29,
+                    "type": "event"
+                },
+                {
+                    "id": "E1",
+                    "start": 30,
+                    "end": 36,
+                    "type": "event"
+                },
+                {
+                    "id": "E2",
+                    "start": 15,
+                    "end": 21,
+                    "type": "event"
+                },
+                {
+                    "id": "E3",
+                    "start": 8,
+                    "end": 14,
+                    "type": "event"
+                }
+            ],
+            "relations": [
+                {
+                    "id": "R0",
+                    "head": "E0",
+                    "tail": "E1",
+                    "type": "causal"
+                },
+                {
+                    "id": "R1",
+                    "head": "E2",
+                    "tail": "E3",
+                    "type": "causal"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "And",
+                "besides",
+                ",",
+                "Rabinowitz",
+                "'s",
+                "efforts",
+                "on",
+                "the",
+                "Times",
+                "'",
+                "behalf",
+                "were",
+                "n't",
+                "really",
+                "unethical",
+                ",",
+                "just",
+                "puzzling",
+                ",",
+                "given",
+                "the",
+                "two",
+                "newspapers",
+                "'",
+                "intense",
+                "rivalry",
+                "."
+            ],
+            "spans": [
+                {
+                    "id": "E0",
+                    "start": 20,
+                    "end": 26,
+                    "type": "event"
+                },
+                {
+                    "id": "E1",
+                    "start": 3,
+                    "end": 18,
+                    "type": "event"
+                }
+            ],
+            "relations": [
+                {
+                    "id": "R0",
+                    "head": "E0",
+                    "tail": "E1",
+                    "type": "causal"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "Because",
+                "it",
+                "has",
+                "published",
+                "three",
+                "times",
+                "since",
+                "the",
+                "initial",
+                "omission",
+                ",",
+                "it",
+                "scores",
+                "an",
+                "additional",
+                "three",
+                "points",
+                "."
+            ],
+            "spans": [
+                {
+                    "id": "E0",
+                    "start": 1,
+                    "end": 10,
+                    "type": "event"
+                },
+                {
+                    "id": "E1",
+                    "start": 11,
+                    "end": 17,
+                    "type": "event"
+                }
+            ],
+            "relations": [
+                {
+                    "id": "R0",
+                    "head": "E0",
+                    "tail": "E1",
+                    "type": "causal"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "But",
+                "the",
+                "Scientific",
+                "Method",
+                "does",
+                "not",
+                "permit",
+                "any",
+                "tinkering",
+                "with",
+                "the",
+                "Indis",
+                "Index",
+                "'s",
+                "scoring",
+                "procedures",
+                "."
+            ],
+            "spans": [
+                {
+                    "id": "E0",
+                    "start": 1,
+                    "end": 4,
+                    "type": "event"
+                },
+                {
+                    "id": "E1",
+                    "start": 7,
+                    "end": 16,
+                    "type": "event"
+                }
+            ],
+            "relations": []
+        },
+        {
+            "tokens": [
+                "Chatterbox",
+                "considered",
+                "but",
+                "rejected",
+                "the",
+                "idea",
+                "of",
+                "awarding",
+                "Rabinowitz",
+                "bonus",
+                "points",
+                "for",
+                "having",
+                "``",
+                "eventually",
+                "convinced",
+                "''",
+                "Broaddrick",
+                "to",
+                "grant",
+                "an",
+                "interview",
+                "to",
+                "the",
+                "New",
+                "York",
+                "Times",
+                "(",
+                "as",
+                "the",
+                "Times",
+                "reports",
+                "in",
+                "today",
+                "'s",
+                "story",
+                ")",
+                "."
+            ],
+            "spans": [
+                {
+                    "id": "E0",
+                    "start": 12,
+                    "end": 37,
+                    "type": "event"
+                },
+                {
+                    "id": "E1",
+                    "start": 7,
+                    "end": 11,
+                    "type": "event"
+                }
+            ],
+            "relations": [
+                {
+                    "id": "R0",
+                    "head": "E0",
+                    "tail": "E1",
+                    "type": "causal"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "Chatterbox",
+                "feels",
+                "certain",
+                "that",
+                "the",
+                "Journal",
+                "editorial",
+                "page",
+                "will",
+                "provide",
+                "some",
+                "follow-up",
+                "tomorrow",
+                "to",
+                "tonight",
+                "'s",
+                "NBC",
+                "broadcast",
+                "of",
+                "its",
+                "own",
+                "Broaddrick",
+                "interview",
+                ",",
+                "which",
+                "means",
+                "that",
+                "if",
+                "the",
+                "Journal",
+                "editorial",
+                "page",
+                "continues",
+                "to",
+                "take",
+                "no",
+                "action",
+                "it",
+                "will",
+                "be",
+                "in",
+                "the",
+                "Indis",
+                "Hall",
+                "of",
+                "Fame",
+                "by",
+                "Monday",
+                "at",
+                "the",
+                "latest",
+                "!"
+            ],
+            "spans": [
+                {
+                    "id": "E0",
+                    "start": 28,
+                    "end": 37,
+                    "type": "event"
+                },
+                {
+                    "id": "E1",
+                    "start": 37,
+                    "end": 51,
+                    "type": "event"
+                }
+            ],
+            "relations": [
+                {
+                    "id": "R0",
+                    "head": "E0",
+                    "tail": "E1",
+                    "type": "causal"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "For",
+                "her",
+                "part",
+                ",",
+                "Rabinowitz",
+                "explains",
+                "to",
+                "Chatterbox",
+                "that",
+                "her",
+                "efforts",
+                "on",
+                "behalf",
+                "of",
+                "the",
+                "Times",
+                "were",
+                "more",
+                "indifferent",
+                "than",
+                "the",
+                "Times",
+                "made",
+                "them",
+                "sound",
+                "."
+            ],
+            "spans": [
+                {
+                    "id": "E0",
+                    "start": 20,
+                    "end": 22,
+                    "type": "event"
+                },
+                {
+                    "id": "E1",
+                    "start": 23,
+                    "end": 25,
+                    "type": "event"
+                }
+            ],
+            "relations": [
+                {
+                    "id": "R0",
+                    "head": "E0",
+                    "tail": "E1",
+                    "type": "causal"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "For",
+                "the",
+                "purposes",
+                "of",
+                "this",
+                "survey",
+                ",",
+                "the",
+                "Wall",
+                "Street",
+                "Journal",
+                "will",
+                "be",
+                "counted",
+                "as",
+                "a",
+                "separate",
+                "and",
+                "distinct",
+                "publication",
+                "from",
+                "the",
+                "Journal",
+                "'s",
+                "editorial",
+                "page",
+                ",",
+                "because",
+                ",",
+                "in",
+                "essence",
+                ",",
+                "it",
+                "is",
+                "."
+            ],
+            "spans": [
+                {
+                    "id": "E0",
+                    "start": 32,
+                    "end": 34,
+                    "type": "event"
+                },
+                {
+                    "id": "E1",
+                    "start": 0,
+                    "end": 26,
+                    "type": "event"
+                }
+            ],
+            "relations": [
+                {
+                    "id": "R0",
+                    "head": "E0",
+                    "tail": "E1",
+                    "type": "causal"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "Here",
+                "'s",
+                "how",
+                "it",
+                "works",
+                ":",
+                "Publications",
+                "that",
+                "refuse",
+                "to",
+                "acknowledge",
+                "(",
+                "even",
+                "if",
+                "to",
+                "refute",
+                "the",
+                "importance",
+                "of",
+                ")",
+                "highly",
+                "significant",
+                "but",
+                "inconvenient",
+                "facts",
+                "in",
+                "their",
+                "news",
+                "or",
+                "opinion",
+                "coverage",
+                "of",
+                "controversial",
+                "events",
+                "will",
+                "score",
+                "one",
+                "point",
+                "for",
+                "the",
+                "initial",
+                "offense",
+                "."
+            ],
+            "spans": [
+                {
+                    "id": "E0",
+                    "start": 39,
+                    "end": 42,
+                    "type": "event"
+                },
+                {
+                    "id": "E1",
+                    "start": 6,
+                    "end": 38,
+                    "type": "event"
+                }
+            ],
+            "relations": [
+                {
+                    "id": "R0",
+                    "head": "E0",
+                    "tail": "E1",
+                    "type": "causal"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "I",
+                "passed",
+                "this",
+                "on",
+                "to",
+                "[",
+                "Times",
+                "reporter",
+                "]",
+                "Felicity",
+                "Barringer",
+                "during",
+                "our",
+                "second",
+                "day",
+                "'s",
+                "interview",
+                "chat",
+                "."
+            ],
+            "spans": [
+                {
+                    "id": "E0",
+                    "start": 12,
+                    "end": 18,
+                    "type": "event"
+                },
+                {
+                    "id": "E1",
+                    "start": 0,
+                    "end": 11,
+                    "type": "event"
+                }
+            ],
+            "relations": []
+        },
+        {
+            "tokens": [
+                "She",
+                "said",
+                "she",
+                "would",
+                "if",
+                "he",
+                "called",
+                "again",
+                "."
+            ],
+            "spans": [
+                {
+                    "id": "E0",
+                    "start": 5,
+                    "end": 8,
+                    "type": "event"
+                },
+                {
+                    "id": "E1",
+                    "start": 2,
+                    "end": 4,
+                    "type": "event"
+                }
+            ],
+            "relations": []
+        },
+        {
+            "tokens": [
+                "The",
+                "Journal",
+                "editorial",
+                "page",
+                "gets",
+                "one",
+                "point",
+                "for",
+                "failing",
+                "to",
+                "note",
+                "the",
+                "pardon",
+                "in",
+                "its",
+                "initial",
+                "Op-Ed",
+                "by",
+                "Dorothy",
+                "Rabinowitz",
+                "on",
+                "Feb.",
+                "19",
+                "."
+            ],
+            "spans": [
+                {
+                    "id": "E0",
+                    "start": 8,
+                    "end": 23,
+                    "type": "event"
+                },
+                {
+                    "id": "E1",
+                    "start": 0,
+                    "end": 7,
+                    "type": "event"
+                }
+            ],
+            "relations": [
+                {
+                    "id": "R0",
+                    "head": "E0",
+                    "tail": "E1",
+                    "type": "causal"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "They",
+                "will",
+                "then",
+                "score",
+                "one",
+                "point",
+                "for",
+                "every",
+                "subsequent",
+                "issue",
+                "or",
+                "broadcast",
+                "or",
+                "Internet",
+                "posting",
+                "after",
+                "the",
+                "first",
+                "offense",
+                "is",
+                "noted",
+                "by",
+                "Chatterbox",
+                "if",
+                "they",
+                "continue",
+                "not",
+                "to",
+                "report",
+                "said",
+                "inconvenient",
+                "fact",
+                "--",
+                "and",
+                "an",
+                "additional",
+                "two",
+                "points",
+                "on",
+                "days",
+                "when",
+                "the",
+                "news",
+                "organization",
+                "runs",
+                "a",
+                "follow-up",
+                "without",
+                "making",
+                "note",
+                "of",
+                "said",
+                "inconvenient",
+                "fact",
+                "."
+            ],
+            "spans": [
+                {
+                    "id": "E0",
+                    "start": 16,
+                    "end": 23,
+                    "type": "event"
+                },
+                {
+                    "id": "E1",
+                    "start": 7,
+                    "end": 15,
+                    "type": "event"
+                },
+                {
+                    "id": "E2",
+                    "start": 24,
+                    "end": 32,
+                    "type": "event"
+                },
+                {
+                    "id": "E3",
+                    "start": 0,
+                    "end": 23,
+                    "type": "event"
+                },
+                {
+                    "id": "E4",
+                    "start": 7,
+                    "end": 23,
+                    "type": "event"
+                },
+                {
+                    "id": "E5",
+                    "start": 0,
+                    "end": 6,
+                    "type": "event"
+                }
+            ],
+            "relations": [
+                {
+                    "id": "R0",
+                    "head": "E2",
+                    "tail": "E3",
+                    "type": "causal"
+                },
+                {
+                    "id": "R1",
+                    "head": "E4",
+                    "tail": "E5",
+                    "type": "causal"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "When",
+                "Chatterbox",
+                "asked",
+                "the",
+                "Journal",
+                "'s",
+                "DC",
+                "bureau",
+                "chief",
+                ",",
+                "Alan",
+                "Murray",
+                ",",
+                "who",
+                "exercised",
+                "good",
+                "judgment",
+                "in",
+                "not",
+                "breaking",
+                "the",
+                "Broaddrick",
+                "story",
+                "(",
+                "and",
+                "--",
+                "full",
+                "disclosure",
+                "--",
+                "is",
+                "Chatterbox",
+                "'s",
+                "former",
+                "boss",
+                ")",
+                ",",
+                "to",
+                "comment",
+                "about",
+                "a",
+                "Journal",
+                "employee",
+                "'s",
+                "feeding",
+                "sources",
+                "to",
+                "the",
+                "Times",
+                ",",
+                "he",
+                "replied",
+                ":",
+                "``",
+                "I",
+                "do",
+                "n't",
+                "really",
+                "have",
+                "any",
+                "comment",
+                "on",
+                "what",
+                "the",
+                "edit",
+                "page",
+                "did",
+                "."
+            ],
+            "spans": [
+                {
+                    "id": "E0",
+                    "start": 1,
+                    "end": 48,
+                    "type": "event"
+                },
+                {
+                    "id": "E1",
+                    "start": 49,
+                    "end": 67,
+                    "type": "event"
+                }
+            ],
+            "relations": []
+        },
+        {
+            "tokens": [
+                "Which",
+                "is",
+                "what",
+                "Journal",
+                "news",
+                "employees",
+                "are",
+                "instructed",
+                "to",
+                "say",
+                "whenever",
+                "the",
+                "editorial",
+                "page",
+                "causes",
+                "them",
+                "cringing",
+                "embarrassment",
+                "."
+            ],
+            "spans": [
+                {
+                    "id": "E0",
+                    "start": 11,
+                    "end": 14,
+                    "type": "event"
+                },
+                {
+                    "id": "E1",
+                    "start": 15,
+                    "end": 18,
+                    "type": "event"
+                }
+            ],
+            "relations": [
+                {
+                    "id": "R0",
+                    "head": "E0",
+                    "tail": "E1",
+                    "type": "causal"
+                }
+            ]
+        }
+    ],
+    "schema": {
+        "span_types": [
+            {
+                "name": "state",
+                "color": "rgba(255, 87, 51, 0.3)"
+            },
+            {
+                "name": "event",
+                "color": "rgba(51, 255, 87, 0.3)"
+            }
+        ],
+        "relation_types": [
+            {
+                "name": "causal",
+                "color": "rgba(255, 87, 51, 0.3)"
+            }
+        ]
+    }
+}

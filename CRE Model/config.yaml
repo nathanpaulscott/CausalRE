@@ -1,0 +1,129 @@
+#####################################################################
+#Run Config
+#####################################################################
+run_type: train                         #train/predict.  For train you need 3 labeled splits in the data json file (train/val/test) each split needs the tokens key along with the spans and relations keys for the labels. 'predict' is unlabelled inference, you need one unlabelled split in the data json file (split is 'predict' and only keys are 'tokens').
+
+#####################################################################
+#Directory Paths
+#####################################################################
+log_folder: logs                        #location of the log file folder
+print_log: True                         #print the log to screen as it is written
+model_path: "none"                      #pretrained model path => Use "none" if no pretrained model is being used
+#data_path: "data/sample/sample data.json"      #the dataset file
+data_path: "data/conll04 - spert/conll04_nathan.json"      #the dataset file
+data_format: idx                         #id/idx.  'id' is when the spans and rels have a unique id and the head and tail of the rel reference the span id.  idx is the spert format where there is no id and the rel head/tail reference the span list idx
+
+#####################################################################
+#General Configs
+#####################################################################
+neg_sample_rate: 10                     #the percentage of neg cases to select for training  (from 0 to 100)
+min_neg_sample_limit: 100               #the lower limit of neg cases selected per obs is the min of the number of valid neg cases and (the max of this and the number of selected neg cases).  
+predict_thd: 0.5                        #used in the multilabel case, for the final class predictions, applied to the sigmoid  of each class logits, range is 0 to 1, lower => easy to predict a class, higher => harder to predict a class
+predict_conf: False                     #the predict confidence
+span_labels: unilabel                   #unilabel/multilabel => unilabel = 1 label per span, uses CELoss.  multilabel = multiple labels per span, uses BCELoss => NOTE: only unilabel is allowed currently for spans
+rel_labels: multilabel                  #unilabel/multilabel => unilabel = 1 label per rel, uses CELoss.  multilabel = multiple labels per rel, uses BCELoss
+f1_ave: micro                           #micro/macro...  for the metrics
+save_top_k: 1                           #keep this many of the most recent checkpoints
+
+#####################################################################
+#Model Configuration
+#####################################################################
+model_name: bert-base-uncased           #name of the flair or hf model, eg 'microsoft/deberta-v3-base' or 'bert-base-uncased'
+model_source: HF                        #HF/flair => HF for hugging face models, flair for flair models.  NOTE: I have implemented the pooling with the HF option.
+###############
+use_prompt: false                        #whether to use prompting of the span and rel types to generate span_type_reps and rel_type_reps
+                                        #NOTE: 
+                                        #if False, we send the final span and rel reps through regular multiclass output classification heads to get the final logits for each candidate span and rel  (batch, top_k_spans/rels)
+                                        #if True, we send the final reps aslong with the span_type_Reps and rel_type_reps to an einsum operation to produce a similarity matrix for spans and rels as the output logits (batch, top_k_spans/rels, num_span/rel_types)
+subtoken_pooling: none                  #first/last/first_last/mean/maxpool/none (maxpool and none are HF only).  none will disable subtoken pooling, only supported by HF.  NOTE: first_last will double the hidden dim, but the projection layer will pull it back to normal
+shuffle_train: false                    #always be true, except for debugging
+freeze_encoder: false                   #whether to allow fine tuning of the transformer encoder params (eg. bert), true will freeze the encoder and not allow training 
+hidden_size: 768                        #hidden size of the bert based encoder
+dropout: 0.1                            #standard model dropout
+max_seq_len: 130                        #word token limit, this will generally affect the model speed, so keep it as low as possible.  I have this in just a  a protection fro very long sequences coming in
+max_span_width: 12                      #max span width in word tokens (10-12 for NER, 40+ for long span event detection)
+dump_missed_spans_on_import: true       #ture/false: true => dumps the annotated spans to the log file that could not be used due to the max_seq_len and max_span_width limits
+num_precision: half                     #full/half => the num precision to use for the model => full => 32bit, half=>16bit
+projection_layer_type: simple           #simple/ffn. for the span_rep and rel_rep generation output layers.  'simple' to just use a simple projection layer for the output or a 'ffn' for a more complex ffn layer.  Not implemented yet, just use 'ffn'
+ffn_ratio: 4                            #FFN hidden expansion factor if projection layer is ffn
+
+###############
+#span rep config
+###############
+width_embedding_size: 100               #hidden size of the span width embedding
+use_span_pos_encoding: False            #use span pos encoding in additon to full seq pos encoding for attention pooling
+span_mode: spert                        #firstlast_grapher/firstlast/spert/nathan/attentionpooling... used to configure the method used to generate the span reps from the token reps, NEED TO EXPLAIN WHAT EACH ONE DOES
+#ATTENTION POOLING DOESN'T WORK YET
+#ATTENTION POOLING DOESN'T WORK YET
+#ATTENTION POOLING DOESN'T WORK YET
+
+###############
+#span/rel filtering params              #these are from graphER for choosing the spans per obs for the initial graph, I will keep them for now, but will probably change the calc later
+###############
+#NOTE: a key point here is limiting the number of spans for the initial graph as the number of rels is quadratically dependent on this number
+#Also note that we have forced the pos cases to be at the top of the list (see span filtering score calcs, that is from graphER, but I also implemente somehting similar, it is kind of important to guide the model, at least initially)
+span_force_pos: true                    #whether to force pos spans to +inf in the span filtering score calc ensuring pos cases are included in the initial graph (a form of teacher forcing)
+rel_force_pos: false                    #whether to force pos rels to +inf in the rel filtering score calc ensuring pos cases are included in the initial graph (a form of teacher forcing)
+pos_force_step_limit: none              #whether to turn off positive case forcing at some point in the training process, none => means never, 10 means after 10 batches, 45 means after 45 batches etc..
+max_top_k_spans: 64                     #used to determine the top_k_spans, see calculation in model, this is basically the upper limit for the number of shortlisted spans in the initial graph, if the number available goes below this, then that is the limit
+max_top_k_rels: 100                     #max number of rels to choose per obs for the initial graph, if the number available goes below this, then that is the limit.  This is the hard limit only overridden by the percentile filter
+rel_score_percentile: 50                #only include rels with a score in this percentile, increase this to prune more, decrease to prune less (0, 100)
+filter_dropout: False                  #whether to use dropout before the binary filter head
+
+##############
+#lost rel handling
+##############
+lost_rel_alpha: 1                       #0 to inf, global adjustment of the lost rel penalty to get the lost rel loss => higher penalises the model more for missing spans causing lost rels (in non-teacher forced mode)
+
+###############
+#rel rep config
+###############
+rel_mode: between_context               #no_context/between_context/window_context => add context reps in (no context, from tokens between spans, from tokens in windows before/after each span)
+rel_no_context_rep: emb                #zero/emb => whether to replace the context reps in the case of no valid context tokens, to all zero (zero) or a learned no context embedding (emb)
+rel_context_pooling: max                #max/attn => how to pool the valid context tokens to get one context rep.  max => max pool them, attn => use attention pooling with the maxpool of the head and tail rep as the query
+rel_window_size: 10                    #tokens or subtoken window size for the window algo
+
+###############
+#graph embedding config
+###############
+graph_id_method: add                    #whether to add or prefix the node and edge identifiers onto the span and rel reps respectively
+
+###############
+#graph transformer config
+###############
+use_graph: False                        #True/False, if False, the whole graph and graph transformer is bypassed
+use_graph_reps: True                    #True => use the node/edge reps output from the graph transformer, these will be enriched embeddings but also include the node/edge identifiers mixed in
+                                        #False => use the pre-graph transformer span/rel reps, as output, only use the filtering scores and loss from the graph transformer
+num_heads: 4                            #used by the graph transformer layer 
+num_transformer_layers: 2               #used by the graph transformer layer
+graph_force_pos: false                  #whether to force pos cases (nodes and edges) to +1e9 in the graph filtering score calc ensuring pos cases are included in the final graph (a form of teacher forcing)
+graph_prune_loc: pre_loss              #where to apply the final graph pruning, by setting pruned logits to -1e9, i.e. filtering the nodes/edges based on the keep head filter score.  Options: none, pre_loss, post_loss
+                                        #none => do not do any final graph pruning
+                                        #pre_loss => apply to span/edge logits before final loss calcs => will affect model training
+                                        #post_loss => apply to span/edge logits after final loss at the end of the forward method
+
+###############
+#graph filtering params                 #these are to make it easier or harder to prune nodes/edges from the graph using the node/edge filter_scores
+###############
+node_keep_thd: 0.5                      #applied to the sigmoid of the node filter_score, i.e. node filter probs.  Used to decide whether to keep the node or not (final graph pruning), range is 0 to 1, lower => less filtering, higher => more filtering
+edge_keep_thd: 0.5                      #applied to the sigmoid of the edge filter_score, i.e. edge filter probs.  Used to decide whether to keep the edge or not (final graph pruning), range is 0 to 1, lower => less filtering, higher => more filtering
+
+#####################################################################
+#Training Parameters
+#####################################################################
+num_steps: 30000                        #how many batches to run through the system, the total batches in the dataset is going to be much smaller, so it just repeats the batches
+train_batch_size: 1                     #num obs per train batch
+accumulation_steps: 10                   #accumulate losses for this many batches, so effective batch size is accumulation_steps*train_batch_size
+eval_batch_size: 2                      #num obs per val/test batch
+eval_every: 20                          #eval every 'eval_every' batches
+warmup_ratio: 0.1                       #probably tied to the learning rate reduction, they let it run for a while before starting to reduce it
+scheduler_type: cosine                  #'cosine', 'linear', 'constant', 'polynomial', 'inverse_sqrt'
+lr_encoder: 1e-5                        #this is the learning rate used for the tranformer encoder
+lr_others: 5e-5                         #this is the learning rate used for all other weights other than the transformer encoder
+clear_tensor_steps: 10                  #clear the cuda cache and gc collect, it actually runs del tensors each step (which is fast)
+
+#####################################################################
+#Advanced Training Settings
+#####################################################################
+
+
