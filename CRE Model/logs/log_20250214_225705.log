@@ -1,0 +1,163 @@
+2025-02-14 22:57:05,220 - INFO - root - Start...
+2025-02-14 22:57:05,220 - INFO - root - Loading and Preparing Data
+2025-02-14 22:57:05,263 - INFO - root - 
+seq_len and span_width stats, use these to tune max_seq_len and max_span_widths....
+-------------------------------
+seq_len stats (max, mean, sd): 118, 29.05, 16.44
+span_width stats (max, mean, sd): 13, 1.86, 1.03
+-------------------------------
+2025-02-14 22:57:05,263 - WARNING - root - WARNING!! Can not import 0.02% of the annotated spans (1 spans) due to max_seq_len and max_span_lenght limits.
+These spans and associated relations will be ignored, you should assess whether this is a significant issue or not.
+-------------------------------
+2025-02-14 22:57:05,263 - INFO - root - 
+"train_obs881_span2_12_25"
+2025-02-14 22:57:05,347 - INFO - root - Making the Dataloaders
+2025-02-14 22:57:05,374 - INFO - root - Configs Snapshot:
+{
+    "accumulation_steps"          : 10,
+    "app_path"                    : "d:\\A.Nathan\\1a.UWA24-Hons\\Honours Project\\0a.Code\\0a.Nathan Model",
+    "clear_tensor_steps"          : 5,
+    "data_format"                 : "idx",
+    "data_path"                   : "data/conll04 - spert/conll04_nathan.json",
+    "device"                      : "cuda",
+    "dropout"                     : 0.1,
+    "dump_missed_spans_on_import" : true,
+    "edge_keep_thd"               : 0.5,
+    "eval_batch_size"             : 1,
+    "eval_every"                  : 20,
+    "f1_ave"                      : "micro",
+    "ffn_ratio"                   : 4,
+    "filter_dropout"              : false,
+    "freeze_encoder"              : false,
+    "graph_force_pos"             : false,
+    "graph_id_method"             : "add",
+    "graph_prune_loc"             : "pre_loss",
+    "hidden_size"                 : 768,
+    "id_to_r"                     : {
+        "0"                       : "Kill",
+        "1"                       : "Live_In",
+        "2"                       : "Located_In",
+        "3"                       : "OrgBased_In",
+        "4"                       : "Work_For"
+    },
+    "id_to_s"                     : {
+        "0"                       : "none",
+        "1"                       : "Loc",
+        "2"                       : "Org",
+        "3"                       : "Other",
+        "4"                       : "Peop"
+    },
+    "log_folder"                  : "logs",
+    "lost_rel_alpha"              : 1,
+    "lost_rel_penalty_incr"       : {},
+    "lr_encoder"                  : "1e-5",
+    "lr_others"                   : "5e-5",
+    "max_seq_len"                 : 130,
+    "max_span_width"              : 12,
+    "max_top_k_rels"              : 100,
+    "max_top_k_spans"             : 64,
+    "min_neg_sample_limit"        : 100,
+    "model_name"                  : "bert-base-uncased",
+    "model_path"                  : "none",
+    "model_source"                : "HF",
+    "neg_sample_rate"             : 10,
+    "node_keep_thd"               : 0.5,
+    "num_heads"                   : 4,
+    "num_precision"               : "half",
+    "num_rel_types"               : 5,
+    "num_span_types"              : 5,
+    "num_steps"                   : 30000,
+    "num_transformer_layers"      : 2,
+    "pos_force_step_limit"        : "none",
+    "predict_conf"                : false,
+    "predict_thd"                 : 0.5,
+    "print_log"                   : true,
+    "projection_layer_type"       : "simple",
+    "r_to_id"                     : {
+        "Kill"                    : 0,
+        "Live_In"                 : 1,
+        "Located_In"              : 2,
+        "OrgBased_In"             : 3,
+        "Work_For"                : 4
+    },
+    "rel_context_pooling"         : "max",
+    "rel_force_pos"               : false,
+    "rel_labels"                  : "multilabel",
+    "rel_mode"                    : "between_context",
+    "rel_no_context_rep"          : "emb",
+    "rel_score_percentile"        : 50,
+    "rel_types"                   : [
+        "Kill",
+        "Live_In",
+        "Located_In",
+        "OrgBased_In",
+        "Work_For"
+    ],
+    "rel_window_size"             : 10,
+    "run_type"                    : "train",
+    "s_to_id"                     : {
+        "Loc"                     : 1,
+        "Org"                     : 2,
+        "Other"                   : 3,
+        "Peop"                    : 4,
+        "none"                    : 0
+    },
+    "save_top_k"                  : 1,
+    "scheduler_type"              : "cosine",
+    "shuffle_train"               : false,
+    "span_force_pos"              : true,
+    "span_labels"                 : "unilabel",
+    "span_mode"                   : "spert",
+    "span_types"                  : [
+        "none",
+        "Loc",
+        "Org",
+        "Other",
+        "Peop"
+    ],
+    "subtoken_pooling"            : "none",
+    "train_batch_size"            : 1,
+    "use_graph"                   : false,
+    "use_graph_reps"              : true,
+    "use_lstm"                    : false,
+    "use_prompt"                  : false,
+    "use_span_pos_encoding"       : false,
+    "warmup_ratio"                : 0.1,
+    "width_embedding_size"        : 100
+}
+2025-02-14 22:57:05,374 - INFO - root - Making the model
+2025-02-14 22:57:08,297 - INFO - root - Starting the Train Loop
+2025-02-14 22:57:11,701 - INFO - root - step: 0 | epoch: 0 | loss: 3375.52
+2025-02-14 22:57:12,803 - INFO - root - step: 1 | epoch: 0 | loss: 2797.26
+2025-02-14 22:57:13,722 - INFO - root - step: 2 | epoch: 0 | loss: 1826.18
+2025-02-14 22:57:14,553 - INFO - root - step: 3 | epoch: 0 | loss: 2984.53
+2025-02-14 22:57:15,815 - INFO - root - step: 4 | epoch: 0 | loss: 2006.39
+2025-02-14 22:57:16,870 - INFO - root - step: 5 | epoch: 0 | loss: 1809.61
+2025-02-14 22:57:17,903 - INFO - root - step: 6 | epoch: 0 | loss: 1745.63
+2025-02-14 22:57:18,803 - INFO - root - step: 7 | epoch: 0 | loss: 5027.26
+2025-02-14 22:57:19,791 - INFO - root - step: 8 | epoch: 0 | loss: 3030.91
+2025-02-14 22:57:23,072 - INFO - root -  Applying accumulated gradients ...
+2025-02-14 22:57:23,104 - INFO - root - step: 9 | epoch: 0 | loss: 1813.53
+2025-02-14 22:57:23,860 - INFO - root - step: 10 | epoch: 0 | loss: 1737.22
+2025-02-14 22:57:24,582 - INFO - root - step: 11 | epoch: 0 | loss: 2101.20
+2025-02-14 22:57:25,506 - INFO - root - step: 12 | epoch: 0 | loss: 2295.42
+2025-02-14 22:57:26,199 - INFO - root - step: 13 | epoch: 0 | loss: 1190.22
+2025-02-14 22:57:27,259 - INFO - root - step: 14 | epoch: 0 | loss: 2884.61
+2025-02-14 22:57:27,990 - INFO - root - step: 15 | epoch: 0 | loss: 977.32
+2025-02-14 22:57:28,739 - INFO - root - step: 16 | epoch: 0 | loss: 1795.72
+2025-02-14 22:57:29,557 - INFO - root - step: 17 | epoch: 0 | loss: 1864.29
+2025-02-14 22:57:30,385 - INFO - root - step: 18 | epoch: 0 | loss: 4207.98
+2025-02-14 22:57:31,671 - INFO - root -  Applying accumulated gradients ...
+2025-02-14 22:57:31,698 - INFO - root - step: 19 | epoch: 0 | loss: 2742.03
+2025-02-14 22:57:57,822 - INFO - root - Eval_type: interim_val 
+-------------------------------
+Span Metrics:    S: 323	Acc: 1.24%	P: 1.24%	R: 1.24%	F1: 1.24%
+Rel Metrics:     S: 4642	Acc: 0.00%	P: 0.00%	R: 0.00%	F1: 0.00%
+Rel_mod Metrics: S: 4642	Acc: 0.00%	P: 0.00%	R: 0.00%	F1: 0.00%
+-------------------------------
+2025-02-14 22:57:58,961 - INFO - root - step: 20 | epoch: 0 | loss: 1908.15
+2025-02-14 22:57:59,887 - INFO - root - step: 21 | epoch: 0 | loss: 2355.57
+2025-02-14 22:58:00,857 - INFO - root - step: 22 | epoch: 0 | loss: 2396.58
+2025-02-14 22:58:01,487 - INFO - root - step: 23 | epoch: 0 | loss: 1232.53
+2025-02-14 22:58:02,532 - INFO - root - step: 24 | epoch: 0 | loss: 3074.74
+2025-02-14 22:58:03,521 - INFO - root - step: 25 | epoch: 0 | loss: 2612.77

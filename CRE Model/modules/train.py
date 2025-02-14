@@ -66,7 +66,7 @@ class Trainer:
         with record_function("step_0.2: run model"):
             model.train()
             if self.config.num_precision == 'half':
-                with torch.cuda.amp.autocast(dtype=torch.float16):
+                with torch.amp.autocast('cuda', dtype=torch.float16):
                     result = model(x, step=step)
             else:
                 result = model(x, step=step)
@@ -160,8 +160,8 @@ class Trainer:
                     result = self.eval_loop(model, val_loader, device, step=step)
                     self.config.logger.write(self.make_metrics_summary(result, msg='interim_val '))
                     #save the model
-                    checkpoint = f'model_{step + 1}'
-                    self.model_manager.save_top_k_checkpoints(model, log_folder, checkpoint, save_top_k)
+                    #checkpoint = f'model_{step + 1}'
+                    #self.model_manager.save_top_k_checkpoints(model, log_folder, checkpoint, save_top_k)
 
                 ###############################################################
                 prof.step()  # Inform profiler that one step (iteration) is complete
@@ -180,16 +180,16 @@ class Trainer:
             data.append({
                 "Name": evt.key,
                 "Calls": evt.count,
-                "CPU.tot.ms": round(evt.cpu_time_total/1e3,5),
-                "SelfCPU.ms": round(evt.self_cpu_time_total/1e3,5),
-                "CUDA.tot.ms": round(evt.cuda_time_total/1e3,5),
-                "Self.CUDA.ms": round(evt.self_cuda_time_total/1e3,5),
-                "CPU.ave.ms": round(evt.cpu_time_total / evt.count / 1e3,5) if evt.count > 0 else 0,
-                "CUDA.ave.ms": round(evt.cuda_time_total / evt.count /1e3,5) if evt.count > 0 else 0,
+                "CPU.tot.ms": round(evt.cpu_time_total / 1e3, 5),
+                "SelfCPU.ms": round(evt.self_cpu_time_total / 1e3, 5),
+                "CUDA.tot.ms": round(getattr(evt, "device_time", getattr(evt, "cuda_time_total", 0)/evt.count) * evt.count / 1e3, 5),  #New PyTorch
+                "Self.CUDA.ms": round(getattr(evt, "self_device_time", getattr(evt, "self_cuda_time_total", 0)/evt.count) *evt.count/ 1e3, 5),  #New PyTorch
+                "CPU.ave.ms": round(evt.cpu_time_total / evt.count / 1e3, 5) if evt.count > 0 else 0,
+                "CUDA.ave.ms": round(getattr(evt, "device_time", getattr(evt, "cuda_time_total", 0)/evt.count) / 1e3, 5) if evt.count > 0 else 0,
                 "CPU.GB": round(evt.cpu_memory_usage / (1024**3), 5),
                 "Self.CPU.GB": round(evt.self_cpu_memory_usage / (1024**3), 5),
-                "CUDA.GB": round(evt.cuda_memory_usage / (1024 ** 3), 5),
-                "Self.CUDA.GB": round(evt.self_cuda_memory_usage / (1024**3), 5)
+                "CUDA.GB": round(getattr(evt, "device_memory_usage", getattr(evt, "cuda_memory_usage", 0)) / (1024**3), 5),  # ✅ New PyTorch
+                "Self.CUDA.GB": round(getattr(evt, "self_device_memory_usage", getattr(evt, "self_cuda_memory_usage", 0)) / (1024**3), 5)  # ✅ New PyTorch
             })
         # Create DataFrame
         df = pd.DataFrame(data)
@@ -250,7 +250,7 @@ class Trainer:
         with torch.no_grad():
             for x in tqdm(iter_loader, desc=f"Eval({total_eval_steps} batches)", leave=True):
                 with record_function("step_eval_1: run model"):
-                    with torch.cuda.amp.autocast(dtype=torch.float16):    #forcing data to half precision
+                    with torch.amp.autocast('cuda', dtype=torch.float16):
                         result = model(x, step=step)
                 #get preds => the predicted positive cases
                 #NOTE: the rel_preds are the full rels with the span start,end,type info
@@ -308,7 +308,7 @@ class Trainer:
         model.eval()
         with torch.no_grad():
             for x in tqdm(iter_loader, desc=f"Pred({total_pred_steps} batches)", leave=True):
-                with torch.cuda.amp.autocast(dtype=torch.float16):    #forcing data to half precision
+                with torch.amp.autocast('cuda', dtype=torch.float16):
                     result = model(x)
                 #make the predictions for the batch and add to the predictor object    
                 predictor.predict(result)

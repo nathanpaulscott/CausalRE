@@ -141,7 +141,7 @@ class RelationProcessor():
 
 
 
-
+'''
 
 #################################################################
 #testing
@@ -180,3 +180,4 @@ print("rel_ids shape:", rel_ids.shape)
 print("rel_ids:", rel_ids)
 print("rel_masks shape:", rel_masks.shape)
 print("rel_masks:", rel_masks)
+'''

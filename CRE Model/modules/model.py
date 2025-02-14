@@ -11,7 +11,7 @@ import copy
 
 ###############################################
 #custom imports
-from .layers_transformer_encoder_flair import TransformerEncoderFlairPrompt
+#from .layers_transformer_encoder_flair import TransformerEncoderFlairPrompt
 from .layers_transformer_encoder_hf import TransformerEncoderHFPrompt
 from .layers_filtering import FilteringLayer
 from .layers_other import LstmSeq2SeqEncoder, TransformerEncoderTorch, GraphEmbedder, OutputLayer
