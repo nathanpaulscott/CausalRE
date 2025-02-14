@@ -1,0 +1,4 @@
+pyarrow==14.0.2 
+transformers[torch] 
+datasets 
+evaluate

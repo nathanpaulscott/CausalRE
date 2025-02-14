@@ -97,12 +97,16 @@ if __name__ == "__main__":
 '''
 TO DO
 -----------------------
+working on conll04 with similar params to spert
 
+** Need to profile the model and find which parts are slowing it down
+predictor is very slow, should be able to be sped up
+The main issue is the horrible loop in the get_rels code, you must refactor this and vectorize
+The spans loop is around 10x faster, probably cause it is 2 layer, while the rel loop is 3 layer
 
-working on conll04 with similar params to spert, but it is running real slow, not sure what that is about.....
-will help me idenify problematic parts of my code
+evaluator is fast
+make_rel_reps is slow even though I already optimised it, that is really the main stumbling block
 
-** Need to profile the model and find which parts are slowing it down, the graph part did not seem to add much delay, there is something else causing a lot of delayyy
 
 
 For a spert like test need to set the max_span_width to 10 only and mess aroudn with other params like rel gen method etc...

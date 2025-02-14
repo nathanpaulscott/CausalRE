@@ -55,12 +55,14 @@ class TransformerEncoderHFPrompt(torch.nn.Module):
 
     def get_w2sw_map_fast_tokenizer(self, encodings):
         '''
-        determine the w2sw_map (word token to subword token mapping dict)
-        for the fast tokenizer case which uses word_ids
-        operates on a batch of data, w2sw_map will have one map per obs in the batch
+        Determine the w2sw_map (word token to subword token mapping dict)
+        NOTE: w2sw_map will only have keys as word tokens (no special tokens as they are only sw tokens)
+        for the fast tokenizer case which uses word_ids.
+        Operates on a batch of data, w2sw_map will have one map per obs in the batch.
         '''
         batch_size = encodings.input_ids.shape[0]
         w2sw_map = []
+        #Create the list of dictionaries version
         for batch_idx in range(batch_size):
             word_ids = encodings.word_ids(batch_idx)  # None for special tokens
             curr_map = {}
@@ -70,14 +72,59 @@ class TransformerEncoderHFPrompt(torch.nn.Module):
                         curr_map[word_idx] = []
                     curr_map[word_idx].append(sw_idx)
             w2sw_map.append(curr_map)
-        
+
         return w2sw_map
 
 
+    def make_sw_span_ids_vectorized(self, span_ids, w2sw_map, max_seq_len):
+        '''
+        Makes the sw_span_ids which has the sw token span ids for each span, has 0 if the sw token idx is invalid (for a masked out span)
+
+        Args:
+            span_ids (torch.Tensor): Tensor of shape (batch_size, num_spans, 2) containing word-level start and end indices
+                                    for each span.
+            w2sw_map (list): A list of dictionaries, one for each batch item, mapping word token indices to lists of corresponding subword indices.
+            max_seq_len (int): the max_seq_length of the sequences in the batch, so basically the dim 1 of token reps tensor
+
+        Returns:
+            torch.Tensor: A tensor of the same shape as span_ids, containing mapped subword token indices, with shape
+                        (batch_size, num_spans, 2). Each span is represented by start and end indices in subword tokens.
+                        Invalid spans (e.g., where the end of the span falls outside the sequence length) have an end subword index
+                        of 0. These spans should be masked out in subsequent processing steps.
+        '''
+        if self.config.subtoken_pooling != 'none':
+            return None
+
+        #make the w2sw_tensor with extended seq dim to account for span end indices that go beyond the max_seq_len by max_span_width   
+        #these are lookup w index to sw index so the end is actual not end+1
+        batch_size = len(w2sw_map)
+        extended_seq_dim = max_seq_len + self.config.max_span_width
+        #init the tensor with -1s
+        w2sw_tensor = torch.full((batch_size, extended_seq_dim, 2), 
+                                 -1, device=self.device, dtype=torch.long)
+        #fill the tensor
+        for i, map in enumerate(w2sw_map):
+            for word_id, sw_ids in map.items():
+                w2sw_tensor[i, word_id, 0] = min(sw_ids)  # First subword index
+                w2sw_tensor[i, word_id, 1] = max(sw_ids)  # Last subword index
+
+        #make the span start/end indices (sw token aligned)
+        #NOTE: the lookup w token indices need to be actual (so subtract 1), then we must add 1 to the output sw token end indices 
+        #as it will be used to make the final output, which must be in (start, end + 1) format
+        sw_start_indices = torch.gather(w2sw_tensor[:, :, 0], 
+                                        1, span_ids[:, :, 0])
+        #NOTE: for end indices, clamp to 0 to limit the invalid end indices in span_ids (usually 0) from going to -1, which will cause errors
+        sw_end_indices = torch.gather(w2sw_tensor[:, :, 1], 
+                                      1, torch.clamp(span_ids[:, :, 1] - 1, min=0)) + 1
+        #Put together the new sw_span_ids tensor
+        sw_span_ids = torch.stack([sw_start_indices, sw_end_indices], dim=-1)
+
+        return sw_span_ids     #(batch, max_num_spans_batch, 2)
+    
 
     def subtoken_pooler(self, embeddings, masks, w2sw_map):
         """
-        NOTE: [CLS] and [SEP] reps have been removed from embeedings, masks and w2sw_map before this function
+        NOTE: [CLS] and [SEP] reps have been removed from embedings, masks and w2sw_map before this function
         embeddings: tensor of subtoken embeddings of shape (batch, max_batch_subtoken_seq_len, hidden)
         masks: tensor of shape (batch, max_batch_subtoken_seq_len)
         NOTE: max_seq_len is the max subtoken seq len for the batch
@@ -131,72 +178,6 @@ class TransformerEncoderHFPrompt(torch.nn.Module):
         
 
 
-    def make_sw_span_ids(self, span_ids, w2sw_map):
-        '''
-        Maps word token start/end spans to subword token start/end spans.
-        
-        Args:
-            span_ids (torch.Tensor): Shape (batch_size, max_batch_seq_len*max_span_width, 2) containing
-                                    word-level start and end indices.
-            w2sw_map (List[Dict[int, List[int]]]): List of dicts mapping word idx -> subword indices,
-                                                one dict per batch.
-        Returns:
-            torch.Tensor: Same shape as span_ids with mapped subword indices.
-        '''
-        if self.config.subtoken_pooling != 'none':
-            return None
-
-        batch_size, num_spans, _ = span_ids.shape
-        
-        #init the sw_span_ids
-        sw_span_ids = torch.zeros_like(span_ids) 
-        for b in range(batch_size):
-            for s in range(num_spans):
-                start, end = span_ids[b, s, 0].item(), span_ids[b, s, 1].item()
-                #Skip padding and problematic spans
-                if (start == 0 and end == 0) or start not in w2sw_map[b] or end-1 not in w2sw_map[b]:
-                    continue
-                #Map start to first subword token
-                sw_span_ids[b, s, 0] = w2sw_map[b][start][0]
-                #Map end-1 to last subword token (+1 for exclusive end)
-                sw_span_ids[b, s, 1] = w2sw_map[b][end-1][-1] + 1
-        
-        return sw_span_ids
-
-
-
-    def make_sw_span_ids_vectorized(self, span_ids, w2sw_map_tensor):
-        '''
-        Vectorized version to map word token start/end spans to subword token start/end spans.
-        
-        Args:
-            span_ids (torch.Tensor): Shape (batch_size, max_batch_seq_len*max_span_width, 2) containing
-                                    word-level start and end indices.
-            w2sw_map_tensor (torch.Tensor): A preprocessed tensor version of w2sw_map that maps word indices to subword indices.
-                                            Shape should be (batch_size, max_seq_length, 2) where [:, :, 0] is start subword index 
-                                            and [:, :, 1] is end subword index.
-        Returns:
-            torch.Tensor: Same shape as span_ids with mapped subword indices.
-        '''
-        if self.config.subtoken_pooling != 'none':
-            return None
-
-        # Extract start and end indices
-        start_indices = span_ids[:, :, 0]
-        end_indices = span_ids[:, :, 1] - 1
-
-        #Gather subword starts and ends from the map tensor
-        batch_indices = torch.arange(span_ids.size(0)).unsqueeze(1).expand_as(start_indices)
-        sw_start_indices = torch.gather(w2sw_map_tensor[:, :, 0], 1, start_indices)
-        sw_end_indices = torch.gather(w2sw_map_tensor[:, :, 1], 1, end_indices) + 1
-
-        # Put together the new sw_span_ids tensor
-        sw_span_ids = torch.stack([sw_start_indices, sw_end_indices], dim=-1)
-
-        return sw_span_ids
-
-
-
     def transformer_encoder(self, tokens: List[List[str]], seq_lengths: torch.Tensor):
         '''
         runs both the tokenizer and encoder part of the HF transformer encoder        
@@ -232,10 +213,10 @@ class TransformerEncoderHFPrompt(torch.nn.Module):
         #remove [CLS] and[SEP] reps from the embeddings and masks, inputs, w2sw_map etc
         embeddings = embeddings[:, 1:-1, :]
         masks = masks[:, 1:-1].to(dtype=torch.bool)    #change masks to bool
-        #remove 1 from the sw token idx in w2sw_map to account for removing [CLS], [SEP] tokens
-        w2sw_map = [{k:[i-1 for i in v] for k,v in x.items()} for x in w2sw_map]
         #remove [CLS],[SEP] from input_ids
         input_ids = input_ids[:, 1:-1]
+        #remove 1 from the sw token idx in w2sw_map to account for removing [CLS], [SEP] tokens
+        w2sw_map = [{k:[i-1 for i in v] for k,v in x.items()} for x in w2sw_map]
         ##############################
 
         #do the subtoken pooling if required, i.e. if we want the encoder output to be mapped back to word tokens
@@ -251,11 +232,11 @@ class TransformerEncoderHFPrompt(torch.nn.Module):
             embeddings = self.projection(embeddings)
         ##############################
         
-        return dict(input_ids   = input_ids, 
-                    embeddings  = embeddings, 
-                    masks       = masks, 
-                    cls_reps    = cls_reps,
-                    w2sw_map    = w2sw_map)
+        return dict(input_ids  = input_ids, 
+                    embeddings = embeddings, 
+                    masks      = masks, 
+                    cls_reps   = cls_reps,
+                    w2sw_map   = w2sw_map)
 
 
     def forward(self, x):
@@ -270,10 +251,12 @@ class TransformerEncoderHFPrompt(torch.nn.Module):
         span_ids        = x['span_ids']
         tokens          = x['tokens']
         token_lengths   = x['seq_length']
+        max_seq_len     = x['seq_length'].max().item()
         prompt_len      = 0
         span_prompt_len = 0
         if self.config.use_prompt:
-            # Add prompt to the inputs if use_prompt is True
+            #Add prompt to the inputs if use_prompt is True
+            #this will modify tokens, token_lengths etc..
             result = self.prompt_proc.add_prompt_to_tokens(x)
             #read in the results
             tokens          = result['prompt_x']
@@ -300,7 +283,7 @@ class TransformerEncoderHFPrompt(torch.nn.Module):
         span_type_reps = None
         rel_type_reps  = None
         if self.config.use_prompt:
-            # Split the embeddings into different representations if prompts were used
+            #Split the embeddings into different representations if prompts were used
             result = self.prompt_proc.split_embeddings(embeddings, 
                                                        masks, 
                                                        prompt_len, 
@@ -310,6 +293,8 @@ class TransformerEncoderHFPrompt(torch.nn.Module):
                                                        tokens, 
                                                        self.tokenizer)
             #read in results
+            #token reps and token masks should be just for the raw input word tokens, no prompt or special tokens etc..
+            #this removes all prompt tokens from the w2sw_map also
             token_reps     = result['token_reps']
             token_masks    = result['token_masks']
             span_type_reps = result['span_type_reps']
@@ -318,9 +303,8 @@ class TransformerEncoderHFPrompt(torch.nn.Module):
         ################################################
  
         ################################################
-        with record_function("step_1: encoder transformer-make_sw_span_ids"):
-            #make the sw_span_ids tensor for the batch (returns None if we have pooling)
-            sw_span_ids = self.make_sw_span_ids(span_ids, w2sw_map)
+        #make the sw_span_ids tensor for the batch (returns None if we have pooling)
+        sw_span_ids = self.make_sw_span_ids_vectorized(span_ids, w2sw_map, max_seq_len)
         ################################################
  
         #Return the results based on whether prompts were used

@@ -86,9 +86,9 @@ class Trainer:
         if (step + 1) % self.config.clear_tensor_steps == 0:
             with record_function("step_0.4: clear_tensors external"):
                 #self.config.logger.write(' Clearing tensors')
-                clear_gpu_tensors([v for k,v in result.items() if k != 'loss'],
-                                  gc_collect=False,    #slows it down if true
-                                  clear_cache=False)   #slows it down if true
+                clear_gpu_tensors([v for k,v in result.items() if k != 'loss']),
+                                  #gc_collect=False,    #slows it down if true
+                                  #clear_cache=False)   #slows it down if true
 
         return loss
 
@@ -128,9 +128,9 @@ class Trainer:
         with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA], 
                     #schedule=torch.profiler.schedule(wait=1, warmup=1, active=3),
                     #on_trace_ready=tensorboard_trace_handler('./logs/profiler'),
-                    record_shapes=True,
+                    record_shapes=False,
                     profile_memory=True,
-                    with_stack=True) as prof:
+                    with_stack=False) as prof:
             ###############################################################
             #this code is profiled
             ###############################################################
@@ -165,7 +165,7 @@ class Trainer:
 
                 ###############################################################
                 prof.step()  # Inform profiler that one step (iteration) is complete
-                if step == 5:
+                if step == 25:
                     break
                 ###############################################################
 
@@ -249,13 +249,16 @@ class Trainer:
         total_eval_steps = len(data_loader)
         with torch.no_grad():
             for x in tqdm(iter_loader, desc=f"Eval({total_eval_steps} batches)", leave=True):
-                with torch.cuda.amp.autocast(dtype=torch.float16):    #forcing data to half precision
-                    result = model(x, step=step)
+                with record_function("step_eval_1: run model"):
+                    with torch.cuda.amp.autocast(dtype=torch.float16):    #forcing data to half precision
+                        result = model(x, step=step)
                 #get preds => the predicted positive cases
                 #NOTE: the rel_preds are the full rels with the span start,end,type info
-                preds = predictor.predict(result, return_and_reset_results=True)
+                with record_function("step_eval_2: predictor"):
+                    preds = predictor.predict(result, return_and_reset_results=True)
                 #prepare and add the batch of preds and labels to the evaluator
-                evaluator.prep_and_add_batch(preds, x['spans'], x['relations'])
+                with record_function("step_eval_3: evaluator"):
+                    evaluator.prep_and_add_batch(preds, x['spans'], x['relations'])
 
                 #clear tensors to free up GPU memory
                 eval_step += 1
@@ -266,7 +269,7 @@ class Trainer:
                 #TEMP
                 #TEMP
                 #TEMP
-                if eval_step > 15:
+                if eval_step > 20:
                     break
                 #TEMP
                 #TEMP
@@ -277,14 +280,6 @@ class Trainer:
     ##############################################################
     ##############################################################
     ##############################################################
-    '''
-    got an issue in the eval loop 
-    in the predictor
-    see error below
-    
-    
-    
-    '''
 
 
     ##############################################################

@@ -1,5 +1,6 @@
 import torch
 import copy
+from torch.profiler import record_function
 
 
 
@@ -9,7 +10,7 @@ class Predictor:
     '''
     def __init__(self, config):
         self.config = config
-        self.reset_data()
+        self.all_preds_out = {'spans': [], 'rels': [], 'rels_mod': []}
 
 
     def reset_data(self):
@@ -276,7 +277,9 @@ class Predictor:
         Returns:
             dict: A deep copy of all predictions if return_and_reset_results is True, otherwise None.
         """
+        #get the span labels and preds => slow but 10x faster than the rels
         spans, span_conf, span_preds = self.predict_spans(model_out)
+        #get the rel labels and preds => very slow right now
         rels, rel_conf = self.predict_rels(model_out, span_preds)
         #prep and add to the all_preds_out object
         self.prep_and_add_batch_preds(spans, rels)

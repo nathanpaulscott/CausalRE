@@ -46,6 +46,8 @@ dump_missed_spans_on_import: true       #ture/false: true => dumps the annotated
 num_precision: half                     #full/half => the num precision to use for the model => full => 32bit, half=>16bit
 projection_layer_type: simple           #simple/ffn. for the span_rep and rel_rep generation output layers.  'simple' to just use a simple projection layer for the output or a 'ffn' for a more complex ffn layer.  Not implemented yet, just use 'ffn'
 ffn_ratio: 4                            #FFN hidden expansion factor if projection layer is ffn
+use_lstm: false                         #whether to use an lstm layer after hte transformer encoder, this was in graphER, not sure if is of any benefit
+
 
 ###############
 #span rep config
@@ -114,13 +116,13 @@ edge_keep_thd: 0.5                      #applied to the sigmoid of the edge filt
 num_steps: 30000                        #how many batches to run through the system, the total batches in the dataset is going to be much smaller, so it just repeats the batches
 train_batch_size: 1                     #num obs per train batch
 accumulation_steps: 10                   #accumulate losses for this many batches, so effective batch size is accumulation_steps*train_batch_size
-eval_batch_size: 2                      #num obs per val/test batch
+eval_batch_size: 1                      #num obs per val/test batch
 eval_every: 20                          #eval every 'eval_every' batches
 warmup_ratio: 0.1                       #probably tied to the learning rate reduction, they let it run for a while before starting to reduce it
 scheduler_type: cosine                  #'cosine', 'linear', 'constant', 'polynomial', 'inverse_sqrt'
 lr_encoder: 1e-5                        #this is the learning rate used for the tranformer encoder
 lr_others: 5e-5                         #this is the learning rate used for all other weights other than the transformer encoder
-clear_tensor_steps: 10                  #clear the cuda cache and gc collect, it actually runs del tensors each step (which is fast)
+clear_tensor_steps: 5                  #clear the cuda cache and gc collect, it actually runs del tensors each step (which is fast)
 
 #####################################################################
 #Advanced Training Settings

@@ -12,8 +12,7 @@ import copy
 ###############################################
 #custom imports
 from .layers_transformer_encoder_flair import TransformerEncoderFlairPrompt
-#from .layers_transformer_encoder_hf import TransformerEncoderHFPrompt
-from .layers_transformer_encoder_hf_new import TransformerEncoderHFPrompt
+from .layers_transformer_encoder_hf import TransformerEncoderHFPrompt
 from .layers_filtering import FilteringLayer
 from .layers_other import LstmSeq2SeqEncoder, TransformerEncoderTorch, GraphEmbedder, OutputLayer
 from .loss_functions import classification_loss
@@ -52,13 +51,13 @@ class Model(nn.Module):
         # I suspect he put this in to deal with the error he had int he flair bert implementation where he is averaging each layers output from bert instead of just taking the last layers output
         #thus I suspect this layer is not neccessary if bert was setup correctly, but it woudl be good to test it
         #additionlly this gives me an idea for using a bigru for incorporating gloabl context into the token reps => see my notes on this in te grapher folder!!
-        self.rnn = LstmSeq2SeqEncoder(
-            input_size      = self.config.hidden_size,
-            hidden_size     = self.config.hidden_size // 2,
-            num_layers      = 1,
-            bidirectional   = True
-        )
-
+        if self.config.use_lstm:
+            self.rnn = LstmSeq2SeqEncoder(
+                input_size      = self.config.hidden_size,
+                hidden_size     = self.config.hidden_size // 2,
+                num_layers      = 1,
+                bidirectional   = True
+            )
 
         #span width embeddings (in word widths)
         #NOTE: the number of embeddings needs to be max_span_width + 1 as the first one (idx 0) can be used for widths of length 0 (which are to be ignored, i.e. these are masked out spans anyway)
@@ -199,8 +198,9 @@ class Model(nn.Module):
         I am not sure why they are doing this, the only benefit is that it doesn't have the length limit like the encoder
         REVIEW IF NEEDED AT ALL
         '''
-        with record_function("step_1.5: lstm"):
-            token_reps = self.rnn(token_reps, token_masks) 
+        if self.config.use_lstm:
+            with record_function("step_1.5: lstm"):
+                token_reps = self.rnn(token_reps, token_masks) 
 
         return dict(token_reps      = token_reps, 
                     token_masks     = token_masks,
