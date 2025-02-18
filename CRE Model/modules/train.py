@@ -11,7 +11,7 @@ from typing import Tuple, List, Dict, Union
 ###############################################
 #custom imports
 from .data_processor import DataProcessor
-from .evaluator import Evaluator
+from .evaluator import make_evaluator
 from .predictor import Predictor
 from .model_manager import ModelManager, Optimizer, Scheduler
 from .data_preparation import DataPreparation
@@ -159,12 +159,14 @@ class Trainer:
                 if (step + 1) % eval_every == 0:
                     result = self.eval_loop(model, val_loader, device, step=step)
                     self.config.logger.write(self.make_metrics_summary(result, msg='interim_val '))
-                    #save the model
+                    #save the model - DISABLE FOR DEBUGGING
                     #checkpoint = f'model_{step + 1}'
                     #self.model_manager.save_top_k_checkpoints(model, log_folder, checkpoint, save_top_k)
 
                 ###############################################################
                 prof.step()  # Inform profiler that one step (iteration) is complete
+                
+                #TEMP, break for quick analysis of the profiler
                 if step == 25:
                     break
                 ###############################################################
@@ -174,35 +176,7 @@ class Trainer:
         # Directly print the results at the end of the profiling
         #NOTE: you can not see the averages, you have to calc them yourself
         # Extract events and relevant metrics
-        filtered_events = [evt for evt in prof.key_averages() if evt.key.startswith("step_")]
-        data = []
-        for evt in filtered_events:
-            data.append({
-                "Name": evt.key,
-                "Calls": evt.count,
-                "CPU.tot.ms": round(evt.cpu_time_total / 1e3, 5),
-                "SelfCPU.ms": round(evt.self_cpu_time_total / 1e3, 5),
-                "CUDA.tot.ms": round(getattr(evt, "device_time", getattr(evt, "cuda_time_total", 0)/evt.count) * evt.count / 1e3, 5),  #New PyTorch
-                "Self.CUDA.ms": round(getattr(evt, "self_device_time", getattr(evt, "self_cuda_time_total", 0)/evt.count) *evt.count/ 1e3, 5),  #New PyTorch
-                "CPU.ave.ms": round(evt.cpu_time_total / evt.count / 1e3, 5) if evt.count > 0 else 0,
-                "CUDA.ave.ms": round(getattr(evt, "device_time", getattr(evt, "cuda_time_total", 0)/evt.count) / 1e3, 5) if evt.count > 0 else 0,
-                "CPU.GB": round(evt.cpu_memory_usage / (1024**3), 5),
-                "Self.CPU.GB": round(evt.self_cpu_memory_usage / (1024**3), 5),
-                "CUDA.GB": round(getattr(evt, "device_memory_usage", getattr(evt, "cuda_memory_usage", 0)) / (1024**3), 5),  # ✅ New PyTorch
-                "Self.CUDA.GB": round(getattr(evt, "self_device_memory_usage", getattr(evt, "self_cuda_memory_usage", 0)) / (1024**3), 5)  # ✅ New PyTorch
-            })
-        # Create DataFrame
-        df = pd.DataFrame(data)
-        df_sorted = df.sort_values(by="CPU.tot.ms", ascending=False)
-        print(df_sorted.head(30))
-        # Sort by total CPU time if needed
-        df_sorted = df.sort_values(by="CUDA.tot.ms", ascending=False)
-        print(df_sorted.head(30))
-        # Save the profiling results to a file
-        prof.export_chrome_trace("./logs/profiler/output_trace.json")
-        
-        #print(prof.key_averages().table(sort_by="cuda_time_total", row_limit=20))
-
+        print_profile_results(prof)
         exit()
         ###########################################
 
@@ -241,7 +215,7 @@ class Trainer:
 
         #make the predictor and evaluators
         predictor = Predictor(config)
-        evaluator = Evaluator(config)
+        evaluator = make_evaluator(config)
         
         iter_loader = self.load_loader(data_loader, device, infinite=False)
         model.eval()
@@ -252,13 +226,15 @@ class Trainer:
                 with record_function("step_eval_1: run model"):
                     with torch.amp.autocast('cuda', dtype=torch.float16):
                         result = model(x, step=step)
-                #get preds => the predicted positive cases
+                #get preds => the predicted positive cases only
+                #NOTE: predicted neg cases are not included here as they are not required
                 #NOTE: the rel_preds are the full rels with the span start,end,type info
                 with record_function("step_eval_2: predictor"):
                     preds = predictor.predict(result, return_and_reset_results=True)
+
                 #prepare and add the batch of preds and labels to the evaluator
                 with record_function("step_eval_3: evaluator"):
-                    evaluator.prep_and_add_batch(preds, x['spans'], x['relations'])
+                    evaluator.prep_and_add_batch(x['spans'], x['relations'], preds)
 
                 #clear tensors to free up GPU memory
                 eval_step += 1
@@ -275,7 +251,9 @@ class Trainer:
                 #TEMP
                 #TEMP
         #run the evaluator on whole dataset results (stored in the evaluator object) and return a dict with the metrics and preds
-        result = evaluator.evaluate()
+        with record_function("step_eval_4: evaluate"):
+            result = evaluator.evaluate()
+            
         return result
     ##############################################################
     ##############################################################
@@ -378,3 +356,44 @@ class Trainer:
             raise Exception("Error - run_type must be either 'train' or 'predict'")
 
 
+
+
+
+
+
+
+###########################################################################
+###########################################################################
+###########################################################################
+def print_profile_results(prof):
+    '''
+    temp function to show the profiler output
+    '''
+    filtered_events = [evt for evt in prof.key_averages() if evt.key.startswith("step_")]
+    data = []
+    for evt in filtered_events:
+        data.append({
+            "Name": evt.key,
+            "Calls": evt.count,
+            "CPU.tot.ms": round(evt.cpu_time_total / 1e3, 5),
+            "SelfCPU.ms": round(evt.self_cpu_time_total / 1e3, 5),
+            "CUDA.tot.ms": round(getattr(evt, "device_time", getattr(evt, "cuda_time_total", 0)/evt.count) * evt.count / 1e3, 5),  #New PyTorch
+            "Self.CUDA.ms": round(getattr(evt, "self_device_time", getattr(evt, "self_cuda_time_total", 0)/evt.count) *evt.count/ 1e3, 5),  #New PyTorch
+            "CPU.ave.ms": round(evt.cpu_time_total / evt.count / 1e3, 5) if evt.count > 0 else 0,
+            "CUDA.ave.ms": round(getattr(evt, "device_time", getattr(evt, "cuda_time_total", 0)/evt.count) / 1e3, 5) if evt.count > 0 else 0,
+            "CPU.GB": round(evt.cpu_memory_usage / (1024**3), 5),
+            "Self.CPU.GB": round(evt.self_cpu_memory_usage / (1024**3), 5),
+            "CUDA.GB": round(getattr(evt, "device_memory_usage", getattr(evt, "cuda_memory_usage", 0)) / (1024**3), 5),  # ✅ New PyTorch
+            "Self.CUDA.GB": round(getattr(evt, "self_device_memory_usage", getattr(evt, "self_cuda_memory_usage", 0)) / (1024**3), 5)  # ✅ New PyTorch
+        })
+    # Create DataFrame
+    df = pd.DataFrame(data)
+    df_sorted = df.sort_values(by="CPU.tot.ms", ascending=False)
+    print(df_sorted.head(30))
+    # Sort by total CPU time if needed
+    df_sorted = df.sort_values(by="CUDA.tot.ms", ascending=False)
+    print(df_sorted.head(30))
+    # Save the profiling results to a file
+    prof.export_chrome_trace("./logs/profiler/output_trace.json")
+    
+    #print(prof.key_averages().table(sort_by="cuda_time_total", row_limit=20))

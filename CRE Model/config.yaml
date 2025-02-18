@@ -22,6 +22,7 @@ predict_thd: 0.5                        #used in the multilabel case, for the fi
 predict_conf: False                     #the predict confidence
 span_labels: unilabel                   #unilabel/multilabel => unilabel = 1 label per span, uses CELoss.  multilabel = multiple labels per span, uses BCELoss => NOTE: only unilabel is allowed currently for spans
 rel_labels: multilabel                  #unilabel/multilabel => unilabel = 1 label per rel, uses CELoss.  multilabel = multiple labels per rel, uses BCELoss
+eval_type: manual                       #skl/manual => whether to use skl metrics, which might be slower, but allows changing the averaging type, otherwise it is locked to micro
 f1_ave: micro                           #micro/macro...  for the metrics
 save_top_k: 1                           #keep this many of the most recent checkpoints
 

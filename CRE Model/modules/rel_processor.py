@@ -23,6 +23,9 @@ class RelationProcessor():
 
 
     def init_rel_labels(self):
+        '''
+        makes the blank rel_labels tensors
+        '''
         if self.config.rel_labels == 'unilabel':
             return torch.full((self.batch, self.top_k_spans, self.top_k_spans), -1, dtype=torch.long, device=self.device)
         elif self.config.rel_labels == 'multilabel':
@@ -30,6 +33,9 @@ class RelationProcessor():
 
 
     def update_rel_labels(self, rel_labels, batch_idx, head_cand_idx, tail_cand_idx, rel_type):
+        '''
+        updates the rel_labels tensor with a label id for one position in the tensor
+        '''
         r_label_id = self.config.r_to_id[rel_type]
         if self.config.rel_labels == 'unilabel':
             rel_labels[batch_idx, head_cand_idx, tail_cand_idx] = r_label_id
@@ -40,6 +46,11 @@ class RelationProcessor():
 
 
     def flatten_rel_labels(self, rel_labels):
+        '''
+        converts the rel_labels from:
+        unilabel => (batch, top_k_spans, top_k_spans) => (batch, top_k_spans**2)
+        multilabel => (batch, top_k_spans, top_k_spans, num rel types) => (batch, top_k_spans**2, num rel types)
+        '''
         if self.config.rel_labels == 'unilabel':
             return rel_labels.view(self.batch, -1)
         elif self.config.rel_labels == 'multilabel':
@@ -62,7 +73,7 @@ class RelationProcessor():
                 head_cand_idx = span_to_cand_span_map[i, orig_map[i][head_idx_raw]]
                 tail_cand_idx = span_to_cand_span_map[i, orig_map[i][tail_idx_raw]]
                 #Update rel_labels only if both head and tail span indices are found in cand_span_ids
-                #if a head or tail can not be mapped to cand_span_ids it is a lost rel and will be addedto the lost_rel_counts
+                #if a head or tail can not be mapped to cand_span_ids it is a lost rel and will be added to the lost_rel_counts
                 if head_cand_idx != -1 and tail_cand_idx != -1:
                     self.update_rel_labels(rel_labels, i, head_cand_idx, tail_cand_idx, rel_type)
                 else:    #here we have a lost relation case caused by one or 2 missing spans in top_k_spans
@@ -82,6 +93,15 @@ class RelationProcessor():
 
 
     def make_rel_ids_and_masks(self, cand_span_masks):
+        '''
+        so remember the cand_span_masks are derived from the span_masks for the shortlisted spans and remember that the span_masks are 1 for pos cases and selected neg caess from neg sampling
+        thus rel_masks here are only 1 if both the head and tail span have mask of 1 and head != tail
+        NOTE: depending on run options, if teacher forcing is disabled, then there is no guarantee that all pos cases will be in cand_span_masks
+        NOTE: that we are NOT doing neg sampling here, I am not actually sure how I would even include that as we now can have lost rels (pos rels from labels that never maade it to the ids as they were misclassified by spans)
+        I think you would include it here in the rel_masks, you basically would look for 100 or the largest available number of rels where both head and tail are pos case spans, i.e. spans.  Thus if there are only a few
+        actual spans, then the number of neg cases is not large.....
+        This is not so important if we are using the pruning stage to get cand spans and can rels!!!
+        '''
         #generate rel_ids, using cartesian product straight to (top_k_spans**2, 2)
         top_k_span_indices = torch.arange(self.top_k_spans, device=self.device)    #Generate span indices (0 to top_k_spans-1 for each item in the batch)
         rel_ids = torch.cartesian_prod(top_k_span_indices, top_k_span_indices)

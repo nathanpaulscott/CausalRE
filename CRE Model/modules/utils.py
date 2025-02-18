@@ -274,3 +274,12 @@ def load_weights(model_name, model_source, full=False, new_model=None, device=No
     return new_model, None
 ###################################################################
 
+
+
+
+def remove_span_types_from_full_rels(full_rels):
+    '''
+    This removes the span types from the full rels as this is required for some analysis
+    NOTE: as there could be doubles, we set and list each batch obj list
+    '''
+    return [list(set([(rel[0],rel[1],rel[3],rel[4],rel[6]) for rel in obs])) for obs in full_rels]

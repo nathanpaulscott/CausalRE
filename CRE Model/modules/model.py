@@ -128,6 +128,8 @@ class Model(nn.Module):
         NOTE: 
         for unilabels the output dim will be num pos span/rel types + 1 for the none type
         for multilabels the output dim will be the num pos span/rel types with no none type
+        NOTE: why the unilabel case needs the none type => because it uses cross entropy, if you do not give it the option to pred a none-type
+        then it must choose one of the pos type even if none are any good, you will get all pos cases => you must give it the option to have neg cases
         '''
         self.output_head_span = OutputLayer(input_size  = self.config.hidden_size,
                                             output_size = self.config.num_span_types,
@@ -392,7 +394,7 @@ class Model(nn.Module):
         token_masks     = result['token_masks']         #(batch, batch_max_seq_len) => bool, sw or w token aligned depedent pooling   
         w_span_ids      = x['span_ids']                 #(batch, batch_max_seq_len * max_span_width, 2) => int, w aligned span_ids
         sw_span_ids     = result['sw_span_ids']         #(batch, batch_max_seq_len * max_span_width, 2) => int, sw aligned span_ids => None if pooling
-        span_masks      = x['span_masks']               #(batch, batch_max_seq_len * max_span_width) => bool
+        span_masks      = x['span_masks']               #(batch, batch_max_seq_len * max_span_width) => bool, includes the spans that are pos cases and selected neg cases for each batch obs
         span_labels     = x['span_labels']              #(batch, batch_max_seq_len * max_span_width) int or (batch, batch_max_seq_len * max_span_width, num_span_types) bool
         num_span_types  = self.config.num_span_types    #scalar, includes the none type (idx 0) for unilabel and only pos types for multilabel
         span_type_reps  = result['span_type_reps']      #(batch, num_span_types, hidden) => float, no mask needed

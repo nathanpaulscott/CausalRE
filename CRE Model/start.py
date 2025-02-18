@@ -95,21 +95,44 @@ if __name__ == "__main__":
 
 
 '''
+-------------------------------
+
 TO DO
 -----------------------
 working on conll04 with similar params to spert
 
-** Need to profile the model and find which parts are slowing it down
-predictor is very slow, should be able to be sped up
-The main issue is the horrible loop in the get_rels code, you must refactor this and vectorize
-The spans loop is around 10x faster, probably cause it is 2 layer, while the rel loop is 3 layer
+1) I have profiled it and fixed the worst parts, will leave the profile code in for now, take out later
+make_rel_reps is a bit slow, but it is oe of the worst parts, I have already optimised it, coudl take another look, but it is the one thing that I think I have to live with
 
-evaluator is fast
-make_rel_reps is slow even though I already optimised it, that is really the main stumbling block
-
-
-
-For a spert like test need to set the max_span_width to 10 only and mess aroudn with other params like rel gen method etc...
+2) For a spert like test need to set the max_span_width to 10 only and mess aroudn with other params like rel gen method etc...
 this rel percentile stuff is not tested at all
 
+############################################################33
+3) now start looking at the metrics, why do they look weird, is my code actually working?  I see the metrics look all the same (acc, P, R, F1)???
+ok I think there are some concerns with neg sampling, alignment and various things
+
+in spert we neg sampled spans and rels as we had all poss spans and rels up front.  We then used that mask of pos cases and seleted neg cases to filter the spans/rels to use for metrics
+I do not think we can do that here due to the filtering layers and also for rels it is not knwon until runtime
+Thus for spans, even if we neg sample, we sample another subset later for filtering, for rels we do not neg sample, we just filter a subset and potentially not even teacher force all pos cases....
+
+neg sampling
+--------------
+we are only using neg sampling for spans, I think however it is not necessary as we are using the filtering layer to shortlist spans to cand_spans
+Thus I want to put in a param to use span neg sampling or not (it will just affect the span_masks which in turn affect cand_span_masks)
+
+span loss
+-------------
+when calculating span loss we determine the spans preds vs span labels, thus the mask indicates which spans to consider for the loss, so removing eg sampling will have an impact
+
+span metrics
+----------------
+we only consider the cand_span_ids in cand_span_masks for the metrics
+i.e. labels => the actual pos labels + and false positives from preds
+     preds => TP and FN from pos labels + FP from preds
+
+     
+Rels it is even more complex....
+Need to contemplate this, it is convoluted, need to really think about it
+
+############################################################33
 '''
