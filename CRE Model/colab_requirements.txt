@@ -1,0 +1,5 @@
+#pyarrow==14.0.2 
+#flair
+transformers[torch] 
+datasets 
+evaluate

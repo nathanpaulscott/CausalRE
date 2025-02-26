@@ -1,0 +1,75 @@
+#this is just for reference, not used in anyway, keep it until the whole hting is finsihed
+
+###############################################
+#HF
+###############################################
+import transformers
+import datasets
+import evaluate
+###
+from transformers import (
+    Trainer,
+    TrainingArguments,
+    AutoTokenizer,
+    BertModel,
+    BertTokenizer,
+    BertTokenizerFast,
+    get_cosine_schedule_with_warmup,
+    get_linear_schedule_with_warmup,
+    get_constant_schedule_with_warmup,
+    get_polynomial_decay_schedule_with_warmup,
+    get_inverse_sqrt_schedule,
+)
+from datasets import load_dataset
+###############################################
+#Torch
+###############################################
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.optim as optim
+import torch.nn.init as init
+###
+from torch.nn import CrossEntropyLoss
+from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
+from torch.optim.lr_scheduler import StepLR
+from torch.utils.data import DataLoader, Dataset, TensorDataset
+from torch.autograd import profiler
+###############################################
+#SKL
+###############################################
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import (
+    accuracy_score,
+    precision_recall_fscore_support,
+    confusion_matrix,
+)
+###############################################
+#NLTK
+###############################################
+import gensim.downloader as api
+import nltk
+from nltk import pos_tag
+from nltk.corpus import stopwords as sw, wordnet
+from nltk.tokenize import word_tokenize
+from nltk.stem import WordNetLemmatizer
+# Download necessary NLTK resources
+nltk.download('punkt')
+nltk.download('stopwords')
+nltk.download('averaged_perceptron_tagger')
+nltk.download('wordnet')
+###############################################
+#Python General
+###############################################
+import argparse, yaml, copy, csv, gc, gdown, json, math, os, random, re, regex, time
+from collections import Counter
+from datetime import datetime
+from types import SimpleNamespace
+###
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.ticker import MultipleLocator
+from tqdm import tqdm
+import seaborn as sns
+from statsmodels.nonparametric.smoothers_lowess import lowess
