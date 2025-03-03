@@ -3,6 +3,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 import torch.nn.init as init
+import torch.utils.checkpoint as checkpoint
+
 from torch.profiler import record_function
 
 from types import SimpleNamespace
@@ -483,6 +485,17 @@ class Model(nn.Module):
         #######################################################
         # SPANS ###############################################
         #######################################################
+        '''
+        #NOTE: if you wanted to chunk the span filtering to handle long seq, long spans cases, you would do it here on teh whole make span reps and run the span filter head chain
+        #just pass in a modified span mask for each chunk and mod the code in teh span rep extractor to only extract reps for actuive chunk spans, not all possible spans with unused ones set to 0!!
+        #you just have to ensure the shpaes all line up, as right now it assumes num_spans for dim 1, so if you are going to only consider active spans in each chunk then you have to speep all the code so they all align
+        #span_widths, span_masks, sw_span_ids, w_span_ids and internal code, check all, not so hard, but check all
+        #then the output for each chunk will be (batch, num_chunk_spans, hidden) whcih goes to the filter head, then we take the filter scores for each chunk andmarge them and sort them, along wiht a mapping of the chunk it came from and the idx in that chunk
+        kind of fiddly, then we have to select those reps from each chunk and stack to a final cand_span_reps, masks, labels etc..  
+        I would remove all extraneous stuff first, like sw tokens, pos weight etc..  Just remove it
+        The other change would be to checkpoint the binary filter head so the backwards pass doesn't die
+        
+        '''
         #generate the span reps from the token reps and the span start/end idx and outputs a tensor of shape (batch, num_spans, hidden), 
         #i.e. the span reps are grouped by start idx
         #NOTE: for all further analyses => num_spans is the total num spans including those that end outside the max seq len, they are just masked out

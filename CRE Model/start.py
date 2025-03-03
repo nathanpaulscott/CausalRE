@@ -95,6 +95,84 @@ if __name__ == "__main__":
 
 
 '''
+OK, I am trying to generate/autoannotate a dataset to train my model.  I think I will go with the current form and just adapt it to longer sequences and wider spans
+Annotation:
+1) gemini to extract events from maven train
+2) gemini to determine causality between extracted events
+3) clean up the dataset and split
+4) gemini to find full event spans from the event triggers in semeval, it alreayd has the causality annotations so that is all
+5) combine with maven
+
+
+
+
+Model
+----------
+adapt it to handle longer sequences:
+1) integrate bigbird
+2) chunk the span search, instead of just making the span reps (batch, num possible spans, hidden)
+chunk it to span batches of say 2-3K spans or whatever works well and process each in sequence, then merge filter scores before sorting and selecting the top_k_spans
+the losses you just add for each chunk.
+NOTE: the problem here is that this only helps the foward pass, not the backwards pass, there is no way to chunk the backwards pass!!!!!!
+- You can used mixed precision training
+- you can use gradient checkpointing whcih slows down the backward pass, but is stable, solves the backward memory issues:
+eg.
+
+no checkpointing
+def forward(self, inputs):
+    total_loss = 0
+    for chunk in chunks:
+        logits = filter_head(chunk)  # Standard forward pass (stores activations)
+        loss = loss_fn(logits, labels)
+        total_loss += loss
+    return total_loss + pred_loss  # Standard backward pass uses more memory
+
+using checkpointing
+------------------------------
+import torch.utils.checkpoint as checkpoint
+
+def forward(self, inputs):
+    total_loss = 0
+    for chunk in chunks:
+        logits = checkpoint.checkpoint(filter_head, chunk)  # Recomputes activations
+        loss = loss_fn(logits, labels)
+        total_loss += loss
+    return total_loss + pred_loss  # Still a single loss, but backward uses less memory
+
+
+No, you don’t need to checkpoint every layer.
+Best practice: Checkpoint every 2-3 layers or memory-heavy layers only.
+This balances memory savings & training speed.
+---------------------------------------------------------------
+
+Look at the 2 stage event span search procedure:
+---------------------------------------------------
+Two-Stage Event Extraction Process (Trigger + Windowed Span Search)
+Stage 1: Trigger Detection
+Detect event triggers (short spans, usually verbs/nouns).  binary trigger filter head
+Requires trigger annotations for training.
+Output: (batch, num_triggers, 2) tensor → (start, end) indices of detected triggers.
+Stage 2: Windowed Span Search
+For each trigger, define a search window:
+window_start = trigger_start - max_width
+window_end = trigger_end + max_width
+Filter spans from span_ids (batch, 100K, 2):
+Keep only spans within the search window.
+Use a mask tensor (batch, 100K) for efficient filtering.
+Extract valid spans from span_reps for classification.
+✅ Key Benefits:
+
+Massively reduces search space (no need to check all spans).
+Maintains recall while optimizing speed/memory.
+Simple heuristic, easy to tune (max_width).
+🚀 This makes LSLS event extraction feasible for long sequences.
+
+
+
+
+
+
+
 with full TF, I am getting 87, 67, 68, which is better than turning off TF at some point => prob the best
 full TF no graph transformer 85, 60, 64
 full TF only on the span filter, no TF on teh rel filter => 86,68,69... probably the best setup

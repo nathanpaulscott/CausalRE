@@ -1,4 +1,6 @@
 import torch
+import torch.utils.checkpoint as checkpoint
+
 #from torch.profiler import profile, record_function, ProfilerActivity, tensorboard_trace_handler
 
 from tqdm import tqdm

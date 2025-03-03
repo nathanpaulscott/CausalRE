@@ -1,0 +1,84 @@
+Identify significant events or states in the given sentence. An event or state can be:
+
+A single entity-based event, such as "the crash".
+A complex event involving an action and its arguments, such as "A Swiss investigation concluded".
+
+General Guidelines for Extraction:
+
+Keep event spans minimal yet complete, capturing the entire context without unnecessary words.
+Extract only exact spans from the sentence. Do not rephrase or infer missing details.
+Triggers should be the most defining words within the event span, typically verbs or significant nouns.
+Reporting verbs like "concluded", "reported", "stated" are not considered main events unless the act of reporting is directly relevant.
+Clearly identify causal relationships where one event or state causaly leads to another.
+Extract only verbatim spans from the input sentence.  No coref or irrelevant inner word removal
+
+Example 1: Input Sentence:
+"A Swiss investigation concluded that the crash was caused by a short circuit, which led to the failure of the aircraft's NAV receiver." 
+
+Output:
+{
+    "sentence": "A Swiss investigation concluded that the crash was caused by a short circuit, which led to the failure of the aircraft's NAV receiver.",
+    "spans": [
+        {"span": "A Swiss investigation concluded", "type": "event", "trigger": "concluded"},
+        {"span": "the crash", "type": "event", "trigger": "crash"},
+        {"span": "a short circuit", "type": "event", "trigger": "short circuit"},
+        {"span": "the failure of the aircraft's NAV receiver", "type": "event", "trigger": "failure"}
+    ],
+    "causal_relations": [
+        {"head": 2, "tail": 1},
+        {"head": 2, "tail": 3},
+        {"head": 3, "tail": 1}
+    ]
+}
+
+Negative Example 1: Input Sentence:
+"The director said the production was delayed."
+
+Incorrect Output
+{
+    "sentence": "The director said the production was delayed.",
+    "spans": [
+        {"span": "The director said", "type": "event", "trigger": "said"}
+    ],
+    "causal_relations": []
+}
+
+Correct Output:
+{
+    "sentence": "The director said the production was delayed.",
+    "spans": [
+        {"span": "the production was delayed", "type": "event", "trigger": "delayed"}
+    ],
+    "causal_relations": []
+}
+
+Explanation:
+Reporting verbs like "said" should not be considered main events unless the act of reporting itself is an event. The main event here is the delay of the production.
+
+Negative Example 2: Input Sentence:
+"He watched as the building collapsed and quickly called for help."
+
+Incorrect Output
+{
+    "sentence": "He watched as the building collapsed and quickly called for help.",
+    "spans": [
+        {"span": "He watched as the building collapsed", "type": "event", "trigger": "watched"},
+        {"span": "quickly called for help", "type": "event", "trigger": "called"}
+    ],
+    "causal_relations": [
+        {"head": 0, "tail": 1}
+    ]
+}
+
+Correct Output:
+{
+    "sentence": "He watched as the building collapsed and quickly called for help.",
+    "spans": [
+        {"span": "the building collapsed", "type": "event", "trigger": "collapsed"},
+        {"span": "quickly called for help", "type": "event", "trigger": "called"}
+    ],
+    "causal_relations": []
+}
+
+Explanation:
+The act of watching is not an event that causes the building to collapse. The causal relation is incorrectly inferred and should not be included unless there is clear evidence from the text.

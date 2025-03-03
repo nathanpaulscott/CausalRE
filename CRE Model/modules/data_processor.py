@@ -58,6 +58,7 @@ class DataProcessor(object):
             span_labels = torch.nn.utils.rnn.pad_sequence([obs["span_labels"] for obs in batch], batch_first=True, padding_value=0)
             orig_map    = [obs['orig_map'] for obs in batch]
         
+
         # Return a dict of lists
         return dict(
             tokens        = tokens,         #list of ragged lists of strings => the raw word tokenized seq data
@@ -120,7 +121,8 @@ class DataProcessor(object):
             span_ids_idx = orig_map[i]
             # Check if the annotated data has multiple labels for the unilabel case
             if span_labels[span_ids_idx] != 0:
-                raise ValueError(f'Error. There are multiple labels for span ID {span_ids_idx} and span_labels is set to unilabel, exiting...')
+                #raise ValueError(f'Error. There are multiple labels for span ID {span_ids_idx} and span_labels is set to unilabel, exiting...')
+                self.config.logger.write(f'Error. There are multiple labels for span ID {span_ids_idx} and span_labels is set to unilabel', 'warning')
             span_labels[span_ids_idx] = label_int
 
         return span_labels
