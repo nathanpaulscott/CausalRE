@@ -1,0 +1,185 @@
+#####################################################################
+#Run Config
+#####################################################################
+run_type: train                         #train/predict.  
+#NOTE:
+#For train you need 3 labeled splits in the data json file (train/val/test) each split needs the tokens key along with the spans and relations keys for the labels. 
+#'predict' is unlabelled inference, you need one unlabelled split in the data json file (split is 'predict' and only keys are 'tokens').
+random_seed: 42
+
+#####################################################################
+#Directory Paths
+#####################################################################
+log_folder: logs                        #location of the log file folder
+print_log: True                         #print the log to screen as it is written
+model_path: none                        #pretrained model path => Use "none" if no pretrained model is being used
+#---------------------------------------
+#data_path: "data/sample/sample data.json"      #the dataset file
+#data_format: idx                         #id/idx.  'id' is when the spans and rels have a unique id and the head and tail of the rel reference the span id.  idx is the spert format where there is no id and the rel head/tail reference the span list idx
+#---------------------------------------
+#data_path: "data/conll04 - spert/conll04_nathan.json"      #the dataset file
+#data_format: idx                         #id/idx.  'id' is when the spans and rels have a unique id and the head and tail of the rel reference the span id.  idx is the spert format where there is no id and the rel head/tail reference the span list idx
+#---------------------------------------
+data_path: "data/unicausal/model_data_altlex.json"      #the dataset file  => span width max is 116, seq len 135
+data_format: id                         #id/idx.  'id' is when the spans and rels have a unique id and the head and tail of the rel reference the span id.  idx is the spert format where there is no id and the rel head/tail reference the span list idx
+#---------------------------------------
+#data_path: "data/unicausal/model_data_because.json"      #the dataset file, span width max is 56, seq len 99
+#data_format: id                         #id/idx.  'id' is when the spans and rels have a unique id and the head and tail of the rel reference the span id.  idx is the spert format where there is no id and the rel head/tail reference the span list idx
+#there is some issue with this data set, teh support is only 38 for the eval set for spans?!!?!? and 14 for rels, not right
+
+#---------------------------------------
+#data_path: "data/unicausal/model_data_ctb.json"      #the dataset file, span width max = 7, seq len max = 130
+#data_format: id                         #id/idx.  'id' is when the spans and rels have a unique id and the head and tail of the rel reference the span id.  idx is the spert format where there is no id and the rel head/tail reference the span list idx
+#---------------------------------------
+#data_path: "data/unicausal/model_data_semeval.json"      #the dataset file, max seq len = 99, max span width = 4
+#data_format: id                         #id/idx.  'id' is when the spans and rels have a unique id and the head and tail of the rel reference the span id.  idx is the spert format where there is no id and the rel head/tail reference the span list idx
+#---------------------------------------
+#data_path: "data/new causal processed mar25/maven/maven - data - short.json"      #the dataset file, max seq len = 86, max span width = 44
+#data_format: idx                         #id/idx.  'id' is when the spans and rels have a unique id and the head and tail of the rel reference the span id.  idx is the spert format where there is no id and the rel head/tail reference the span list idx
+#---------------------------------------
+#data_path: "data/new causal processed mar25/maven/maven - data - short - triggers.json"      #the dataset file, max seq len = 99, max span width = 4
+#data_format: idx                         #id/idx.  'id' is when the spans and rels have a unique id and the head and tail of the rel reference the span id.  idx is the spert format where there is no id and the rel head/tail reference the span list idx
+
+
+#####################################################################
+#General Configs
+#####################################################################
+predict_thd: 0.3                        #used in the multilabel case, for the final class predictions, applied to the sigmoid  of each class logits, range is 0 to 1, lower => easy to predict a class, higher => harder to predict a class
+predict_conf: False                     #the predict confidence
+rel_labels: multilabel                  #unilabel/multilabel => unilabel = 1 label per rel, uses CELoss.  multilabel = multiple labels per rel, uses BCELoss
+eval_type: manual                       #skl/manual => whether to use skl metrics, which might be slower, but allows changing the averaging type, otherwise it is locked to micro
+f1_ave: micro                           #micro/macro...  for the metrics
+save_top_k: 1                           #keep this many of the most recent checkpoints
+
+#####################################################################
+#Model Configuration
+#####################################################################
+model_module_name: normal               #spert/normal/span_marker  => normal for most cases (span search, token tagging)
+backbone_model_name: bert-base-uncased  #name of the flair or hf model, eg 'microsoft/deberta-v3-base' or 'bert-base-uncased'
+backbone_model_source: HF               #HF, only HF is now supported, flair wa snot so useful
+###############
+use_prompt: False                       #whether to use prompting of the span and rel types to generate span_type_reps and rel_type_reps
+                                        #NOTE: 
+                                        #if False, we send the final span and rel reps through regular multiclass output classification heads to get the final logits for each candidate span and rel  (batch, top_k_spans/rels)
+                                        #if True, we send the final reps aslong with the span_type_Reps and rel_type_reps to an einsum operation to produce a similarity matrix for spans and rels as the output logits (batch, top_k_spans/rels, num_span/rel_types)
+subtoken_pooling: maxpool               #first/last/first_last/mean/maxpool/none (maxpool and none are HF only).  none will disable subtoken pooling, only supported by HF.  NOTE: first_last will double the hidden dim, but the projection layer will pull it back to normal
+shuffle_train: True                     #always be true, except for debugging
+freeze_encoder: False                   #whether to allow fine tuning of the transformer encoder params (eg. bert), true will freeze the encoder and not allow training 
+hidden_size: 768                        #hidden size of the bert based encoder
+dropout: 0.1                            #standard model dropout
+max_seq_len: 140                        #word token limit, this will generally affect the model speed, so keep it as low as possible.  I have this in just a  a protection fro very long sequences coming in
+max_span_width: 120                      #max span width in word tokens (10-12 for NER, 40+ for long span event detection)
+dump_missed_spans_on_import: True       #ture/false: true => dumps the annotated spans to the log file that could not be used due to the max_seq_len and max_span_width limits
+num_precision: full                     #full/half => the num precision to use for the model => full => 32bit, half=>16bit
+projection_layer_type: simple           #simple/ffn (ffn uses too much memory). for the span_rep and rel_rep generation output layers.  'simple' to just use a simple projection layer for the output or a 'ffn' for a more complex ffn layer.  Not implemented yet, just use 'ffn'
+ffn_ratio: 4                            #FFN hidden expansion factor if projection layer is ffn
+use_lstm: False                         #whether to use an lstm layer after hte transformer encoder, this was in graphER, not sure if is of any benefit
+lstm_layers: 1
+
+#teacher forcing
+#these params control teacher forcing in the spans/rel filter heads, the graph filter head, span output and rel output heads never use teacher forcing
+#NOTE: the span filter head is more critical than the rel filter head as relation generation depends on it, thus we have to be more careful about turning off TF, so make sure the step limit is long enough for the model stabilize first
+#it also ties into the lost_rel penalty algorithm, you need to make sure the penalty is sufficient to inform the model of it's errors so it learns
+filter_force_pos: temp                #always/temp, if 'always' then TF is always used in the span/rel filter heads.  If 'temp' then TF is used for teacher_forcing_step_limit steps, then diabled in span/rel heads
+force_pos_step_limit: 1000              #when to disable teacher forcing for the span/rel filter heads, set this so the model gets in the ballpark for span predictions before disabling it as it will spike lost rels
+rel_force_pos: follow                    #follow/never, if follow, it will follow the filter_teacher_forcing setting (always/temp), if never, then teacher forcing is always off for the rel filter head
+
+#neg sampling
+#NOTE: neg sampling is applied only during training to reduce the number of neg cases
+span_neg_sampling_limit: 100            #max number of neg samples per batch obs
+span_neg_sampling: True                 #True/False
+rel_neg_sampling_limit: 100             #max number of neg samples per batch obs
+rel_neg_sampling: True                  #True/False
+prune_rel_tensors: False   #keep off for now, need to update code               #prune the size of the rel tensors post neg sampling to save space
+
+#token tagger configs
+token_tagger: True                     #true/false => true to use the token tagger for span preds, tagger loss and filter scores, false to bypass.
+tagging_mode: BE                       #BE/BECO => BE is Begin-End, multiclass, BECO = Begin-End-Combine-Other
+
+###############
+#span rep config
+###############
+width_embedding_size: 25                #hidden size of the span width embedding, spert had 25
+span_mode: nathan                       #firstlast_grapher/firstlast/spert/nathan... used to configure the method used to generate the span reps from the token reps, NEED TO EXPLAIN WHAT EACH ONE DOES
+#span marking config
+use_span_marker: True                   #the top_k_spans will be marked and run through bert again to get enriched span_reps => slow but good
+span_marker_window: 50                  #none = no window (only unmask span, marker and cls/sep tokens), attention mask window around the marked spans
+span_marker_run_option: cls             #cls, marker, all: all => use concat of start, end and cls embeddings / cls just use the cls embedding / marker just use the concat of the start, end embeddings
+
+###############
+#span/rel filtering params              #these are from graphER for choosing the spans per obs for the initial graph, I will keep them for now, but will probably change the calc later
+###############
+#NOTE: a key point here is limiting the number of spans for the initial graph as the number of rels is quadratically dependent on this number
+#This is basically a smart form of neg sampling
+#the top_k_spans/rels is basically the min of the num_spans/rels, the limit (max_top_k_spans/rels) and a dynamic limit based on the span/rel score precentile
+span_filtering_type: tths               #tths/bfhs/both => 
+                                        #tths uses the token tagging head scores to prune the spans to top_k_spans based on the token tagger filter scores, 
+                                        #bfhs uses the scores from the binary filter head to prune spans to top_k_spans from the bfh filter scores, 
+                                        #both filters the spans to top_k_spans_pre using the token tagger filter scores, then processes this in the binary filter head and filters down to top_k_spans with the bfh filter scores
+max_top_k_spans_pre: 1000               #max number of spans to shortlist for stage 1 of the 2 stage case where we first filter on the token tagger filter scores before going through the binary filter head
+max_top_k_spans: 30                     #max number of spans to shortlist for the initial graph
+max_top_k_rels: 30                      #max number of rels to choose per obs for the initial graph, if the number available goes below this, then that is the limit.  This is the hard limit only overridden by the percentile filter
+span_score_percentile: 0                #not used for now, code is wrong....only include spans with a score in this percentile, increase this to prune more, decrease to prune less (0, 100).  This basically controls the size of top_k_spans
+rel_score_percentile: 0                 #not used for now, code is wrong....only include rels with a score in this percentile, increase this to prune more, decrease to prune less (0, 100).  This basically controls the size of top_k_rels
+filter_dropout: True                    #whether to use dropout before the binary filter head
+filter_head_type: single                #single/double => whether to use a single class binary filter head or double class binary filter head for the span/rel filtering, both work in similar ways, double was used in graphER
+
+##############
+#lost rel handling
+##############
+lost_rel_alpha: 1                       #0 to inf, global adjustment of the lost rel penalty to get the lost rel loss => higher penalises the model more for missing spans causing lost rels (in non-teacher forced mode)
+
+###############
+#rel rep config
+###############
+rel_mode: between_context              #no_context/between_context/window_context/between_window_context => add context reps in (no context, from tokens between spans, from tokens in windows before/after each span)  => only beteween works well
+rel_no_context_rep: emb                #zero/emb => whether to replace the context reps in the case of no valid context tokens, to all zero (zero) or a learned no context embedding (emb)
+rel_context_pooling: max               #max/attn => how to pool the valid context tokens to get one context rep.  max => max pool them, attn => use attention pooling with the maxpool of the head and tail rep as the query
+rel_window_size: 10                    #tokens or subtoken window size for the window algo
+#rel marking config
+use_rel_marker: True                   #the top_k_rels will be marked and run through bert again to get enriched rel_reps => slow but good
+rel_marker_window: 50                  #none = no window (only unmask span, marker and cls/sep tokens), attention mask window around the marked relations spans
+rel_marker_run_option: cls             #cls, marker, all: all => use concat of the head_start, head_end, tail_start, tail_end and cls embeddings / cls just use the cls embedding / marker just use the concat of the 4 marker embeddings
+
+###############
+#graph embedding config
+###############
+graph_id_method: add                    #whether to add or prefix the node and edge identifiers onto the span and rel reps respectively
+
+###############
+#graph transformer config
+###############
+use_graph: False                         #True/False, if False, the whole graph and graph transformer is bypassed
+use_graph_reps: True                    #True => use the node/edge reps output from the graph transformer, these will be enriched embeddings but also include the node/edge identifiers mixed in
+                                        #False => use the pre-graph transformer span/rel reps, as output, only use the filtering scores and loss from the graph transformer
+num_heads: 4                            #used by the graph transformer layer 
+num_transformer_layers: 2               #used by the graph transformer layer
+
+###############
+#graph filtering params                 #these are to make it easier or harder to prune nodes/edges from the graph using the node/edge filter_scores
+###############
+graph_filter_head_type: single          #single/double => whether to use a single class binary filter head or double class binary filter head for the graph filtering, both work in similar ways, single was used in graphER
+
+#####################################################################
+#Training Parameters
+#####################################################################
+num_steps: 10000                        #how many batches to run through the system, the total batches in the dataset is going to be much smaller, so it just repeats the batches
+train_batch_size: 1 #4                  #num obs per train batch
+accumulation_steps: 1 #1                #accumulate losses for this many batches, so effective batch size is accumulation_steps*train_batch_size
+eval_batch_size: 4  #6                  #num obs per val/test batch
+eval_every: 500                         #eval every 'eval_every' batches
+opt_type: 2                             #1/2 => 1 use the same lr and wd for all params, 2 => use specific lr/wds 
+opt_weight_decay:  0.01                 #adamw optimiser weight decay
+lr_encoder: 5e-5  #1e-5                 #this is the learning rate used for the tranformer encoder
+lr_others: 5e-5   #5e-5                 #this is the learning rate used for all other weights other than the transformer encoder
+warmup_ratio: 0.1                       #warmup_steps will thus be warmup_ratio * num_steps
+scheduler_type: linear                  #'cosine', 'linear', 'constant', 'polynomial', 'inverse_sqrt'
+loss_reduction: mean                    #mean/sum => whether to use loss reduction of sum or mean as well as whether to mean the accumulation losses or not before backprop => sum will have large grads, mean will have small grads
+clear_tensor_steps: 10                  #clear the cuda cache and gc collect, it actually runs del tensors each step (which is fast)
+grad_clip: 1                           #clip the grads to this max_norm => False to disable
+collect_grads: False                    #true to collect and map gradients for debugging
+#####################################################################
+#Advanced Training Settings
+#####################################################################
+
+
