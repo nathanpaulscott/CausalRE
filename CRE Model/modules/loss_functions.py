@@ -45,7 +45,16 @@ def cross_entropy_loss(logits, labels, mask, reduction='sum'):
     flat_labels[~flat_mask] = -1  # Set ignored index for invalid entries
 
     #Calculate the loss
-    loss = F.cross_entropy(flat_logits, flat_labels, reduction = reduction, ignore_index = -1)
+    loss = F.cross_entropy(flat_logits, flat_labels, reduction=reduction, ignore_index=-1)
+
+    ''''
+    if torch.isnan(loss).any():
+        print('xxxxxxxxxxxxxxxxxxxxxxx')
+        print(logits)
+        print(labels)
+        print(mask)
+        exit()
+    '''
 
     # Reshape loss back to the shape of labels if reduction is 'none'
     return loss.view_as(labels) if reduction == 'none' else loss

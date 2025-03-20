@@ -38,13 +38,21 @@ class Model(nn.Module):
         self.num_limit = 1e4 if self.config.num_precision == 'half' else 1e10
         
         #make the modified transformer encoder with subtoken pooling functionality
-        self.transformer_encoder = TransformerEncoderHF(self.config)
+        if self.config.bert_shared_unmarked_span_rel:
+            self.transformer_encoder_span = TransformerEncoderHF(self.config)
+            self.transformer_encoder_rel = self.transformer_encoder_span
+        else:
+            self.transformer_encoder_span = TransformerEncoderHF(self.config)
+            self.transformer_encoder_rel = TransformerEncoderHF(self.config)
+
+        #get the bert instance for the marker
+        self.transformer_encoder_marker = TransformerEncoderHF(self.config)
 
         #make the span/relmarker if required
         if self.config.use_span_marker:
-            self.span_marker = SpanMarker(self.transformer_encoder, self.config)
+            self.span_marker = SpanMarker(self.transformer_encoder_marker, self.config)
         if self.config.use_rel_marker:
-            self.rel_marker = RelMarker(self.transformer_encoder, self.config)
+            self.rel_marker = RelMarker(self.transformer_encoder_marker, self.config)
         
         #bilstem layer to mix the embeddings around even more
         if self.config.use_lstm:
@@ -159,7 +167,7 @@ class Model(nn.Module):
         pass
 
 
-    def transformer_and_lstm_encoder(self, x):
+    def transformer_and_lstm_encoder(self, x, transformer_encoder):
         '''
         This just gets the device internally
 
@@ -172,7 +180,7 @@ class Model(nn.Module):
         '''
         #Process input
         #token_reps are the embeddings that come out of the encoder transfomer (either subword embeddings for no subtoken pooling, or word embeddings with subtoken pooling)
-        result = self.transformer_encoder(x)
+        result = transformer_encoder(x)
         #read in the values from result
         token_reps     = result['token_reps']       #embeddings of the word/sw tokens
         token_masks    = result['token_masks']      #masks for the word/sw tokens
@@ -400,12 +408,13 @@ class Model(nn.Module):
         '''
         This determines if force pos cases is True/False dependent on the configs and the current step and the filter type
         '''
-        #No teacher forcing for non training
-        if not self.training:
+        #Do the non training scenarios
+        if not self.training and self.config.span_force_pos != 'always-eval':
             return False
-        
+                
+        #do the training scenarios (or the case where span force pos is always-eval)
         if type == 'span':
-            if self.config.filter_force_pos == 'temp':
+            if self.config.span_force_pos == 'temp':
                 if step+1 > self.config.force_pos_step_limit:
                     return False
                 else:
@@ -416,14 +425,14 @@ class Model(nn.Module):
             if self.config.rel_force_pos == 'never':
                 return False
             else:    #if it is 'follow'
-                if self.config.filter_force_pos == 'temp':
+                if self.config.span_force_pos == 'temp':
                     if step+1 > self.config.force_pos_step_limit:
                         return False
                     else:
                         return True
                 return True
 
-        return False
+        return False   
  
 
     def calc_pred_losses(self, logits_span, span_labels, span_masks, 
@@ -441,7 +450,6 @@ class Model(nn.Module):
                                             rel_masks, 
                                             reduction     = self.config.loss_reduction, 
                                             label_type    = self.config.rel_labels)
-
         return pred_span_loss, pred_rel_loss
     
 
@@ -450,8 +458,35 @@ class Model(nn.Module):
         Creates a new span/rel mask with only a subset of the negative samples.
         NOTE: Only applicable during training.
         '''
-        # Do nothing for non-training cases
-        if not self.training:
+        if binary_labels is None:
+            return masks
+
+        batch, _ = masks.shape
+
+        #Initialize new mask with all False
+        new_masks = torch.zeros_like(masks, dtype=torch.bool)
+        #set pos cases to True in the new mask
+        new_masks[binary_labels] = True  
+        #Process each batch observation separately
+        for b in range(batch):  # Iterate over batch
+            #Find indices of negative cases where mask is True
+            neg_indices = ((binary_labels[b] == False) & (masks[b] == True)).nonzero(as_tuple=False).squeeze(-1)
+            #Select up to `neg_sampling_limit` negatives
+            if neg_indices.numel() > 0:
+                num_neg_samples = min(neg_sampling_limit, neg_indices.shape[0])
+                selected_neg_indices = neg_indices[torch.randperm(neg_indices.shape[0])[:num_neg_samples]]
+                new_masks[b, selected_neg_indices] = True  # Activate selected negatives
+
+        return new_masks
+
+
+
+    def neg_sampler_old(self, masks, binary_labels=None, neg_sampling_limit=100):
+        '''
+        Creates a new span/rel mask with only a subset of the negative samples.
+        NOTE: Only applicable during training.
+        '''
+        if binary_labels is None:
             return masks
 
         #Initialize new mask with all False
@@ -469,7 +504,7 @@ class Model(nn.Module):
             neg_indices = ((binary_labels[i] == False) & (masks[i] == True)).nonzero(as_tuple=False).squeeze(-1)
             #If there are negative cases, perform neg sampling
             if neg_indices.numel() > 0:
-                num_neg_samples = min(max_neg_samples[i].item(), neg_indices.shape[0])
+                num_neg_samples = min(max_neg_samples[i], neg_indices.shape[0])
                 selected_neg_indices = neg_indices[torch.randperm(neg_indices.shape[0])[:num_neg_samples]]
                 #Activate the selected negatives
                 new_masks[i, selected_neg_indices] = True
@@ -543,7 +578,7 @@ class Model(nn.Module):
         has_labels = self.config.run_type == 'train'
                  
         #Run the transformer encoder and lstm encoder layers
-        result = self.transformer_and_lstm_encoder(x)
+        result = self.transformer_and_lstm_encoder(x, self.transformer_encoder_span)
         #read in data from results or x
         tokens          = x['tokens']                   #the list of raged lists of word tokens
         token_reps      = result['token_reps']          #(batch, batch_max_seq_len, hidden) => float, sw or w token aligned depedent pooling   
@@ -556,7 +591,7 @@ class Model(nn.Module):
         cls_reps        = result['cls_reps']            #(batch,hidden)
         orig_map        = x['orig_map']                 #list of dicts for the mapping of the orig annotation span list id to the span_ids dim 1 idx
         rel_annotations  = x['relations']                #list of ragged list of tuples => the positive cases for each obs  => list of empty lists if no labels
-        
+
         #set some initial values
         self.device = token_reps.device
         self.batch, self.batch_max_seq_len, _ = token_reps.shape
@@ -619,6 +654,7 @@ class Model(nn.Module):
 
         #NEG SAMPLING
         #NOTE: if we neg sample spans, only do it here, it makes no sense to do it before the token tagger
+        #NOTE: neg sampling is only applied to training and always passes the pos cases
         if self.config.span_neg_sampling and self.training:
             #does neg sampling for the training case
             span_masks = self.neg_sampler(span_masks, self.binarize_labels(span_labels), self.config.span_neg_sampling_limit)
@@ -687,6 +723,7 @@ class Model(nn.Module):
         if self.config.rel_neg_sampling and self.training:
             #does neg sampling for the training case
             #NOTE: check if strong neg sampling is even possible for this particular model structure, my feeling is not
+            #NOTE: neg sampling is only applied to training and always passes the pos cases
             rel_masks = self.neg_sampler(rel_masks, self.binarize_labels(rel_labels), self.config.rel_neg_sampling_limit)
             if self.config.prune_rel_tensors:
                 #Note implemented yet, this will onlyl help the traniing case by the way, but probably still useful
@@ -704,17 +741,35 @@ class Model(nn.Module):
         3) window_context => concatenate the head and tail reps with windowed context reps, i.e. window context takes token reps in a window before and after each span and attention_pools, max_pool them => to be coded
         4+) working on more options, see code for details
         '''
-        #output shape (batch, top_k_spans**2, hidden)   
-        #NOTE: if we used neg sampling on teh rels and pruned the tensors, then the dim length will be much shorter than top_k_spans**2
-        rel_reps = self.rel_rep_layer(span_reps       = span_reps, 
-                                    span_ids        = span_ids, 
-                                    token_reps      = token_reps, 
-                                    token_masks     = token_masks,
-                                    rel_masks       = rel_masks,
-                                    neg_limit       = -self.num_limit,
-                                    rel_ids         = rel_ids,
-                                    span_filter_map = span_filter_map,
-                                    pruned_rels     = False)    #keep false for now as I have not updated the context code to handle this
+        if not self.config.bert_shared_unmarked_span_rel:
+            #get a separate set of token and span reps for the rels from the rel bert
+            result = self.transformer_and_lstm_encoder(x, self.transformer_encoder_rel)
+            token_reps = result['token_reps']          #(batch, batch_max_seq_len, hidden) => float, sw or w token aligned depedent pooling   
+            cls_reps  = result['cls_reps']            #(batch,hidden)
+            
+            #remake the span_reps for use in building the rel reps
+            span_reps = self.span_rep_layer(token_reps, 
+                                            span_ids    = span_ids, 
+                                            span_masks  = span_masks, 
+                                            cls_reps    = cls_reps,
+                                            span_widths = span_ids[:,:,1] - span_ids[:,:,0],
+                                            neg_limit   = -self.num_limit)
+
+        #output shape (batch, num_spans**2, hidden)   
+        #NOTE: if we used neg sampling on the rels and pruned the tensors, then the dim length will be much shorter than top_k_spans**2
+        #NOTE: this is a temporary if statement, I have not updated the context based rel rep code yet
+        if self.rel_rep_layer == 'no_context':
+            rel_reps = self.rel_rep_layer(span_reps, rel_ids)
+        else:
+            rel_reps = self.rel_rep_layer(span_reps       = span_reps, 
+                                         span_ids        = span_ids, 
+                                         token_reps      = token_reps, 
+                                         token_masks     = token_masks,
+                                         rel_masks       = rel_masks,
+                                         neg_limit       = -self.num_limit,
+                                         rel_ids         = rel_ids,
+                                         span_filter_map = span_filter_map,     #not used right now, its for the pruning case, just leave for now
+                                         pruned_rels     = False)    #keep false for now as I have not updated the context code to handle this
 
         #Compute filtering scores for relations and sort them in descending order
         ###############################################################
@@ -831,10 +886,20 @@ class Model(nn.Module):
             lost_rel_loss = lost_rel_penalty * self.config.lost_rel_alpha
             #self.config.logger.write(f'lost rel count: {lost_rel_counts.sum().item()}')
 
-            #get the total loss
-            total_loss = sum([tagger_loss, filter_loss_span, filter_loss_rel, lost_rel_loss, filter_loss_graph, pred_loss_span, pred_loss_rel])
 
-        #print(f' fls: {filter_loss_span}, flr: {filter_loss_rel}, lrl: {lost_rel_loss}, flg: {filter_loss_graph if self.config.use_graph else "-"}, cls: {pred_loss_span}, clr: {pred_loss_rel}')
+            #temp, to disable some of the losses
+            #tagger_loss       = torch.tensor(0.0, device=self.device, requires_grad=False)
+            #filter_loss_span  = torch.tensor(0.0, device=self.device, requires_grad=False)
+            #filter_loss_rel   = torch.tensor(0.0, device=self.device, requires_grad=False)
+            #filter_loss_graph = torch.tensor(0.0, device=self.device, requires_grad=False)
+            #lost_rel_loss     = torch.tensor(0.0, device=self.device, requires_grad=False)
+            #pred_loss_span    = torch.tensor(0.0, device=self.device, requires_grad=False)
+            #pred_loss_rel    = torch.tensor(0.0, device=self.device, requires_grad=False)
+
+            #get the total loss
+            total_loss = sum([tagger_loss, filter_loss_span, filter_loss_rel, lost_rel_loss, filter_loss_graph, self.config.span_loss_mf*pred_loss_span, self.config.rel_loss_mf*pred_loss_rel])
+
+        #print(f' tl: {tagger_loss}, fls: {filter_loss_span}, flr: {filter_loss_rel}, lrl: {lost_rel_loss}, flg: {filter_loss_graph if self.config.use_graph else "-"}, cls: {pred_loss_span}, clr: {pred_loss_rel}')
 
         output = dict(
             loss                 = total_loss,

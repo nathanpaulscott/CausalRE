@@ -111,7 +111,7 @@ def make_context_rel_reps_from_pruned_ids(mapped_rel_ids, token_reps, token_mask
 
 
 
-def make_head_tail_reps(span_reps, top_k_spans):
+def make_head_tail_reps_old(span_reps, top_k_spans):
     """
     Expands candidate span representations to generate head and tail representations for all span pairs.
     Args:
@@ -123,6 +123,32 @@ def make_head_tail_reps(span_reps, top_k_spans):
     head_reps = span_reps.unsqueeze(2).expand(-1, top_k_spans, top_k_spans, -1)  # (batch, top_k_spans, top_k_spans, hidden)
     tail_reps = span_reps.unsqueeze(1).expand(-1, top_k_spans, top_k_spans, -1)  # (batch, top_k_spans, top_k_spans, hidden)
     return head_reps, tail_reps
+
+
+
+def make_head_tail_reps(span_reps, rel_ids):
+    """
+    Generates head and tail span representations for relation classification.
+
+    Args:
+        span_reps (torch.Tensor): A tensor of shape (batch, num_spans, hidden) containing span representations.
+        rel_ids (torch.Tensor): A tensor of shape (batch, num_relations, 2), where each entry is (head_id, tail_id).
+    
+    Returns:
+        tuple:
+            - head_reps (torch.Tensor): A tensor of shape (batch, num_relations, hidden), representing the head spans.
+            - tail_reps (torch.Tensor): A tensor of shape (batch, num_relations, hidden), representing the tail spans.
+    """
+    _, _, hidden = span_reps.shape
+
+    # Extract valid head & tail span representations using rel_ids
+    head_ids, tail_ids = rel_ids[..., 0], rel_ids[..., 1]  # Shape: (batch, num_relations)
+    # Gather head and tail span representations using rel_ids
+    head_reps = torch.gather(span_reps, 1, head_ids.unsqueeze(-1).expand(-1, -1, hidden))
+    tail_reps = torch.gather(span_reps, 1, tail_ids.unsqueeze(-1).expand(-1, -1, hidden))
+
+    return head_reps, tail_reps
+
 
 
 def make_seq_indices_expanded(token_masks):
@@ -211,7 +237,7 @@ class RelRepNoContext(nn.Module):
         #no weight init required as is handled by the out_layer
 
 
-    def forward(self, span_reps, rel_ids, span_filter_map, pruned_rels=False, **kwargs):
+    def forward_old(self, span_reps, rel_ids, span_filter_map, pruned_rels=False, **kwargs):
         """
         Generates relation representations from candidate span representations by forming all possible 
         head-tail combinations and reprojecting them into a hidden space.
@@ -232,13 +258,35 @@ class RelRepNoContext(nn.Module):
         #this works on the full catesian product of span_ids x span_ids
         batch, top_k_spans, _ = span_reps.shape
         #Expand heads n tails
-        head_reps, tail_reps = make_head_tail_reps(span_reps, top_k_spans)
+        head_reps, tail_reps = make_head_tail_reps_old(span_reps, top_k_spans)
         #make the rel reps
         rel_reps = torch.cat([head_reps, tail_reps], dim=-1)   #(batch, top_k_spans, top_k_spans, hidden * 2)
         #move the shape back to 3 dims
         rel_reps = rel_reps.view(batch, top_k_spans * top_k_spans, -1)   #(batch, top_k_spans**2, hidden*2)
         #Apply output layer and return
         return self.out_layer(rel_reps)    #(batch, top_k_spans**2, hidden)
+
+
+    def forward(self, span_reps, rel_ids, **kwargs):
+        """
+        Generates relation representations from candidate span representations by forming all possible 
+        head-tail combinations and reprojecting them into a hidden space.
+        Args:
+            span_reps (torch.Tensor): A tensor of shape (batch, top_k_spans, hidden) containing 
+                span representations for candidate spans.
+            **kwargs: Additional keyword arguments (unused).
+        Returns:
+            torch.Tensor: A tensor of shape (batch, top_k_spans**2, hidden), where each entry represents 
+                a relation representation for a pair of spans.
+        """
+        #this works on the full catesian product of span_ids x span_ids
+        batch, num_spans, _ = span_reps.shape
+        #get head and tail reps
+        head_reps, tail_reps = make_head_tail_reps(span_reps, rel_ids)    #(b, num_rels, hidden), (b, num_rels, hidden)
+        #make the rel reps
+        rel_reps = torch.cat([head_reps, tail_reps], dim=-1)   #(batch, num_rels, hidden * 2)
+        #Apply output layer and return
+        return self.out_layer(rel_reps)    #(batch, num_rels, hidden)
 
 
 ############################################################################
@@ -364,7 +412,7 @@ class RelRepContextBase(nn.Module, ABC):
 
         batch, top_k_spans, _ = span_reps.shape  # (batch, top_k_spans, hidden)
         #Span representation expansion for relational context.
-        head_reps, tail_reps = make_head_tail_reps(span_reps, top_k_spans)
+        head_reps, tail_reps = make_head_tail_reps_old(span_reps, top_k_spans)
         #Generate the context mask (subclass-specific)
         context_masks = self.make_context_masks(token_masks, span_ids, **kwargs)
         context_reps = self.make_context_reps(token_reps, context_masks, neg_limit)

@@ -143,9 +143,8 @@ class ModelManager:
 
 class Optimizer:
     def __init__(self, config, model):
-        lr_encoder = float(config.lr_encoder)
+        self.config = config
         lr_others = float(config.lr_others)
-        freeze_encoder = config.freeze_encoder
         weight_decay = float(config.opt_weight_decay)
 
         if config.opt_type == 1:
@@ -153,35 +152,53 @@ class Optimizer:
                                                lr=lr_others, 
                                                weight_decay=weight_decay)
         else:
-            opt_params = self.get_optimizer_params_alt(model, config)
+            opt_params = self.get_optimizer_params(model, config)
 
             self.optimizer = torch.optim.AdamW(opt_params, 
                                                lr=lr_others, 
                                                weight_decay=weight_decay)
 
 
-    def get_optimizer_params_alt(self, model, config):
+    def get_optimizer_params(self, model, config):
         """
         Prepare optimizer parameters with specific settings for different model components.
         - `lr_encoder` for transformer encoder parameters.
         - `lr_others` for all other parameters.
         - Optionally freeze the transformer encoder.
         """
-        lr_encoder = float(config.lr_encoder)
+        lr_encoder_span = float(config.lr_encoder_span)
+        lr_encoder_rel = float(config.lr_encoder_rel)
+        lr_encoder_marker = float(config.lr_encoder_marker)
         lr_others = float(config.lr_others)
         param_groups = []
 
-        # Freeze or set specific learning rate for the transformer encoder
-        encoder_params = list(model.transformer_encoder.parameters())
+        encoder_params_span = list(model.transformer_encoder_span.parameters())
+        encoder_params_marker = list(model.transformer_encoder_marker.parameters())
+        if not self.config.bert_shared_unmarked_span_rel:
+            encoder_params_rel = list(model.transformer_encoder_rel.parameters())
+        # Handle freezing and learning rate assignment separately for each encoder
         if config.freeze_encoder:
-            for param in encoder_params:
+            for param in encoder_params_span:
                 param.requires_grad = False
+            for param in encoder_params_marker:
+                param.requires_grad = False
+            if not self.config.bert_shared_unmarked_span_rel:
+                for param in encoder_params_rel:
+                    param.requires_grad = False
+            processed_params = set()  # No encoder parameters will be trained
+
         else:
-            param_groups.append({"params": encoder_params, "lr": lr_encoder})
+            # Assign different learning rates if needed
+            param_groups.append({"params": encoder_params_span, "lr": lr_encoder_span})
+            param_groups.append({"params": encoder_params_marker, "lr": lr_encoder_marker})
+            # Track which parameters are processed
+            processed_params = set(encoder_params_span + encoder_params_marker)
+            #deal with bert rel params if not shared
+            if not self.config.bert_shared_unmarked_span_rel:
+                param_groups.append({"params": encoder_params_rel, "lr": lr_encoder_rel})
+                processed_params.update(encoder_params_rel)
 
         # Set specific learning rate for other parameters
-        # Exclude encoder parameters by checking if they belong to the encoder module
-        processed_params = set(encoder_params) if not config.freeze_encoder else set()
         for module in model.modules():
             # Skip the root model module to prevent double processing
             if module != model:
@@ -191,11 +208,11 @@ class Optimizer:
                 if unique_params:
                     param_groups.append({"params": unique_params, "lr": lr_others})
                     processed_params.update(unique_params)
-
+                    
         return param_groups
 
 
-    def get_optimizer_params(self, model, config):
+    def get_optimizer_params_old(self, model, config):
         '''
         Sets no weight decay on certain params and specific learning rates on specific params.
         If encoder is frozen, sets requires_grad to False for its parameters.

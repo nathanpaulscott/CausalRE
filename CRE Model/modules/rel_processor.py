@@ -27,7 +27,7 @@ class RelationProcessor():
         makes the blank rel_labels tensors
         '''
         if self.config.rel_labels == 'unilabel':
-            return torch.full((self.batch, self.top_k_spans, self.top_k_spans), -1, dtype=torch.long, device=self.device)
+            return torch.zeros((self.batch, self.top_k_spans, self.top_k_spans), dtype=torch.long, device=self.device)
         elif self.config.rel_labels == 'multilabel':
             return torch.zeros((self.batch, self.top_k_spans, self.top_k_spans, self.config.num_rel_types), dtype=torch.bool, device=self.device)
 
@@ -67,41 +67,20 @@ class RelationProcessor():
 
         #Process each relation and update labels
         #do it in a loop as the number of positive rels are small (typically 0-2 per obs)
-        for i in range(self.batch):
-            for head_idx_raw, tail_idx_raw, rel_type in raw_rels[i]:
+        for b in range(self.batch):
+            for head_idx_raw, tail_idx_raw, rel_type in raw_rels[b]:
                 #map the raw head and tail idx to the corresponding span_idx, will be -1 if not found
-                head_cand_idx = span_filter_map[i, orig_map[i][head_idx_raw]]
-                tail_cand_idx = span_filter_map[i, orig_map[i][tail_idx_raw]]
+                head_cand_idx = span_filter_map[b, orig_map[b][head_idx_raw]]
+                tail_cand_idx = span_filter_map[b, orig_map[b][tail_idx_raw]]
                 #Update rel_labels only if both head and tail span indices are found in span_ids
                 #if a head or tail can not be mapped to span_ids it is a lost rel and will be added to the lost_rel_counts
                 try:
                     if head_cand_idx != -1 and tail_cand_idx != -1:
-                        self.update_rel_labels(rel_labels, i, head_cand_idx, tail_cand_idx, rel_type)
+                        self.update_rel_labels(rel_labels, b, head_cand_idx, tail_cand_idx, rel_type)
                     else:    #here we have a lost relation case caused by one or 2 missing spans in top_k_spans
                         #self.config.logger.write('lost rel')
-                        #for debugging
-                        '''
-                        print(f'\n!!lost rel!!: head_idx_raw: {head_idx_raw}, tail_idx_raw: {tail_idx_raw}, span_id_head: {orig_map[i][head_idx_raw]}, span_id_tail: {orig_map[i][tail_idx_raw]}, head_cand_idx: {head_cand_idx}, tail_cand_idx: {tail_cand_idx}')
-                        print(x['tokens'])
-                        print(x['spans'])
-                        print(x['relations'])
-                        print(f'top_k_spans: {t}')
-                        print(f'span_idx_to_keep: {sik}')
-                        print(orig_map[i])
-                        print(span_filter_map[i]) 
-                        for id,  (sid, swsid, score, span_idx, mask, label) in enumerate(zip(x['span_ids'][i], swsids[i], fss[i], span_filter_map[i], sm[i], sl[i])):
-                            msg = f'{id}: {x["tokens"][i][sid[0]] if sid[0] < len(x["tokens"][i]) else "---"}:{x["tokens"][i][sid[1]-1] if sid[1]-1 < len(x["tokens"][i]) else "---"} => {sid.tolist()}, {swsid.tolist()}, {round(score.item(),4)}, {span_idx.item()}, {mask.item()}, {label.item()}'
-                            if id == orig_map[i][head_idx_raw]:
-                                msg += ' *head*'
-                            elif id == orig_map[i][tail_idx_raw]:
-                                msg += ' *tail*'
-                            print(msg)
-
-                        exit()
-                        '''
-                    
                         #increment the lost rel counter for this batch
-                        lost_rel_counts[i] += 1
+                        lost_rel_counts[b] += 1
                         #add the lost_rel_penalty
                         lost_rel_penalty = lost_rel_penalty + self.config.lost_rel_penalty_incr
                         if head_cand_idx == -1 and tail_cand_idx == -1:   #double the penalty if both spans are missing
