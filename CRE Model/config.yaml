@@ -44,12 +44,24 @@ data_format: id                         #id/idx.  'id' is when the spans and rel
 #####################################################################
 #General Configs
 #####################################################################
-predict_thd: 0.3                        #used in the multilabel case, for the final class predictions, applied to the sigmoid  of each class logits, range is 0 to 1, lower => easy to predict a class, higher => harder to predict a class
+predict_thd: 0.3     #0.3               #used in the multilabel case, for the final class predictions, applied to the sigmoid  of each class logits, range is > 0 and < 1, lower => easy to predict a class, higher => harder to predict a class.  NOTE: DONT set to 0 or 1
 predict_conf: False                     #the predict confidence
 rel_labels: multilabel                  #unilabel/multilabel => unilabel = 1 label per rel, uses CELoss.  multilabel = multiple labels per rel, uses BCELoss
 eval_type: manual                       #skl/manual => whether to use skl metrics, which might be slower, but allows changing the averaging type, otherwise it is locked to micro
 f1_ave: micro                           #micro/macro...  for the metrics
+#loss override
+cosine_loss_override: False             #True/False, if True we use cosine similarity loss for all losses to soften the loss signal with fuzzy matching, i mix this in with the regular loss, I do not see any noticable effect, actually makes it much worse for long span!!!
+cosine_loss_start_step: 1000            #when to switch to cosine loss, use 0 to always use it
+#metrics matching
+matching_loose: True                    #use loose span matching or exact
+matching_tolerance: 0.1                 #span width tolerance for loose matching.  >= 1 => absolute, i.e. +- that many words on each side. <1 is % of each spans width, i.e. 0.15 => for a span of width 10, the tolerance is 1.5 words on each side (so basically 1)
+matching_width_limit: 8                 #span width min limit for loose matching, i.e. do not apply to smaller spans than this
+matching_make_binary: True              #treat labels and preds as binary, only applied for loose matching == True
+#saving
 save_top_k: 1                           #keep this many of the most recent checkpoints
+#display
+eval_step_display: 7                     #display the preds for the first batch obs in eval batch idx
+
 
 #####################################################################
 #Model Configuration
@@ -65,23 +77,23 @@ use_prompt: False                       #whether to use prompting of the span an
 subtoken_pooling: maxpool               #first/last/first_last/mean/maxpool/none (maxpool and none are HF only).  none will disable subtoken pooling, only supported by HF.  NOTE: first_last will double the hidden dim, but the projection layer will pull it back to normal
 shuffle_train: True                     #always be true, except for debugging
 freeze_encoder: False                   #whether to allow fine tuning of the transformer encoder params (eg. bert), true will freeze the encoder and not allow training 
-bert_shared_unmarked_span_rel: True    #whether to use a separate bert for spans and rels or share it
+bert_shared_unmarked_span_rel: True     #whether to use a separate bert for spans and rels or share it
 hidden_size: 768                        #hidden size of the bert based encoder
 dropout: 0.1                            #standard model dropout
-max_seq_len: 140                        #word token limit, this will generally affect the model speed, so keep it as low as possible.  I have this in just a  a protection fro very long sequences coming in
-max_span_width: 120                      #max span width in word tokens (10-12 for NER, 40+ for long span event detection)
+max_seq_len: 140  #130                      #word token limit, this will generally affect the model speed, so keep it as low as possible.  I have this in just a  a protection fro very long sequences coming in
+max_span_width: 120   #50                      #max span width in word tokens (10-12 for NER, 40+ for long span event detection)
 dump_missed_spans_on_import: True       #ture/false: true => dumps the annotated spans to the log file that could not be used due to the max_seq_len and max_span_width limits
 num_precision: full                     #full/half => the num precision to use for the model => full => 32bit, half=>16bit
-projection_layer_type: simple           #simple/ffn (ffn uses too much memory). for the span_rep and rel_rep generation output layers.  'simple' to just use a simple projection layer for the output or a 'ffn' for a more complex ffn layer.  Not implemented yet, just use 'ffn'
+projection_layer_type: ffn           #simple/ffn (ffn uses too much memory). for the span_rep and rel_rep generation output layers.  'simple' to just use a simple projection layer for the output or a 'ffn' for a more complex ffn layer.  Not implemented yet, just use 'ffn'
 ffn_ratio: 4                            #FFN hidden expansion factor if projection layer is ffn
-use_lstm: False                          #whether to use an lstm layer after hte transformer encoder, this was in graphER, not sure if is of any benefit
+use_lstm: True                          #whether to use an lstm layer after hte transformer encoder, this was in graphER, not sure if is of any benefit
 lstm_layers: 2
 
 #teacher forcing
 #these params control teacher forcing in the spans/rel filter heads, the graph filter head, span output and rel output heads never use teacher forcing
 #NOTE: the span filter head is more critical than the rel filter head as relation generation depends on it, thus we have to be more careful about turning off TF, so make sure the step limit is long enough for the model stabilize first
 #it also ties into the lost_rel penalty algorithm, you need to make sure the penalty is sufficient to inform the model of it's errors so it learns
-span_force_pos: temp                  #always-eval/always/temp: always-eval keeps TF on even for eval, used to test the performance of the realtion pipeline.  always => TF is always in training.  temp => TF is used for the sepcified number fo steps
+span_force_pos: temp                  #always-eval/always/temp/never: always-eval keeps TF on even for eval, used to test the performance of the realtion pipeline.  always => TF is always in training.  temp => TF is used for the sepcified number fo steps
 force_pos_step_limit: 2000              #when to disable teacher forcing for the span/rel filter heads, set this so the model gets in the ballpark for span predictions before disabling it as it will spike lost rels
 rel_force_pos: follow                   #follow/never, if follow, it will follow the span_teacher_forcing setting (always/temp), if never, then teacher forcing is always off for the rel filter head.  if span_force_pos = always-eval, and rel is follow, then rel will use always, but not be on for eval
 
@@ -89,22 +101,22 @@ rel_force_pos: follow                   #follow/never, if follow, it will follow
 #neg sampling
 #NOTE: neg sampling is applied only during training to reduce the number of neg cases
 span_neg_sampling_limit: 100             #max number of neg samples per batch obs
-span_neg_sampling: True                 #True/False
+span_neg_sampling: False                 #True/False
 rel_neg_sampling_limit: 100              #max number of neg samples per batch obs
-rel_neg_sampling: True                  #True/False
-prune_rel_tensors: False   #keep off for now, need to update code               #prune the size of the rel tensors post neg sampling to save space
+rel_neg_sampling: False                  #True/False
 
 #token tagger configs
 token_tagger: True                     #true/false => true to use the token tagger for span preds, tagger loss and filter scores, false to bypass.
-tagging_mode: BE                       #BE/BECO => BE is Begin-End, multiclass, BECO = Begin-End-Combine-Other
+tagging_mode: BE                        #BE/BECO => BE is Begin-End, multiclass, BECO = Begin-End-Combine-Other
 
 ###############
 #span rep config
 ###############
-width_embedding_size: 200                #hidden size of the span width embedding, spert had 25
-span_mode: nathan                       #firstlast_grapher/firstlast/spert/nathan... used to configure the method used to generate the span reps from the token reps, NEED TO EXPLAIN WHAT EACH ONE DOES
+width_embedding_size: 100               #hidden size of the span width embedding, spert had 25
+span_mode: nathan                         #firstlast_grapher/firstlast/spert/nathan/attn... used to configure the method used to generate the span reps from the token reps, NEED TO EXPLAIN WHAT EACH ONE DOES
+span_win_alpha: 0.2   #0.2                     #the alpha used to determine the start/end token windows as a % of the span_width (ceil(span_width*alpha) for nathan's method, use 1 to disable this and just use the first and last tokens
 #span marking config
-use_span_marker: False                   #the top_k_spans will be marked and run through bert again to get enriched span_reps => slow but good
+use_span_marker: False                  #the top_k_spans will be marked and run through bert again to get enriched span_reps => slow but good
 span_marker_window: 50                  #none = no window (only unmask span, marker and cls/sep tokens), attention mask window around the marked spans
 span_marker_run_option: cls             #cls, marker, all: all => use concat of start, end and cls embeddings / cls just use the cls embedding / marker just use the concat of the start, end embeddings
 
@@ -119,8 +131,8 @@ span_filtering_type: tths               #tths/bfhs/both =>
                                         #bfhs uses the scores from the binary filter head to prune spans to top_k_spans from the bfh filter scores, 
                                         #both filters the spans to top_k_spans_pre using the token tagger filter scores, then processes this in the binary filter head and filters down to top_k_spans with the bfh filter scores
 max_top_k_spans_pre: 1000               #max number of spans to shortlist for stage 1 of the 2 stage case where we first filter on the token tagger filter scores before going through the binary filter head
-max_top_k_spans: 50                     #max number of spans to shortlist for the initial graph
-max_top_k_rels: 200                     #max number of rels to choose per obs for the initial graph, if the number available goes below this, then that is the limit.  This is the hard limit only overridden by the percentile filter
+max_top_k_spans: 50  #50                     #max number of spans to shortlist for the initial graph
+max_top_k_rels: 200   #200                  #max number of rels to choose per obs for the initial graph, if the number available goes below this, then that is the limit.  This is the hard limit only overridden by the percentile filter
 span_score_percentile: 0                #not used for now, code is wrong....only include spans with a score in this percentile, increase this to prune more, decrease to prune less (0, 100).  This basically controls the size of top_k_spans
 rel_score_percentile: 0                 #not used for now, code is wrong....only include rels with a score in this percentile, increase this to prune more, decrease to prune less (0, 100).  This basically controls the size of top_k_rels
 filter_dropout: True                    #whether to use dropout before the binary filter head
@@ -151,7 +163,7 @@ graph_id_method: add                    #whether to add or prefix the node and e
 ###############
 #graph transformer config
 ###############
-use_graph: False                         #True/False, if False, the whole graph and graph transformer is bypassed
+use_graph: True                         #True/False, if False, the whole graph and graph transformer is bypassed
 use_graph_reps: True                    #True => use the node/edge reps output from the graph transformer, these will be enriched embeddings but also include the node/edge identifiers mixed in
                                         #False => use the pre-graph transformer span/rel reps, as output, only use the filtering scores and loss from the graph transformer
 num_heads: 4                            #used by the graph transformer layer 
@@ -166,9 +178,9 @@ graph_filter_head_type: single          #single/double => whether to use a singl
 #Training Parameters
 #####################################################################
 num_steps: 10000                        #how many batches to run through the system, the total batches in the dataset is going to be much smaller, so it just repeats the batches
-train_batch_size: 4 #4                  #num obs per train batch
+train_batch_size: 2  #4                  #num obs per train batch
 accumulation_steps: 1 #1                #accumulate losses for this many batches, so effective batch size is accumulation_steps*train_batch_size
-eval_batch_size: 8 #6                  #num obs per val/test batch
+eval_batch_size: 6 #6                  #num obs per val/test batch
 eval_every: 500                         #eval every 'eval_every' batches
 opt_type: 2                             #1/2 => 1 use the same lr and wd for all params, 2 => use specific lr/wds 
 opt_weight_decay:  0.01                 #adamw optimiser weight decay
@@ -179,8 +191,8 @@ lr_others: 5e-5   #5e-5                 #this is the learning rate used for all 
 warmup_ratio: 0.1                       #warmup_steps will thus be warmup_ratio * num_steps
 scheduler_type: linear                  #'cosine', 'linear', 'constant', 'polynomial', 'inverse_sqrt'
 loss_reduction: mean                    #mean/sum => whether to use loss reduction of sum or mean as well as whether to mean the accumulation losses or not before backprop => sum will have large grads, mean will have small grads
-clear_tensor_steps: 10                  #clear the cuda cache and gc collect, it actually runs del tensors each step (which is fast)
-grad_clip: 10                           #clip the grads to this max_norm => False to disable
+clear_tensor_steps: 10    #10                 #clear the cuda cache and gc collect, it actually runs del tensors each step (which is fast)
+grad_clip: 1     #1                      #clip the grads to this max_norm => False to disable, do not set too high training gets unstable, 1 is good
 collect_grads: False                    #true to collect and map gradients for debugging
 span_loss_mf: 1                         #mult the span loss by this much
 rel_loss_mf: 1                         #mult the rel loss by this much

@@ -60,6 +60,8 @@ class EvaluatorBase:
             return span_labels, rel_labels, rel_labels_mod
 
     def evaluate(self, return_preds=False):
+        #readi in the matching params
+        loose_matching, tol, wid, bin = self.config.matching_loose, self.config.matching_tolerance, self.config.matching_width_limit, self.config.matching_make_binary
         
         #self.config.logger.write(str(self.all_preds['spans']))
         #self.config.logger.write(str(self.all_labels['spans']))
@@ -74,14 +76,83 @@ class EvaluatorBase:
         flat_rel_mod_labels = self.flatten_and_prepare(self.all_labels['rels_mod'])
         
         #Compute metrics
-        span_metrics    = self.metrics.run_metrics(flat_span_labels, flat_span_preds)
-        rel_metrics     = self.metrics.run_metrics(flat_rel_labels, flat_rel_preds)
-        rel_mod_metrics = self.metrics.run_metrics(flat_rel_mod_labels, flat_rel_mod_preds)
+        if loose_matching:
+            print('loose matching')
+            span_metrics    = self.metrics.run_metrics(flat_span_labels, flat_span_preds, loose_matching=loose_matching, tolerance=tol, span_limit=wid, make_binary=bin, type='span')
+            rel_metrics     = self.metrics.run_metrics(flat_rel_labels, flat_rel_preds, loose_matching=loose_matching, tolerance=tol, span_limit=wid, make_binary=bin, type='rel')
+            rel_mod_metrics = self.metrics.run_metrics(flat_rel_mod_labels, flat_rel_mod_preds, loose_matching=loose_matching, tolerance=tol, span_limit=wid, make_binary=bin, type='rel_mod')
+        else:
+            span_metrics    = self.metrics.run_metrics(flat_span_labels, flat_span_preds)
+            rel_metrics     = self.metrics.run_metrics(flat_rel_labels, flat_rel_preds)
+            rel_mod_metrics = self.metrics.run_metrics(flat_rel_mod_labels, flat_rel_mod_preds)
 
         return dict(span_metrics    = span_metrics,
                     rel_metrics     = rel_metrics,
                     rel_mod_metrics = rel_mod_metrics,
                     preds           = self.all_preds if return_preds else None)
+
+
+
+
+
+
+
+
+
+class Evaluator_custom(EvaluatorBase):
+    def __init__(self, config, metrics_class):
+        super().__init__(config, metrics_class)
+
+    def prep_and_add_batch(self, span_labels_raw, rel_labels_raw, preds):
+        '''
+        This takes in the formatted preds (positive cases only as list of list of tuples each for spans and rels) and the raw labels
+        It preps them and adds to the output
+        NOTE: no need to align for this method
+        '''
+        #get the labels => the actual positive cases
+        #NOTE: the rel_labels are the full rels with the span start,end,type info
+        span_labels, rel_labels, rel_labels_mod = self.prepare_labels(span_labels_raw, rel_labels_raw)
+        
+        #add to the output dicts
+        self.all_preds['spans'].extend(preds['spans'])
+        self.all_labels['spans'].extend(span_labels)
+        self.all_preds['rels'].extend(preds['rels'])
+        self.all_labels['rels'].extend(rel_labels)
+        self.all_preds['rels_mod'].extend(preds['rels_mod'])
+        self.all_labels['rels_mod'].extend(rel_labels_mod)
+
+
+    def flatten_and_prepare(self, data):
+        '''
+        Flattens the pos preds and labels and adds the batch index to each tuple.
+        #this nested comprehension is doing the same thing as this....
+        output = []
+        for i, obs in enumerate(data):
+            for item in obs:
+                output.append(item + (i,))
+        return output
+        '''
+        return [item + (i,) for i, obs in enumerate(data) for item in obs]
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -149,45 +220,6 @@ class Evaluator_skl(EvaluatorBase):
         return ['_'.join(map(str, item)) for obs in data for item in obs]
         #can add the batch index, but it makes no diff for the skl method, only needed for the manual method with sets
         #return ['_'.join(map(str, item + (i,))) if item != () else '' for i, obs in enumerate(data) for item in obs]
-
-
-
-class Evaluator_custom(EvaluatorBase):
-    def __init__(self, config, metrics_class):
-        super().__init__(config, metrics_class)
-
-    def prep_and_add_batch(self, span_labels_raw, rel_labels_raw, preds):
-        '''
-        This takes in the formatted preds (positive cases only as list of list of tuples each for spans and rels) and the raw labels
-        It preps them and adds to the output
-        NOTE: no need to align for this method
-        '''
-        #get the labels => the actual positive cases
-        #NOTE: the rel_labels are the full rels with the span start,end,type info
-        span_labels, rel_labels, rel_labels_mod = self.prepare_labels(span_labels_raw, rel_labels_raw)
-        
-        #add to the output dicts
-        self.all_preds['spans'].extend(preds['spans'])
-        self.all_labels['spans'].extend(span_labels)
-        self.all_preds['rels'].extend(preds['rels'])
-        self.all_labels['rels'].extend(rel_labels)
-        self.all_preds['rels_mod'].extend(preds['rels_mod'])
-        self.all_labels['rels_mod'].extend(rel_labels_mod)
-
-
-    def flatten_and_prepare(self, data):
-        '''
-        Flattens the pos preds and labels and adds the batch index to each tuple.
-        #this nested comprehension is doing the same thing as this....
-        output = []
-        for i, obs in enumerate(data):
-            for item in obs:
-                output.append(item + (i,))
-        return output
-        '''
-        return [item + (i,) for i, obs in enumerate(data) for item in obs]
-
-
 
 
 

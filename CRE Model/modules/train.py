@@ -334,6 +334,43 @@ class Trainer:
         plt.show()
 
 
+
+
+    def show_visual_results(self, x, evaluator):
+        #here get the eval obs that you want to display from evaluator.all_preds['spans'] and evaluator.all_labels['spans']
+        #the raw word tokenized tokens are in x['tokens']
+        msg = '\n#######################\nVisual Results\n#####START###############\n'
+        for offset in range(self.config.eval_batch_size):
+            #get tokens
+            show_tokens = [(i, w) for i, w in enumerate(x['tokens'][offset])]
+            #get preds and labels
+            eval_idx = self.config.eval_step_display*self.config.eval_batch_size + offset
+            show_span_preds = evaluator.all_preds['spans'][eval_idx]
+            show_span_preds = [tuple(int(item) for item in tup) for tup in show_span_preds]
+            show_span_labels = evaluator.all_labels['spans'][eval_idx]
+            show_rel_preds = evaluator.all_preds['rels'][eval_idx]
+            show_rel_preds = [tuple(int(item) for item in tup) for tup in show_rel_preds]
+            show_rel_labels = evaluator.all_labels['rels'][eval_idx]
+            #sort
+            show_span_preds = sorted(show_span_preds, key=lambda x: (x[0], x[1]))
+            show_span_labels = sorted(show_span_labels, key=lambda x: (x[0], x[1]))
+            show_rel_preds = sorted(show_rel_preds, key=lambda x: (x[0], x[1], x[3], x[4]))
+            show_rel_labels = sorted(show_rel_labels, key=lambda x: (x[0], x[1], x[3], x[4]))
+            msg += f'eval idx: {eval_idx}\n'
+            msg += f'tokens: {show_tokens}\n'
+            msg += f'span labels: {show_span_labels}\n'    
+            msg += f'span_preds:  {show_span_preds}\n'
+            msg += f'rel labels: {show_rel_labels}\n'    
+            msg += f'rel_preds:  {show_rel_preds}\n'
+            msg += '---------------------------\n'
+        msg += '######END################'
+
+        return msg
+
+
+
+
+
     def eval_loop(self, model, data_loader, device, step=None):
         '''
         The run_type param here will be 'train' so we have labels and calculate loss
@@ -346,6 +383,7 @@ class Trainer:
         evaluator = make_evaluator(config)
         eval_loader = self.load_loader(data_loader, device, infinite=False)
         total_eval_steps = len(data_loader)
+        visual_results = ''
         model.eval()
         with torch.no_grad():
             #for x in tqdm(eval_loader, desc=f"Eval({total_eval_steps} batches)", leave=True):
@@ -383,10 +421,14 @@ class Trainer:
                     #self.config.logger.write(f' Eval step {eval_step}, clearing tensors')
                     clear_gpu_tensors([v for k,v in result.items() if k != 'loss'], gc_collect=True, clear_cache=True)   #slows it down if true
                 
+                #show actual output to the user for reference
+                if eval_step == self.config.eval_step_display:
+                    visual_results = self.show_visual_results(x, evaluator)
+
                 #TEMP
                 #TEMP
                 #TEMP
-                #if eval_step > 1:
+                #if eval_step > 6:
                 #    break
                 #TEMP
                 #TEMP
@@ -396,7 +438,7 @@ class Trainer:
 
         #run the evaluator on whole dataset results (stored in the evaluator object) and return a dict with the metrics and preds
         result = evaluator.evaluate()
-            
+        print(visual_results)
 
         return result
     ##############################################################

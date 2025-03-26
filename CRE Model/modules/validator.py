@@ -23,7 +23,10 @@ class Validator:
             raise Exception('if you use the token tagger you should select filter type as tths or both')
         if not self.config.token_tagger and self.config.span_filtering_type == 'ttfs':
             raise Exception('if you dont use the token tagger you cant select filter type as tths')
-
+        if self.config.span_win_alpha > 1:
+            raise Exception('span win alpha needs to be 1 or less')
+        if self.config.predict_thd <= 0 or self.config.predict_thd >= 1:
+            raise Exception('predict thd needs to be above 0 and < 1')
 
 
     def validate_dataset(self, raw_data):

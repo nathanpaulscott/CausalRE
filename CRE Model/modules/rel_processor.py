@@ -22,14 +22,14 @@ class RelationProcessor():
 
 
 
-    def init_rel_labels(self):
+    def init_rel_labels(self, batch, num_spans, device):
         '''
         makes the blank rel_labels tensors
         '''
         if self.config.rel_labels == 'unilabel':
-            return torch.zeros((self.batch, self.top_k_spans, self.top_k_spans), dtype=torch.long, device=self.device)
+            return torch.zeros((batch, num_spans, num_spans), dtype=torch.long, device=device)
         elif self.config.rel_labels == 'multilabel':
-            return torch.zeros((self.batch, self.top_k_spans, self.top_k_spans, self.config.num_rel_types), dtype=torch.bool, device=self.device)
+            return torch.zeros((batch, num_spans, num_spans, self.config.num_rel_types), dtype=torch.bool, device=device)
 
 
     def update_rel_labels(self, rel_labels, batch_idx, head_cand_idx, tail_cand_idx, rel_type):
@@ -48,27 +48,31 @@ class RelationProcessor():
     def flatten_rel_labels(self, rel_labels):
         '''
         converts the rel_labels from:
-        unilabel => (batch, top_k_spans, top_k_spans) => (batch, top_k_spans**2)
-        multilabel => (batch, top_k_spans, top_k_spans, num rel types) => (batch, top_k_spans**2, num rel types)
+        unilabel => (batch, num_spans, num_spans) => (batch, num_spans**2)
+        multilabel => (batch, num_spans, num_spans, num rel types) => (batch, num_spans**2, num rel types)
         '''
+        batch = rel_labels.shape[0]
         if self.config.rel_labels == 'unilabel':
-            return rel_labels.view(self.batch, -1)
+            return rel_labels.view(batch, -1)
         elif self.config.rel_labels == 'multilabel':
-            return rel_labels.view(self.batch, -1, self.config.num_rel_types)
+            return rel_labels.view(batch, -1, self.config.num_rel_types)
 
 
-    def get_rel_labels(self, raw_rels, orig_map, span_filter_map):  #, x, t, sik, swsids, fss, sm, sl):
+    def get_rel_labels(self, rel_annotations, orig_map, span_filter_map, span_masks):
+        batch, num_spans = span_masks.shape
+        device = span_masks.device
+
         #init the lost_rel_counts, lost_rel_penalty tensors and the rel_labels tensor.
-        lost_rel_counts =  torch.zeros(self.batch, dtype=torch.long, device=self.device)
+        lost_rel_counts =  torch.zeros(batch, dtype=torch.long, device=device)
         #NOTE: the lost_rel_penalty is for calculting the penalty loss for lost rels, so it needs to be shape (1) float and requires_grad
-        lost_rel_penalty = torch.tensor(0.0, dtype=self.config.torch_precision, device=self.device, requires_grad=True)
+        lost_rel_penalty = torch.tensor(0.0, dtype=self.config.torch_precision, device=device, requires_grad=True)
         #initialize the rel_labels
-        rel_labels = self.init_rel_labels()
+        rel_labels = self.init_rel_labels(batch, num_spans, device)
 
         #Process each relation and update labels
         #do it in a loop as the number of positive rels are small (typically 0-2 per obs)
-        for b in range(self.batch):
-            for head_idx_raw, tail_idx_raw, rel_type in raw_rels[b]:
+        for b in range(batch):
+            for head_idx_raw, tail_idx_raw, rel_type in rel_annotations[b]:
                 #map the raw head and tail idx to the corresponding span_idx, will be -1 if not found
                 head_cand_idx = span_filter_map[b, orig_map[b][head_idx_raw]]
                 tail_cand_idx = span_filter_map[b, orig_map[b][tail_idx_raw]]
@@ -77,7 +81,7 @@ class RelationProcessor():
                 try:
                     if head_cand_idx != -1 and tail_cand_idx != -1:
                         self.update_rel_labels(rel_labels, b, head_cand_idx, tail_cand_idx, rel_type)
-                    else:    #here we have a lost relation case caused by one or 2 missing spans in top_k_spans
+                    else:    #here we have a lost relation case caused by one or 2 missing spans in num_spans
                         #self.config.logger.write('lost rel')
                         #increment the lost rel counter for this batch
                         lost_rel_counts[b] += 1
@@ -102,48 +106,49 @@ class RelationProcessor():
         so remember the span_masks are derived from the span_masks for the shortlisted spans and remember that the span_masks are 1 for pos cases and selected neg caess from neg sampling
         thus rel_masks here are only 1 if both the head and tail span have mask of 1 and head != tail
         NOTE: depending on run options, if teacher forcing is disabled, then there is no guarantee that all pos cases will be in span_masks
-        NOTE: that we are NOT doing neg sampling here, I am not actually sure how I would even include that as we now can have lost rels (pos rels from labels that never maade it to the ids as they were misclassified by spans)
-        I think you would include it here in the rel_masks, you basically would look for 100 or the largest available number of rels where both head and tail are pos case spans, i.e. spans.  Thus if there are only a few
-        actual spans, then the number of neg cases is not large.....
-        This is not so important if we are using the pruning stage to get cand spans and can rels!!!
         '''
-        #generate rel_ids, using cartesian product straight to (top_k_spans**2, 2)
-        top_k_span_indices = torch.arange(self.top_k_spans, device=self.device)    #Generate span indices (0 to top_k_spans-1 for each item in the batch)
-        rel_ids = torch.cartesian_prod(top_k_span_indices, top_k_span_indices)
-        #expand the rel_ids to the batch => to shape (batch, top_k_spans**2, 2)
-        rel_ids = rel_ids.unsqueeze(0).expand(self.batch, -1, -1)
+        batch, num_spans = span_masks.shape
+        device = span_masks.device
+
+        #generate rel_ids, using cartesian product straight to (num_spans**2, 2)
+        span_indices = torch.arange(num_spans, device=device)    #Generate span indices (0 to num_spans-1 for each item in the batch)
+        rel_ids = torch.cartesian_prod(span_indices, span_indices)
+        #expand the rel_ids to the batch => to shape (batch, num_spans**2, 2)
+        rel_ids = rel_ids.unsqueeze(0).expand(batch, -1, -1)
 
         #generate rel_masks
         rel_masks = span_masks.unsqueeze(2) & span_masks.unsqueeze(1)
         #Mask out self-relations (i.e., diagonal elements)
-        diagonal_rel_mask = torch.eye(self.top_k_spans, device=self.device, dtype=torch.bool)
+        diagonal_rel_mask = torch.eye(num_spans, device=device, dtype=torch.bool)
         rel_masks = rel_masks & ~diagonal_rel_mask.unsqueeze(0)
         #Flatten masks dim 1,2
-        rel_masks = rel_masks.view(self.batch, -1)
+        rel_masks = rel_masks.view(batch, -1)
 
         return rel_ids, rel_masks
 
 
 
-    def get_rel_tensors(self, span_masks, raw_rels, orig_map, span_filter_map):    #), x, t, sik, swsids, fss, sm, sl):
+    def get_rel_tensors(self, span_masks, rel_annotations, orig_map, span_filter_map):
         """
         Generates relation labels, masks, and IDs for all possible pairs of candidate spans derived from provided span indices.
-        This function is crucial for dynamic and efficient relation extraction, adapting to both unilabel and multilabel scenarios and ensuring that lost relations are tracked.
-
+        
         Args:
-            span_ids (torch.Tensor): Tensor containing indices of candidate spans.
             span_masks (torch.Tensor): Boolean tensor indicating valid candidate spans.
-            raw_rels (list of lists of tuples): Each tuple represents a relation as (head, tail, rel_type_string).
-            orig_map (list of dicts): Maps original span indices to candidate span indices for each batch.
-            span_filter_map (torch.Tensor): Maps the span_id idx to span_ids idx; -1 if not in candidate spans.
+            rel_annotations (list of lists of tuples): Each tuple represents a relation as (head, tail, rel_type_string).
+            orig_map (list of dicts): Maps annotation span indices to span idx in x['span_ids'] (all poss span ids).
+            span_filter_map (torch.Tensor): Maps the span_id in x['span_ids'] (all_span_ids) to the span id in span_ids (pruned span_ids); -1 if not in the pruned span_ids
         
         Returns:
             Tuple of (rel_ids, rel_masks, rel_labels, lost_rel_counts) containing the tensors necessary for further processing.
-        """
-        self.batch, self.top_k_spans = span_masks.shape
-        self.device = span_masks.device
 
-        #Generate the rel_ids and rel_masks from the span_ids and span_masks
+        called with....
+        rel_ids, rel_masks, rel_labels, lost_rel_counts, lost_rel_penalty = self.rel_processor.get_rel_tensors(span_masks,            #the span mask for each selected span  (batch, num_spans)
+                                                                                                               rel_annotations,       #the raw relation annotations data.  NOTE: will be None for no labels
+                                                                                                               orig_map,              #maps annotation span list id to the dim 1 id in all_span_ids.  NOTE: will be None for no labels  
+                                                                                                               span_filter_map)       #maps all_span_ids to current span_ids which will be different after token tagging heads and filtering                    
+                            
+        """
+        #Generate the rel_ids and rel_masks from span_masks
         rel_ids, rel_masks = self.make_rel_ids_and_masks(span_masks)
 
         #return if we have no labels
@@ -151,7 +156,7 @@ class RelationProcessor():
             return rel_ids, rel_masks, None, None
 
         #get rel_labels if we have labels
-        rel_labels, lost_rel_counts, lost_rel_penalty = self.get_rel_labels(raw_rels, orig_map, span_filter_map)   #, x, t, sik, swsids, fss, sm, sl)
+        rel_labels, lost_rel_counts, lost_rel_penalty = self.get_rel_labels(rel_annotations, orig_map, span_filter_map, span_masks) 
         
         return rel_ids, rel_masks, rel_labels, lost_rel_counts, lost_rel_penalty
 
@@ -171,32 +176,42 @@ class RelationProcessor():
 #################################################################
 #testing
 
-def make_rel_ids_and_masks(span_ids, span_masks, batch, top_k_spans, device):
-    #generate rel_ids, using cartesian product stright to (batch, top_k_spans**2, 2)
-    indices = torch.arange(top_k_spans, device=device)    #Generate span indices (0 to top_k_spans-1 for each item in the batch)
-    rel_ids = torch.cartesian_prod(indices, indices)
+def make_rel_ids_and_masks(span_masks):
+    """
+    so remember the span_masks are derived from the span_masks for the shortlisted spans and remember that the span_masks are 1 for pos cases and selected neg caess from neg sampling
+    thus rel_masks here are only 1 if both the head and tail span have mask of 1 and head != tail
+    NOTE: depending on run options, if teacher forcing is disabled, then there is no guarantee that all pos cases will be in span_masks
+    """
+    batch, num_spans = span_masks.shape
+    device = span_masks.device
+
+    #generate rel_ids, using cartesian product straight to (num_spans**2, 2)
+    span_indices = torch.arange(num_spans, device=device)    #Generate span indices (0 to num_spans-1 for each item in the batch)
+    rel_ids = torch.cartesian_prod(span_indices, span_indices)
+    #expand the rel_ids to the batch => to shape (batch, num_spans**2, 2)
     rel_ids = rel_ids.unsqueeze(0).expand(batch, -1, -1)
 
     #generate rel_masks
     rel_masks = span_masks.unsqueeze(2) & span_masks.unsqueeze(1)
     #Mask out self-relations (i.e., diagonal elements)
-    diagonal_mask = torch.eye(top_k_spans, device=device, dtype=torch.bool).unsqueeze(0)
-    rel_masks = rel_masks & ~diagonal_mask
-    #Flatten dim 1,2 of masks for compatibility
+    diagonal_rel_mask = torch.eye(num_spans, device=device, dtype=torch.bool)
+    rel_masks = rel_masks & ~diagonal_rel_mask.unsqueeze(0)
+    #Flatten masks dim 1,2
     rel_masks = rel_masks.view(batch, -1)
 
     return rel_ids, rel_masks
+    
 
 
 # Mock data
 batch = 3
-top_k_spans = 3
+num_spans = 3
 device = 'cpu'
-span_ids = torch.randint(0, 100, (batch, top_k_spans, 2), device=device)
+span_ids = torch.randint(0, 100, (batch, num_spans, 2), device=device)
 span_masks = torch.tensor([[True, True, False],[True, True, False],[True, True, False]], dtype=torch.bool, device=device)
 
 # Running the method
-rel_ids, rel_masks = make_rel_ids_and_masks(span_ids, span_masks, batch, top_k_spans, device)
+rel_ids, rel_masks = make_rel_ids_and_masks(span_masks)
 
 # Printing results for verification
 print("span_ids:", span_ids)
@@ -205,4 +220,50 @@ print("rel_ids shape:", rel_ids.shape)
 print("rel_ids:", rel_ids)
 print("rel_masks shape:", rel_masks.shape)
 print("rel_masks:", rel_masks)
+'''
+
+
+'''
+class Config:
+    def __init__(self, run_type='train', rel_labels='multilabel', torch_precision=torch.float32, num_rel_types=3, lost_rel_penalty_incr=0.5):
+        self.run_type = run_type
+        self.rel_labels = rel_labels
+        self.torch_precision = torch_precision
+        self.num_rel_types = num_rel_types
+        self.lost_rel_penalty_incr = lost_rel_penalty_incr
+        self.r_to_id = {0:0,1:1,2:2}
+
+# Initialize the RelationProcessor with a multilabel configuration
+config = Config()
+relation_processor = RelationProcessor(config)
+
+# Define test data for multilabel scenario
+span_masks = torch.tensor([[True, True, True, True],
+                           [True, True, True, True]], dtype=torch.bool)
+
+# Relation annotations with multilabels (assuming 3 types of relations)
+rel_annotations = [
+    [(0, 1, 0), (0, 2, 1)],  # Batch 1: Relation between span 0 and 1 of type 0, between 0 and 2 of type 1
+    [(0, 2, 2)]              # Batch 2: Relation between span 0 and 2 of type 2
+]
+
+orig_map = [
+    {0: 4, 1: 2, 2: 3},  # Maps span annotations to all_span_ids indices
+    {0: 2, 1: 6, 2: 5}
+]
+
+span_filter_map = torch.tensor([
+    [-1,-1, 1, 3, 2, 0,-1,-1,-1,-1,-1],  # Mapping from all_span_ids to filtered span_ids
+    [-1,-1, 0,-1, 3, 1, 2,-1,-1,-1,-1]
+])
+
+# Process the relations for multilabel
+rel_ids, rel_masks, rel_labels, lost_rel_counts, lost_rel_penalty = relation_processor.get_rel_tensors(span_masks, rel_annotations, orig_map, span_filter_map)
+
+# Print the outputs to verify the correctness
+print("Relation IDs:\n", rel_ids)
+print("Relation Masks:\n", rel_masks)
+print("Relation Labels (Multilabel):\n", rel_labels)
+print("Lost Relation Counts:\n", lost_rel_counts)
+print("Lost Relation Penalty:\n", lost_rel_penalty)
 '''

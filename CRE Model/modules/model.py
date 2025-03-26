@@ -18,13 +18,19 @@ from .layers_transformer_encoder_hf import TransformerEncoderHF
 from .layers_token_tagging import TokenTagger
 from .layers_filtering import FilteringLayerBinaryDouble, FilteringLayerBinarySingle
 from .layers_other import LstmSeq2SeqEncoder, TransformerEncoderTorch, GraphEmbedder, OutputLayer
-from .loss_functions import classification_loss
-from .span_rep import SpanRepLayer
+from .loss_functions import classification_loss, cosine_similarity_loss
 from .span_marker import SpanMarker
 from .rel_marker import RelMarker
-from .rel_processor import RelationProcessor
-from .rel_rep import RelationRepLayer
 from .utils import clear_gpu_tensors
+
+from .span_rep import SpanRepLayer
+#from .span_rep_old import SpanRepLayer
+
+from .rel_processor import RelationProcessor
+#from .rel_processor_old import RelationProcessor
+
+from .rel_rep import RelationRepLayer
+#from .rel_rep_old import RelationRepLayer
 
 
 
@@ -79,9 +85,7 @@ class Model(nn.Module):
         #this forms the span reps from the token reps using the method defined by config.span_mode,
         self.span_rep_layer = SpanRepLayer(
             span_mode             = self.config.span_mode,
-            max_seq_len           = self.config.max_seq_len,       #in word widths    
             max_span_width        = self.config.max_span_width,    #in word widths
-            pooling               = self.config.subtoken_pooling,     #whether we are using pooling or not
             #rest are in kwargs
             hidden_size           = self.config.hidden_size,
             layer_type            = self.config.projection_layer_type,
@@ -113,7 +117,6 @@ class Model(nn.Module):
             layer_type         = self.config.projection_layer_type,
             ffn_ratio          = self.config.ffn_ratio,
             dropout            = self.config.dropout,
-            pooling            = self.config.subtoken_pooling,     #whether we are using pooling or not
             no_context_rep     = self.config.rel_no_context_rep,   #how to handle edge case of no context tokens
             context_pooling    = self.config.rel_context_pooling,   #how to pool the context tokens
             window_size        = self.config.rel_window_size       
@@ -123,7 +126,6 @@ class Model(nn.Module):
         self.rel_filter_head = FilteringLayer(self.config.hidden_size, 
                                               num_limit = self.num_limit,
                                               dropout   = self.config.dropout if self.config.filter_dropout else None) 
-
 
         # graph embedder
         self.graph_embedder = GraphEmbedder(self.config.hidden_size)
@@ -196,7 +198,6 @@ class Model(nn.Module):
 
         return dict(token_reps      = token_reps, 
                     token_masks     = token_masks,
-                    #sw_span_ids     = sw_span_ids,      #will be None for pooling
                     cls_reps        = cls_reps)         #if using HF
 
 
@@ -408,8 +409,9 @@ class Model(nn.Module):
         '''
         This determines if force pos cases is True/False dependent on the configs and the current step and the filter type
         '''
-        #Do the non training scenarios
-        if not self.training and self.config.span_force_pos != 'always-eval':
+        #Test if TF needs to be disabled
+        if (not self.training and self.config.span_force_pos != 'always-eval') or \
+            self.config.span_force_pos == 'never':   #in this case we have completely disabled TF in span and rel modes
             return False
                 
         #do the training scenarios (or the case where span force pos is always-eval)
@@ -551,6 +553,110 @@ class Model(nn.Module):
         }
 
 
+
+    def make_span_label_data(self, token_reps, cls_reps, span_annotations, neg_limit, alpha):
+        """
+        Constructs span label tensors and computes their representations.
+
+        This function extracts gold (positive) span IDs from the full list of candidate spans using
+        the original annotation indices and mapping (orig_map). It computes the span representations
+        for these gold spans using the configured span representation layer.
+
+        Args:
+            token_reps (Tensor): Token-level hidden states from the encoder. Shape: (batch, seq_len, hidden).
+            all_span_ids (Tensor): All candidate span IDs. Shape: (batch, total_spans, 2).
+            cls_reps (Tensor): Optional CLS representations for each input. Shape: (batch, hidden).
+            span_annotations (List[List[Tuple[int, int, int]]]): Raw gold span annotations per instance.
+                Each tuple is (start, end, label).
+            orig_map (List[Dict[int, int]]): Maps each annotation index to its corresponding index in all_span_ids.
+            neg_limit (float): Negative masking value for invalid span positions.
+            alpha (float): Alpha factor for dynamic span pooling window calculation.
+
+        Returns:
+            label_span_ids (Tensor): Extracted gold span IDs. Shape: (batch, max_gold_spans, 2).
+            label_span_masks (BoolTensor): Mask indicating valid label spans. Shape: (batch, max_gold_spans).
+            label_span_reps (Tensor): Span representations computed for gold spans. Shape: (batch, max_gold_spans, hidden).
+        """
+        batch = len(span_annotations)
+        device = token_reps.device
+
+        max_labels = max(len(spans) for spans in span_annotations) or 1  # handle edge case
+
+        #label span ids are annotation aligned, pos case only
+        label_span_ids = torch.zeros(batch, max_labels, 2, dtype=torch.long, device=device)     # (b, max_gold, 2)
+        label_span_masks = torch.zeros(batch, max_labels, dtype=torch.bool, device=device)
+        label_span_labels = torch.zeros(batch, max_labels, dtype=torch.long, device=device)
+        for b in range(batch):
+            for i, (start, end, label) in enumerate(span_annotations[b]):
+                label_span_ids[b, i, 0] = start
+                label_span_ids[b, i, 1] = end
+                label_span_masks[b, i] = 1
+                label_span_labels[b, i] = self.config.s_to_id[label]
+
+        label_widths = label_span_ids[:,:,1] - label_span_ids[:,:,0]
+        label_span_reps = self.span_rep_layer(token_reps, 
+                                              span_ids    = label_span_ids, 
+                                              span_masks  = label_span_masks, 
+                                              cls_reps    = cls_reps,
+                                              span_widths = label_widths,
+                                              neg_limit   = neg_limit,
+                                              alpha       = alpha)
+
+        return label_span_ids, label_span_masks, label_span_labels, label_span_reps
+
+
+
+
+    def make_rel_label_data(self, token_reps, token_masks, label_span_reps, label_span_ids, rel_annotations, neg_limit, cls_reps=None):
+        """
+        Constructs label_rel_ids, label_rel_masks, label_rel_reps tensors
+
+        desc here...
+        
+                
+        Returns:
+            label_span_ids (Tensor): Extracted gold span IDs. Shape: (batch, max_gold_spans, 2).
+            label_span_masks (BoolTensor): Mask indicating valid label spans. Shape: (batch, max_gold_spans).
+            label_span_reps (Tensor): Span representations computed for gold spans. Shape: (batch, max_gold_spans, hidden).
+        """
+        device = label_span_reps.device
+        batch = len(rel_annotations)
+        max_labels = max(len(rels) for rels in rel_annotations) or 1  # handle edge case
+
+        #fill the label_rel_ids with the raw head, tail ids, i.e. annotation aligned pos case only
+        label_rel_ids = torch.zeros(batch, max_labels, 2, dtype=torch.long, device=device)     # (b, max_labels, 2)
+        label_rel_masks = torch.zeros(batch, max_labels, dtype=torch.bool, device=device)
+        if self.config.rel_labels == 'multilabel':
+            label_rel_labels = torch.zeros(batch, max_labels, self.config.num_rel_types, dtype=torch.bool, device=device)
+        else:
+            label_rel_labels = torch.zeros(batch, max_labels, dtype=torch.long, device=device)
+        for b in range(batch):
+            for i, (head, tail, label) in enumerate(rel_annotations[b]):
+                label_rel_ids[b, i, 0] = head
+                label_rel_ids[b, i, 1] = tail
+                label_rel_masks[b, i] = 1
+                if self.config.rel_labels == 'multilabel':
+                    label_rel_labels[b, i, self.config.r_to_id[label]] = True
+                else:
+                    label_rel_labels[b, i] = self.config.r_to_id[label]
+
+        if self.rel_rep_layer == 'no_context':
+            label_rel_reps = self.rel_rep_layer(span_reps = label_span_reps,           #annotation aligned span reps for pos cases only   
+                                                rel_ids   = label_rel_ids)             #aligned to label_span_reps/ids
+        else:
+            label_rel_reps = self.rel_rep_layer(span_reps       = label_span_reps,     #annotation aligned span reps for pos cases only   
+                                                span_ids        = label_span_ids,      #annotation aligned span ids for pos cases only   
+                                                rel_ids         = label_rel_ids,       #annotation aligned rel ids for pos cases only   
+                                                token_reps      = token_reps, 
+                                                token_masks     = token_masks,
+                                                rel_masks       = label_rel_masks,     #annotation aligned rel masks for pos cases only   
+                                                neg_limit       = neg_limit,
+                                                cls_reps        = None)     #not used
+
+        return label_rel_ids, label_rel_masks, label_rel_labels, label_rel_reps
+
+
+
     ##################################################################################
     ##################################################################################
     ##################################################################################
@@ -590,19 +696,45 @@ class Model(nn.Module):
         num_rel_types   = self.config.num_rel_types     #scalar, includes the none type (idx 0) for unilabel and only pos types for multilabel
         cls_reps        = result['cls_reps']            #(batch,hidden)
         orig_map        = x['orig_map']                 #list of dicts for the mapping of the orig annotation span list id to the span_ids dim 1 idx
-        rel_annotations  = x['relations']                #list of ragged list of tuples => the positive cases for each obs  => list of empty lists if no labels
+        rel_annotations  = x['relations']               #list of ragged list of tuples => the positive cases for each obs  => list of empty lists if no labels
+        span_annotations = x['spans']                   #list of ragged list of tuples => the positive cases for each obs  => list of empty lists if no labels
 
         #set some initial values
         self.device = token_reps.device
         self.batch, self.batch_max_seq_len, _ = token_reps.shape
         self.batch_ids = torch.arange(self.batch, dtype=torch.long, device=self.device).unsqueeze(-1)  # shape: (batch, 1)
         span_filter_map = None   #start off with no span_filter_map
-        #init filter losses
+        #init losses
         tagger_loss       = torch.tensor(0.0, device=self.device, requires_grad=False)
         filter_loss_span  = torch.tensor(0.0, device=self.device, requires_grad=False)
         filter_loss_rel   = torch.tensor(0.0, device=self.device, requires_grad=False)
         filter_loss_graph = torch.tensor(0.0, device=self.device, requires_grad=False)
         lost_rel_loss     = torch.tensor(0.0, device=self.device, requires_grad=False)
+
+        #get the cosine similarity flag
+        cosine_flag = self.training and self.config.cosine_loss_override and step > self.config.cosine_loss_start_step
+        #prep for cosine similarity analysis if needed
+        if cosine_flag:
+            #raise Exception('xxxxxxxxxxxxxx')
+            #disable teacher forcing for cosine similarity loss
+            self.config.span_force_pos = 'never'
+            #get span label data
+            label_span_ids, label_span_masks, label_span_labels, label_span_reps = self.make_span_label_data(token_reps       = token_reps,
+                                                                                                            cls_reps         = cls_reps, 
+                                                                                                            span_annotations = span_annotations, 
+                                                                                                            neg_limit        = -self.num_limit, 
+                                                                                                            alpha            = self.config.span_win_alpha)
+            #get rel label data
+            label_rel_ids, label_rel_masks, label_rel_labels, label_rel_reps = self.make_rel_label_data(token_reps      = token_reps,
+                                                                                                        token_masks     = token_masks,
+                                                                                                        label_span_reps = label_span_reps,
+                                                                                                        label_span_ids  = label_span_ids,
+                                                                                                        rel_annotations = rel_annotations, 
+                                                                                                        neg_limit       = -self.num_limit,
+                                                                                                        cls_reps        = None)    #not used at moment
+
+
+
 
         #######################################################
         # SPANS ###############################################
@@ -650,7 +782,9 @@ class Model(nn.Module):
             span_filter_map  = result['span_filter_map']    #the updated filter map after filtering
             #top_k_spans      = result['top_k_spans']    #dont need here
             #span_idx_to_keep = result['span_idx_to_keep']   #dont need here
-
+        ############################
+        #end of token tagger
+        ############################
 
         #NEG SAMPLING
         #NOTE: if we neg sample spans, only do it here, it makes no sense to do it before the token tagger
@@ -668,8 +802,8 @@ class Model(nn.Module):
                                         span_masks  = span_masks, 
                                         cls_reps    = cls_reps,
                                         span_widths = span_ids[:,:,1] - span_ids[:,:,0],
-                                        neg_limit   = -self.num_limit)
-
+                                        neg_limit   = -self.num_limit,
+                                        alpha       = self.config.span_win_alpha)
 
         #BINARY FILTER HEAD AND FILTERING
         if self.config.span_filtering_type in ['bfhs', 'both']:   
@@ -700,12 +834,30 @@ class Model(nn.Module):
             #filter the span_reps
             span_reps = span_reps[self.batch_ids, span_idx_to_keep]   # shape: (batch, top_k_spans, hidden)
 
+            #cosine loss override
+            #we override the filter_loss_span with a cosine loss
+            #NOTE: the span_reps and label_span_Reps do NOT need to be aligned, and TF should be disabled
+            if cosine_flag:
+                #raise Exception('xxxxxxxxxxxxxx')
+                filter_loss_span = (filter_loss_span + cosine_similarity_loss(pred_reps  = span_reps, 
+                                                          gold_reps  = label_span_reps,
+                                                          neg_limit  = -self.num_limit,
+                                                          pred_labels = None, #do binary similarity    #span_labels,
+                                                          gold_labels = None, #do binary similarity    #label_span_labels,
+                                                          pred_masks = span_masks,
+                                                          gold_masks = label_span_masks)) / 2
+        ############################
+        #END OF BINARY FILTER HEAD
+        ############################
+
 
         #this runs the span marker code to make better span embeddings from the shortlist
         #NOTE it can't handle top_k_spans more than about 20, but test it
         if self.config.use_span_marker:
             #make enriched span_reps
             span_reps = self.span_marker(tokens, span_ids, span_masks)
+
+
 
         ###############################################################
         # RELATIONS ###################################################
@@ -720,19 +872,12 @@ class Model(nn.Module):
                                                                                                                rel_annotations,       #the raw relation annotations data.  NOTE: will be None for no labels
                                                                                                                orig_map,              #maps annotation span list id to the dim 1 id in all_span_ids.  NOTE: will be None for no labels  
                                                                                                                span_filter_map)       #maps all_span_ids to current span_ids which will be different after token tagging heads and filtering
+
         if self.config.rel_neg_sampling and self.training:
             #does neg sampling for the training case
             #NOTE: check if strong neg sampling is even possible for this particular model structure, my feeling is not
             #NOTE: neg sampling is only applied to training and always passes the pos cases
             rel_masks = self.neg_sampler(rel_masks, self.binarize_labels(rel_labels), self.config.rel_neg_sampling_limit)
-            if self.config.prune_rel_tensors:
-                #Note implemented yet, this will onlyl help the traniing case by the way, but probably still useful
-                #I have to fix the context rep code to make it work
-                raise Exception('the context code in the rel reps has not yet been updated, so do not use this option for now')
-                result = self.post_neg_sample_pruning(rel_masks, rel_masks, rel_labels)
-                rel_ids = result['ids']
-                rel_masks = result['masks']
-                rel_labels = result['labels']
 
         '''
         Make the relation reps, has several options, based on config.rel_mode:
@@ -753,23 +898,24 @@ class Model(nn.Module):
                                             span_masks  = span_masks, 
                                             cls_reps    = cls_reps,
                                             span_widths = span_ids[:,:,1] - span_ids[:,:,0],
-                                            neg_limit   = -self.num_limit)
+                                            neg_limit   = -self.num_limit,
+                                            alpha       = self.config.span_win_alpha)
 
         #output shape (batch, num_spans**2, hidden)   
         #NOTE: if we used neg sampling on the rels and pruned the tensors, then the dim length will be much shorter than top_k_spans**2
         #NOTE: this is a temporary if statement, I have not updated the context based rel rep code yet
-        if self.rel_rep_layer == 'no_context':
-            rel_reps = self.rel_rep_layer(span_reps, rel_ids)
-        else:
-            rel_reps = self.rel_rep_layer(span_reps       = span_reps, 
-                                         span_ids        = span_ids, 
-                                         token_reps      = token_reps, 
-                                         token_masks     = token_masks,
-                                         rel_masks       = rel_masks,
-                                         neg_limit       = -self.num_limit,
-                                         rel_ids         = rel_ids,
-                                         span_filter_map = span_filter_map,     #not used right now, its for the pruning case, just leave for now
-                                         pruned_rels     = False)    #keep false for now as I have not updated the context code to handle this
+        #if self.rel_rep_layer.rel_mode == 'no_context':
+        #    rel_reps = self.rel_rep_layer(span_reps = span_reps,           #top_k_span aligned span_reps 
+        #                                  rel_ids   = rel_ids)             #aligned to span_reps/ids
+        #else:
+        rel_reps = self.rel_rep_layer(token_reps      = token_reps, 
+                                      token_masks     = token_masks,
+                                      span_reps       = span_reps,     #top_k_span aligned span_reps 
+                                      span_ids        = span_ids,      #top_k_span aligned span_ids
+                                      rel_ids         = rel_ids,       #aligned to span_reps/ids
+                                      rel_masks       = rel_masks,
+                                      neg_limit       = -self.num_limit,
+                                      cls_reps        = None) #cls_reps)   
 
         #Compute filtering scores for relations and sort them in descending order
         ###############################################################
@@ -800,6 +946,19 @@ class Model(nn.Module):
         rel_masks  = rel_masks[self.batch_ids, rel_idx_to_keep]      #(batch, top_k_rels)  bool
         rel_ids    = rel_ids[self.batch_ids, rel_idx_to_keep]     #(batch, top_k_rels, 2) int
         rel_labels = rel_labels[self.batch_ids, rel_idx_to_keep] if has_labels else None     #(batch, top_k_rels) int for unilabel or (batch, top_k_rels, num rel types) int for multilabel 
+
+        #cosine loss override
+        #we override the filter_loss_rel with a cosine loss
+        #NOTE: the rel_reps and label_rel_reps do NOT need to be aligned, and TF should be disabled
+        if cosine_flag:
+            #raise Exception('xxxxxxxxxxxxxx')
+            filter_loss_rel = (filter_loss_rel + cosine_similarity_loss(pred_reps  = rel_reps, 
+                                                     gold_reps  = label_rel_reps,
+                                                     neg_limit  = -self.num_limit,
+                                                     pred_labels = None,   #do binary similarity    #rel_labels,
+                                                     gold_labels = None,   #do binary similarity    #label_rel_labels,
+                                                     pred_masks = rel_masks,
+                                                     gold_masks = label_rel_masks)) / 2
 
         #this runs the rel marker code to make better rel embeddings from the shortlist
         #NOTE it can't handle top_k_rels more than about 30, but test it
@@ -882,6 +1041,30 @@ class Model(nn.Module):
                                                                   rel_labels, 
                                                                   rel_masks)
 
+            #cosine loss override
+            #we override the filter_loss_span with a cosine loss
+
+            if cosine_flag:
+                pass
+                #raise Exception('xxxxxxxxxxxxxx')
+                #use the label_span_reps/masks/labels created earlier
+                #'''
+                pred_loss_span = (pred_loss_span + cosine_similarity_loss(pred_reps   = node_reps, 
+                                                        gold_reps   = label_span_reps,
+                                                        neg_limit   = -self.num_limit,
+                                                        pred_labels = span_labels,
+                                                        gold_labels = label_span_labels,
+                                                        pred_masks  = span_masks,
+                                                        gold_masks  = label_span_masks)) / 2
+                #use the label_rel_reps/masks/labels created earlier
+                pred_loss_rel = (pred_loss_rel + cosine_similarity_loss(pred_reps   = edge_reps, 
+                                                       gold_reps   = label_rel_reps,
+                                                       neg_limit   = -self.num_limit,
+                                                       pred_labels = rel_labels,
+                                                       gold_labels = label_rel_labels,
+                                                       pred_masks  = rel_masks,
+                                                       gold_masks  = label_rel_masks)) / 2
+                #'''
             #get the lost rel_loss (only will have values if we are using non teacher forcing for spans, i.e. temp and past the warmup)
             lost_rel_loss = lost_rel_penalty * self.config.lost_rel_alpha
             #self.config.logger.write(f'lost rel count: {lost_rel_counts.sum().item()}')

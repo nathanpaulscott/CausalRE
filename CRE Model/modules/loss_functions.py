@@ -101,3 +101,73 @@ def binary_cross_entropy_loss(logits, labels, mask, reduction='sum'):
         return loss
 
     raise ValueError("Unsupported reduction type. Choose 'none', 'mean', or 'sum'.")
+
+
+
+
+
+def cosine_similarity_loss(pred_reps, gold_reps, neg_limit, pred_labels=None, gold_labels=None, pred_masks=None, gold_masks=None):
+    """
+    Computes a cosine similarity-based loss between predicted and gold representations,
+    considering matches between entries with the same label. If labels are not provided,
+    the function defaults to calculating similarity without label matching, effectively performing
+    a binary comparison across all pairs.
+
+    Args:
+        pred_reps (Tensor): [batch, num_preds, hidden] - Tensor containing the hidden representations
+            of predicted spans or relations.
+        gold_reps (Tensor): [batch, num_golds, hidden] - Tensor containing the hidden representations
+            of gold (true) spans or relations.
+        neg_limit (float): A large negative value used for masking elements during the calculation
+            to ensure they do not affect the maximum similarity computation.
+        pred_labels (Tensor, optional): [batch, num_preds] or [batch, num_preds, num_classes] -
+            Labels for each predicted entry. If multilabel, should be binary vectors; if unilabel, single integers.
+        gold_labels (Tensor, optional): [batch, num_golds] or [batch, num_golds, num_classes] -
+            Labels for each gold entry. Shape and type should match `pred_labels`.
+        pred_masks (Tensor, optional): [batch, num_preds] - Binary mask indicating valid predicted entries.
+        gold_masks (Tensor, optional): [batch, num_golds] - Binary mask indicating valid gold entries.
+
+    Returns:
+        Tensor: Scalar tensor representing the cosine similarity loss. This loss is computed as 1 minus
+            the maximum cosine similarity between matched entries, averaged or summed over all valid gold entries,
+            adjusted for any specified masking.
+    """
+    # Normalize embeddings for cosine similarity calculation
+    pred_norm = F.normalize(pred_reps, dim=-1)
+    gold_norm = F.normalize(gold_reps, dim=-1)
+    # Compute cosine similarities: [batch, num_golds, num_preds]
+    cosine_scores = torch.einsum('bgh,bph->bgp', gold_norm, pred_norm)
+
+    #apply label matching if labels are provided otherwise ignores labels (binary labels)
+    if pred_labels is not None and gold_labels is not None:
+    # Determine if labels are multilabel or unilabel and apply appropriate matching logic
+        if gold_labels.dim() == 3:
+            # Multilabel scenario: binary vectors
+            label_match = (gold_labels.unsqueeze(2) & pred_labels.unsqueeze(1)).sum(dim=-1) > 0
+        else:
+            # Unilabel scenario: single integers
+            label_match = gold_labels.unsqueeze(2) == pred_labels.unsqueeze(1)
+
+        # Set unmatchable entries to a large negative value to exclude them from max
+        cosine_scores = cosine_scores.masked_fill(~label_match, neg_limit)
+
+    # Apply prediction masks if provided
+    if pred_masks is not None:
+        cosine_scores = cosine_scores.masked_fill(~pred_masks.unsqueeze(1), neg_limit)
+
+    # Get max similarity for each gold (i.e., best matching pred with the same label)
+    max_sim_gold, _ = cosine_scores.max(dim=-1)  # [batch, num_golds]
+    #default to -1 if no matches
+    max_sim_gold[max_sim_gold == neg_limit] = 0
+
+    loss = 1 - max_sim_gold
+
+    # Apply gold mask if provided
+    if gold_masks is not None:
+        valid_count = gold_masks.sum()
+        if valid_count == 0:
+            return torch.tensor(0.0, device=loss.device, requires_grad=True)
+        loss = loss * gold_masks
+        return loss.sum() / valid_count
+    else:
+        return loss.mean()
