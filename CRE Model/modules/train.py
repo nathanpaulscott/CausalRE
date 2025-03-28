@@ -164,6 +164,7 @@ class Trainer:
         iter_loader_inf = self.load_loader(train_loader, device, infinite=True)
         optimizer.zero_grad()    # Zero out gradients for next accumulation
         pbar_train = tqdm(range(num_steps), position=0, leave=True)
+        train_loss = []
         for step in pbar_train:
             loss, lost_rel_cnt = self.train_step(model, scaler, iter_loader_inf, step)
             if loss is None: continue  # Skip step if NaN loss or aborted forward pass
@@ -188,13 +189,28 @@ class Trainer:
                 description = f"train step: {step} | epoch: {step // len(train_loader)} | loss: {loss.item():.2f} | lost rel cnt: {lost_rel_cnt} |"
                 if self.config.collect_grads: 
                     description += f" | TotNorm: {grad_stats['total_norm']:.4f} | TotNorm.SD: {grad_stats['total_norm_sd']:.4f} | HighGrads: {grad_stats['high_cnt']} | LowGrads: {grad_stats['low_cnt']}"
-                self.config.logger.write(description, 'info', output_to_console=False)   #no output to console for this one
+                if self.config.log_step_data:
+                    self.config.logger.write(description, 'info', output_to_console=False)   
                 pbar_train.set_description(description)
+                
+                #save the loss off the gpu
+                train_loss.append(loss.detach().cpu().item())
 
-            #runs eval and saves the model
+            #runs eval and saves the model          
             if (step + 1) % eval_every == 0:
+                #run the eval loop
                 result = self.eval_loop(model, val_loader, device, step=step)
-                self.config.logger.write(self.make_metrics_summary(result, msg='interim_val '))
+                #get the train loss mean
+                train_loss_mean = sum(train_loss) / len(train_loss) if len(train_loss) > 0 else -1
+                loss_msg = f"step: {step}, train loss mean: {round(train_loss_mean,4)}, eval loss mean: {round(result['eval loss'],4)}"
+                #reset the train loss list
+                train_loss = []
+                #show the metrics on screen
+                print(result['visual results'])
+                print(self.make_metrics_summary(result, msg='interim_val ', type='format'))
+                print(loss_msg)
+                #write the data to the log
+                self.config.logger.write(f"{loss_msg}, {self.make_metrics_summary(result, type='log')}", output_to_console=False)
                 if self.config.collect_grads: 
                     self.show_grad_heatmap(grad_data)
                 #save the model - DISABLE FOR DEBUGGING
@@ -227,8 +243,8 @@ class Trainer:
         self.config.logger.write(self.make_metrics_summary(result_val, msg='final_val '))
         self.config.logger.write(self.make_metrics_summary(result_test, msg='final_test '))
         #save the model
-        checkpoint = f'model_{step + 1}'
-        self.model_manager.save_top_k_checkpoints(model, log_folder, checkpoint, save_top_k)
+        #checkpoint = f'model_{step + 1}'
+        #self.model_manager.save_top_k_checkpoints(model, log_folder, checkpoint, save_top_k)
 
         return dict(
             result_val = result_val,
@@ -236,12 +252,30 @@ class Trainer:
         )
 
 
-    def make_metrics_summary(self, result, msg):
-        msg = f'Eval_type: {msg}\n-------------------------------\n'
-        msg += f"Span Metrics:    {result['span_metrics']['msg']}"
-        msg += f"Rel Metrics:     {result['rel_metrics']['msg']}"
-        msg += f"Rel_mod Metrics: {result['rel_mod_metrics']['msg']}"
-        msg += '-------------------------------'
+    def make_metrics_summary(self, result, msg='', type='format'):
+        if type == 'format':
+            #do formated version
+            msg = f'Eval_type: {msg}\n-------------------------------\n'
+            msg += f"Span:      {result['span_metrics']['msg_screen']}\n"
+            msg += f"Rel:       {result['rel_metrics']['msg_screen']}\n"
+            msg += f"Rel_mod:   {result['rel_mod_metrics']['msg_screen']}\n"
+            msg += '-------------------------------\n'
+            if self.config.matching_loose:
+                msg += f"Span_l:    {result['span_metrics_l']['msg_screen']}\n"
+                msg += f"Rel_l:     {result['rel_metrics_l']['msg_screen']}\n"
+                msg += f"Rel_mod_l: {result['rel_mod_metrics_l']['msg_screen']}\n"
+                msg += '-------------------------------\n'
+        else:
+            #do single line version
+            msg = f"Span: {result['span_metrics']['msg_log']}, "
+            msg += f"Rel: {result['rel_metrics']['msg_log']}, "
+            msg += f"Rel_mod: {result['rel_mod_metrics']['msg_log']}"
+            if self.config.matching_loose:
+                msg += f", "
+                msg += f"Span_l: {result['span_metrics_l']['msg_log']}, "
+                msg += f"Rel_l: {result['rel_metrics_l']['msg_log']}, "
+                msg += f"Rel_mod_l: {result['rel_mod_metrics_l']['msg_log']}"
+        
         return msg
 
 
@@ -340,29 +374,33 @@ class Trainer:
         #here get the eval obs that you want to display from evaluator.all_preds['spans'] and evaluator.all_labels['spans']
         #the raw word tokenized tokens are in x['tokens']
         msg = '\n#######################\nVisual Results\n#####START###############\n'
-        for offset in range(self.config.eval_batch_size):
-            #get tokens
-            show_tokens = [(i, w) for i, w in enumerate(x['tokens'][offset])]
-            #get preds and labels
-            eval_idx = self.config.eval_step_display*self.config.eval_batch_size + offset
-            show_span_preds = evaluator.all_preds['spans'][eval_idx]
-            show_span_preds = [tuple(int(item) for item in tup) for tup in show_span_preds]
-            show_span_labels = evaluator.all_labels['spans'][eval_idx]
-            show_rel_preds = evaluator.all_preds['rels'][eval_idx]
-            show_rel_preds = [tuple(int(item) for item in tup) for tup in show_rel_preds]
-            show_rel_labels = evaluator.all_labels['rels'][eval_idx]
-            #sort
-            show_span_preds = sorted(show_span_preds, key=lambda x: (x[0], x[1]))
-            show_span_labels = sorted(show_span_labels, key=lambda x: (x[0], x[1]))
-            show_rel_preds = sorted(show_rel_preds, key=lambda x: (x[0], x[1], x[3], x[4]))
-            show_rel_labels = sorted(show_rel_labels, key=lambda x: (x[0], x[1], x[3], x[4]))
-            msg += f'eval idx: {eval_idx}\n'
-            msg += f'tokens: {show_tokens}\n'
-            msg += f'span labels: {show_span_labels}\n'    
-            msg += f'span_preds:  {show_span_preds}\n'
-            msg += f'rel labels: {show_rel_labels}\n'    
-            msg += f'rel_preds:  {show_rel_preds}\n'
-            msg += '---------------------------\n'
+        #catch cases where the eval_idx is too long for the available preds/labels and pass
+        try:
+            for offset in range(self.config.eval_batch_size):
+                #get tokens
+                show_tokens = [(i, w) for i, w in enumerate(x['tokens'][offset])]
+                #get preds and labels
+                eval_idx = self.config.eval_step_display*self.config.eval_batch_size + offset
+                show_span_preds = evaluator.all_preds['spans'][eval_idx]
+                show_span_preds = [tuple(int(item) for item in tup) for tup in show_span_preds]
+                show_span_labels = evaluator.all_labels['spans'][eval_idx]
+                show_rel_preds = evaluator.all_preds['rels'][eval_idx]
+                show_rel_preds = [tuple(int(item) for item in tup) for tup in show_rel_preds]
+                show_rel_labels = evaluator.all_labels['rels'][eval_idx]
+                #sort
+                show_span_preds = sorted(show_span_preds, key=lambda x: (x[0], x[1]))
+                show_span_labels = sorted(show_span_labels, key=lambda x: (x[0], x[1]))
+                show_rel_preds = sorted(show_rel_preds, key=lambda x: (x[0], x[1], x[3], x[4]))
+                show_rel_labels = sorted(show_rel_labels, key=lambda x: (x[0], x[1], x[3], x[4]))
+                msg += f'eval idx: {eval_idx}\n'
+                msg += f'tokens: {show_tokens}\n'
+                msg += f'span labels: {show_span_labels}\n'    
+                msg += f'span_preds:  {show_span_preds}\n'
+                msg += f'rel labels: {show_rel_labels}\n'    
+                msg += f'rel_preds:  {show_rel_preds}\n'
+                msg += '---------------------------\n'
+        except Exception as e:
+            pass
         msg += '######END################'
 
         return msg
@@ -384,6 +422,7 @@ class Trainer:
         eval_loader = self.load_loader(data_loader, device, infinite=False)
         total_eval_steps = len(data_loader)
         visual_results = ''
+        eval_loss = []
         model.eval()
         with torch.no_grad():
             #for x in tqdm(eval_loader, desc=f"Eval({total_eval_steps} batches)", leave=True):
@@ -413,8 +452,10 @@ class Trainer:
 
                 #write description to log and stdout
                 description = f"eval step: {eval_step} | loss: {result['loss'].item():.2f} | lost rel cnt: {result['lost_rel_counts'].sum().item()} |"
-                self.config.logger.write(description, 'info', output_to_console=False)   #no output to console for this one
-                pbar_eval.set_description(description)
+                if self.config.log_step_data:
+                    self.config.logger.write(description, 'info', output_to_console=False)   #no output to console for this one
+                #disable for now
+                #pbar_eval.set_description(description)
 
                 #clear tensors to free up GPU memory
                 if (eval_step + 1) % self.config.clear_tensor_steps == 0:
@@ -433,13 +474,15 @@ class Trainer:
                 #TEMP
                 #TEMP
                 #TEMP
-    
+                eval_loss.append(result['loss'].detach().cpu().item())
+
             pbar_eval.close()
 
         #run the evaluator on whole dataset results (stored in the evaluator object) and return a dict with the metrics and preds
         result = evaluator.evaluate()
-        print(visual_results)
-
+        #add the visual results and the eval mean loss
+        result['visual results'] = visual_results
+        result['eval loss'] = sum(eval_loss) / len(eval_loss) if len(eval_loss) > 0 else -1
         return result
     ##############################################################
     ##############################################################
@@ -542,6 +585,7 @@ class Trainer:
         #get the model
         self.model_manager = ModelManager(self.config) 
         model = self.model_manager.get_model()
+
 
         #kick off the train_loop or predict_loop
         if self.config.run_type == 'train': 

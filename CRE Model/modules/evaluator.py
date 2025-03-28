@@ -59,6 +59,8 @@ class EvaluatorBase:
 
             return span_labels, rel_labels, rel_labels_mod
 
+
+
     def evaluate(self, return_preds=False):
         #readi in the matching params
         loose_matching, tol, wid, bin = self.config.matching_loose, self.config.matching_tolerance, self.config.matching_width_limit, self.config.matching_make_binary
@@ -76,20 +78,26 @@ class EvaluatorBase:
         flat_rel_mod_labels = self.flatten_and_prepare(self.all_labels['rels_mod'])
         
         #Compute metrics
-        if loose_matching:
-            print('loose matching')
-            span_metrics    = self.metrics.run_metrics(flat_span_labels, flat_span_preds, loose_matching=loose_matching, tolerance=tol, span_limit=wid, make_binary=bin, type='span')
-            rel_metrics     = self.metrics.run_metrics(flat_rel_labels, flat_rel_preds, loose_matching=loose_matching, tolerance=tol, span_limit=wid, make_binary=bin, type='rel')
-            rel_mod_metrics = self.metrics.run_metrics(flat_rel_mod_labels, flat_rel_mod_preds, loose_matching=loose_matching, tolerance=tol, span_limit=wid, make_binary=bin, type='rel_mod')
-        else:
-            span_metrics    = self.metrics.run_metrics(flat_span_labels, flat_span_preds)
-            rel_metrics     = self.metrics.run_metrics(flat_rel_labels, flat_rel_preds)
-            rel_mod_metrics = self.metrics.run_metrics(flat_rel_mod_labels, flat_rel_mod_preds)
+        span_metrics    = self.metrics.run_metrics(flat_span_labels, flat_span_preds)
+        rel_metrics     = self.metrics.run_metrics(flat_rel_labels, flat_rel_preds)
+        rel_mod_metrics = self.metrics.run_metrics(flat_rel_mod_labels, flat_rel_mod_preds)
 
-        return dict(span_metrics    = span_metrics,
-                    rel_metrics     = rel_metrics,
-                    rel_mod_metrics = rel_mod_metrics,
-                    preds           = self.all_preds if return_preds else None)
+        span_metrics_l    = None
+        rel_metrics_l     = None
+        rel_mod_metrics_l = None
+        if loose_matching:
+            span_metrics_l    = self.metrics.run_metrics(flat_span_labels, flat_span_preds, loose_matching=loose_matching, tolerance=tol, span_limit=wid, make_binary=bin, type='span')
+            rel_metrics_l     = self.metrics.run_metrics(flat_rel_labels, flat_rel_preds, loose_matching=loose_matching, tolerance=tol, span_limit=wid, make_binary=bin, type='rel')
+            rel_mod_metrics_l = self.metrics.run_metrics(flat_rel_mod_labels, flat_rel_mod_preds, loose_matching=loose_matching, tolerance=tol, span_limit=wid, make_binary=bin, type='rel_mod')
+
+
+        return dict(preds                 = self.all_preds if return_preds else None,
+                    span_metrics          = span_metrics,
+                    rel_metrics           = rel_metrics,
+                    rel_mod_metrics       = rel_mod_metrics,
+                    span_metrics_l        = span_metrics_l,
+                    rel_metrics_l         = rel_metrics_l,
+                    rel_mod_metrics_l     = rel_mod_metrics_l)
 
 
 

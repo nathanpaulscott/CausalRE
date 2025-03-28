@@ -301,6 +301,56 @@ class RelRepWindowContext(RelRepContextBase):
 
 
 
+
+
+
+class RelRepBetweenWindowContext(RelRepContextBase):
+    def __init__(self, hidden_size, ffn_ratio, dropout, no_context_rep, context_pooling, layer_type, window_size, **kwargs):
+        super().__init__(hidden_size, ffn_ratio, dropout, no_context_rep, context_pooling, layer_type, **kwargs)
+        self.window_size = window_size
+
+    def make_window_masks(self, seq_indices, start_ids, end_ids):
+        """
+        Constructs window masks for a given set of start and end indices.
+        The window masks select tokens within a window before the span start or after the span end.
+        NOTE: The end_ids are the actual end + 1 (Python style), so the logic accounts for this.
+        Args:
+            seq_indices (torch.Tensor): Tensor of sequence indices with shape (batch, 1, 1, seq_len).
+            start_ids (torch.Tensor): Tensor of span start indices (batch, num_spans, 1).
+            end_ids (torch.Tensor): Tensor of span end indices (batch, num_spans, 1).
+        Returns:
+           - window_masks: A boolean mask of shape (batch, num_spans, seq_len) indicating tokens within the window.
+        """
+        win = self.window_size
+        #add a last dim so it is compatible for broadcasting with seq_indices shape
+        start_ids = start_ids.unsqueeze(-1)
+        end_ids = end_ids.unsqueeze(-1)
+        #make the masks
+        start_masks = (seq_indices >= (start_ids - win)) & (seq_indices < start_ids)
+        end_masks = (seq_indices > end_ids - 1) & (seq_indices <= (end_ids - 1 + win))   #due to the end id being actual + 1 (python style)
+        #logical OR them for the window masks
+        return start_masks | end_masks
+        
+
+    def make_base_context_masks(self, seq_indices, head_start, head_end, tail_start, tail_end):
+        """
+        Generates masks for tokens in a window around the head and tail spans and the tokens between the spans.
+        As is the the base context, it has not yet excluded the tokens in the spans
+        """
+        #make the window masks
+        head_window_masks = self.make_window_masks(seq_indices, head_start, head_end)
+        tail_window_masks = self.make_window_masks(seq_indices, tail_start, tail_end)
+
+        #make the between masks
+        min_start = torch.min(head_start, tail_start).unsqueeze(-1)
+        max_end = torch.max(head_end, tail_end).unsqueeze(-1)
+        #make the span mask, will be 1 for tokens between start and end-1
+        between_masks = (seq_indices >= min_start) & (seq_indices < max_end)
+
+        return head_window_masks | tail_window_masks | between_masks
+
+
+
 ############################################################################
 #Mother Class###############################################################
 ############################################################################
@@ -354,6 +404,8 @@ class RelationRepLayer(nn.Module):
             self.rel_rep_layer = RelRepBetweenContext(**kwargs)
         elif rel_mode == 'window_context':
             self.rel_rep_layer = RelRepWindowContext(**kwargs)
+        elif rel_mode == 'between_window_context':
+            self.rel_rep_layer = RelRepBetweenWindowContext(**kwargs)
         else:
             raise ValueError(f'Unknown rel mode {rel_mode}')
 

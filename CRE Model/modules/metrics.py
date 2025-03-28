@@ -86,65 +86,67 @@ class Metrics_custom:
             span_width = l_end - l_start
             for pred in [x for x in FP if x[-1] == batch_id]:
                 p_start, p_end, p_type, p_batch_id = pred
-                if (span_width >= width_limit and \
-                    abs(l_start - p_start) <= tolerance and abs(l_end - p_end) <= tolerance if tolerance >= 1 else tolerance*span_width) and \
-                   (True if make_binary else l_type == p_type):
+                #set up the params to check
+                d_start = abs(l_start - p_start)
+                d_end = abs(l_end - p_end)
+                tol = tolerance if tolerance >= 1 else tolerance*span_width
+                type_condition = True if make_binary else (l_type == p_type)
+                #do the matching adjustment
+                if span_width >= width_limit and d_start <= tol and d_end <= tol and type_condition:
+                    print('got a loose span match')
                     # Match found, adjust sets
                     TP.add(label)
                     FN.remove(label)
                     FP.remove(pred)
                     matched_preds.add(pred)
-                    break  # Stop once a match is found
+                    break    # Stop once a match is found
+        
+        return matched_preds
 
 
-    def rel_loose_matching(self, TP, FN, FP, tolerance=None, width_limit=None, make_binary=None):
+
+    def rel_loose_matching(self, TP, FN, FP, tolerance=None, width_limit=None, make_binary=None, rel_type_matching='strict'):
         #Apply relaxed rel matching for spans >10 words
         #keep the loose matched preds for later reference        
         matched_preds = set()  # Store already matched predictions to avoid double counting
         for label in list(FN):  
-            l_h_start, l_h_end, l_h_type, l_t_start, l_t_end, l_t_type, l_r_type, batch_id = label 
+            if len(label) == 8:
+                l_h_start, l_h_end, l_h_type, l_t_start, l_t_end, l_t_type, l_r_type, batch_id = label
+            else:
+                l_h_start, l_h_end, l_t_start, l_t_end, l_r_type, batch_id = label
+            
             h_span_width = l_h_end - l_h_start
             t_span_width = l_t_end - l_t_start
             for pred in [x for x in FP if x[-1] == batch_id]:
-                p_h_start, p_h_end, p_h_type, p_t_start, p_t_end, p_t_type, p_r_type, p_batch_id = pred
-                if ((h_span_width >= width_limit and \
-                     abs(l_h_start - p_h_start) <= tolerance if tolerance >= 1 else tolerance*h_span_width and \
-                     abs(l_h_end - p_h_end) <= tolerance if tolerance >= 1 else tolerance*h_span_width) and \
-                    (t_span_width >= width_limit and \
-                     abs(l_t_start - p_t_start) <= tolerance if tolerance >= 1 else tolerance*t_span_width and \
-                     abs(l_t_end - p_t_end) <= tolerance if tolerance >= 1 else tolerance*t_span_width)) and \
-                     (True if make_binary else (l_h_type == p_h_type and l_t_type == p_t_type and l_r_type == p_r_type)):
+                if len(pred) == 8:
+                    p_h_start, p_h_end, p_h_type, p_t_start, p_t_end, p_t_type, p_r_type, p_batch_id = pred
+                else:
+                    p_h_start, p_h_end, p_t_start, p_t_end, p_r_type, p_batch_id = pred
+                
+                #set up the parameters to check
+                d_h_start = abs(l_h_start - p_h_start)
+                d_h_end = abs(l_h_end - p_h_end)
+                d_t_start = abs(l_t_start - p_t_start)
+                d_t_end = abs(l_t_end - p_t_end)
+                tol_h = tolerance if tolerance >= 1 else tolerance*h_span_width
+                tol_t = tolerance if tolerance >= 1 else tolerance*t_span_width
+                type_condition = True if make_binary else (l_r_type == p_r_type)
+                if rel_type_matching == 'strict':
+                    type_condition = True if make_binary else (l_h_type == p_h_type and l_t_type == p_t_type and l_r_type == p_r_type)
+            
+                #do the matching adjustment
+                if h_span_width >= width_limit and d_h_start <= tol_h and d_h_end <= tol_h and \
+                   t_span_width >= width_limit and d_t_start <= tol_t and d_t_end <= tol_t and \
+                   type_condition:
+                    print('got a loose rel match')
                     # Match found, adjust sets
                     TP.add(label)
                     FN.remove(label)
                     FP.remove(pred)
                     matched_preds.add(pred)
-                    break  # Stop once a match is found
+                    break   # Stop once a match is found
 
-
-    def rel_mod_loose_matching(self, TP, FN, FP, tolerance=None, width_limit=None, make_binary=None):
-        #Apply relaxed rel_mod matching for spans >10 words
-        #keep the loose matched preds for later reference        
-        matched_preds = set()  # Store already matched predictions to avoid double counting
-        for label in list(FN):  
-            l_h_start, l_h_end, l_t_start, l_t_end, l_r_type, batch_id = label 
-            h_span_width = l_h_end - l_h_start
-            t_span_width = l_t_end - l_t_start
-            for pred in [x for x in FP if x[-1] == batch_id]:
-                p_h_start, p_h_end, p_t_start, p_t_end, p_r_type, _ = pred
-                if ((h_span_width >= width_limit and \
-                     abs(l_h_start - p_h_start) <= tolerance if tolerance >= 1 else tolerance*h_span_width and \
-                     abs(l_h_end - p_h_end) <= tolerance if tolerance >= 1 else tolerance*h_span_width) and \
-                    (t_span_width >= width_limit and \
-                     abs(l_t_start - p_t_start) <= tolerance if tolerance >= 1 else tolerance*t_span_width and \
-                     abs(l_t_end - p_t_end) <= tolerance if tolerance >= 1 else tolerance*t_span_width)) and \
-                     (True if make_binary else (l_r_type == p_r_type)):
-                    # Match found, adjust sets
-                    TP.add(label)
-                    FN.remove(label)
-                    FP.remove(pred)
-                    matched_preds.add(pred)
-                    break  # Stop once a match is found
+        return matched_preds  
 
 
 
@@ -161,15 +163,18 @@ class Metrics_custom:
         FP = preds_set - labels_set
         
         #do relaxed matching if requested
+        #this is where we relax the span boundary matching condition from exact to a small tolerance that can increase as the span width increases
+        #eg. 0.1 => for a span_width = 8, the tolerance is 0.8 so span spart or end delta of 1 will not match, so only spans of width 10 and above will start to be affected.
+        #eg2. for tol of 0.1 and a label span width of 12 => tol = 1.2 => if the start is off by 1 or the end is off by 1 token, then match is allowed, i.e. pred bound = 3,16, label bounds 2,17;2,15;4;17;4,15 wil match
         if loose_matching:        
             if type == 'span':
                 matched_preds = self.span_loose_matching(TP, FN, FP, tolerance=tolerance, width_limit=span_limit, make_binary=make_binary)
             elif type == 'rel':
-                matched_preds = self.rel_loose_matching(TP, FN, FP, tolerance=tolerance, width_limit=span_limit, make_binary=make_binary)
+                matched_preds = self.rel_loose_matching(TP, FN, FP, tolerance=tolerance, width_limit=span_limit, make_binary=make_binary, rel_type_matching='strict')
             elif type == 'rel_mod':
-                matched_preds = self.rel_mod_loose_matching(TP, FN, FP, tolerance=tolerance, width_limit=span_limit, make_binary=make_binary)
+                matched_preds = self.rel_loose_matching(TP, FN, FP, tolerance=tolerance, width_limit=span_limit, make_binary=make_binary, rel_type_matching='loose')
 
-        #calc metrics
+        #do the metric calcs
         TP = len(TP)
         FN = len(FN)
         FP = len(FP)
@@ -182,6 +187,7 @@ class Metrics_custom:
 
         return prec, rec, f1, support
 
+        
 
 
     def run_metrics(self, flat_labels, flat_preds, **kwargs):
@@ -196,22 +202,17 @@ class Metrics_custom:
         outputs:
             - metrics dict
         '''
-        if len(flat_labels) == 0:
-            precision, recall, f1, support = 0,0,0,0
-        else:
-            #Calculate metrics
-            precision, recall, f1, support = self.calc_metrics(flat_labels, flat_preds, **kwargs)
+        #Calculate metrics
+        p, r, f1, s = 0,0,0,0
+        if len(flat_labels) > 0:
+            p, r, f1, s = self.calc_metrics(flat_labels, flat_preds, **kwargs)
 
-        metrics = dict(support   = support,
-                       precision = precision,
-                       recall    = recall,
-                       f1        = f1)
-        #add the output metrics msg
-        metrics['msg'] = f"S: {metrics['support']}\tP: {metrics['precision']:.2%}\tR: {metrics['recall']:.2%}\tF1: {metrics['f1']:.2%}\n"        
-        return metrics
-
-
-
+        return dict(support   = s,
+                    precision = p,
+                    recall    = r,
+                    f1        = f1,
+                    msg_screen = f"S: {s}\tP: {p:.2%}\tR: {r:.2%}\tF1: {f1:.2%}",
+                    msg_log   = f"(S: {s}, P: {p:.2%}, R: {r:.2%}, F1: {f1:.2%})")        
 
 
 

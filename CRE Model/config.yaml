@@ -17,11 +17,11 @@ model_path: none                        #pretrained model path => Use "none" if 
 #data_path: "data/sample/sample data.json"      #the dataset file
 #data_format: idx                         #id/idx.  'id' is when the spans and rels have a unique id and the head and tail of the rel reference the span id.  idx is the spert format where there is no id and the rel head/tail reference the span list idx
 #---------------------------------------
-#data_path: "data/conll04 - spert/conll04_nathan.json"      #the dataset file
-#data_format: idx                         #id/idx.  'id' is when the spans and rels have a unique id and the head and tail of the rel reference the span id.  idx is the spert format where there is no id and the rel head/tail reference the span list idx
+data_path: "data/conll04 - spert/conll04_nathan.json"      #the dataset file
+data_format: idx                         #id/idx.  'id' is when the spans and rels have a unique id and the head and tail of the rel reference the span id.  idx is the spert format where there is no id and the rel head/tail reference the span list idx
 #---------------------------------------
-data_path: "data/unicausal/model_data_altlex.json"      #the dataset file  => span width max is 116, seq len 135
-data_format: id                         #id/idx.  'id' is when the spans and rels have a unique id and the head and tail of the rel reference the span id.  idx is the spert format where there is no id and the rel head/tail reference the span list idx
+#data_path: "data/unicausal/model_data_altlex.json"      #the dataset file  => span width max is 116, seq len 135
+#data_format: id                         #id/idx.  'id' is when the spans and rels have a unique id and the head and tail of the rel reference the span id.  idx is the spert format where there is no id and the rel head/tail reference the span list idx
 #---------------------------------------
 #data_path: "data/unicausal/model_data_because.json"      #the dataset file, span width max is 56, seq len 99
 #data_format: id                         #id/idx.  'id' is when the spans and rels have a unique id and the head and tail of the rel reference the span id.  idx is the spert format where there is no id and the rel head/tail reference the span list idx
@@ -39,6 +39,10 @@ data_format: id                         #id/idx.  'id' is when the spans and rel
 #---------------------------------------
 #data_path: "data/new causal processed mar25/maven/maven - data - short - triggers.json"      #the dataset file, max seq len = 99, max span width = 4
 #data_format: idx                         #id/idx.  'id' is when the spans and rels have a unique id and the head and tail of the rel reference the span id.  idx is the spert format where there is no id and the rel head/tail reference the span list idx
+#---------------------------------------
+#data_path: "data/unicausal/model_data_altlex_for_annotated_to 320 add maven_for_model.json"      #the dataset file  => span width max is 116, seq len 135
+#data_format: idx                         #id/idx.  'id' is when the spans and rels have a unique id and the head and tail of the rel reference the span id.  idx is the spert format where there is no id and the rel head/tail reference the span list idx
+#---------------------------------------
 
 
 #####################################################################
@@ -54,14 +58,14 @@ cosine_loss_override: False             #True/False, if True we use cosine simil
 cosine_loss_start_step: 1000            #when to switch to cosine loss, use 0 to always use it
 #metrics matching
 matching_loose: True                    #use loose span matching or exact
-matching_tolerance: 0.1                 #span width tolerance for loose matching.  >= 1 => absolute, i.e. +- that many words on each side. <1 is % of each spans width, i.e. 0.15 => for a span of width 10, the tolerance is 1.5 words on each side (so basically 1)
+matching_tolerance: 0.15                 #span width tolerance for loose matching.  >= 1 => absolute, i.e. +- that many words on each side. <1 is % of each spans width, i.e. 0.15 => for a span of width 10, the tolerance is 1.5 words on each side (so basically 1)
 matching_width_limit: 8                 #span width min limit for loose matching, i.e. do not apply to smaller spans than this
 matching_make_binary: True              #treat labels and preds as binary, only applied for loose matching == True
 #saving
 save_top_k: 1                           #keep this many of the most recent checkpoints
 #display
-eval_step_display: 7                     #display the preds for the first batch obs in eval batch idx
-
+eval_step_display: 2                     #display the preds for the first batch obs in eval batch idx
+log_step_data: False
 
 #####################################################################
 #Model Configuration
@@ -81,7 +85,7 @@ bert_shared_unmarked_span_rel: True     #whether to use a separate bert for span
 hidden_size: 768                        #hidden size of the bert based encoder
 dropout: 0.1                            #standard model dropout
 max_seq_len: 140  #130                      #word token limit, this will generally affect the model speed, so keep it as low as possible.  I have this in just a  a protection fro very long sequences coming in
-max_span_width: 120   #50                      #max span width in word tokens (10-12 for NER, 40+ for long span event detection)
+max_span_width: 60   #50                      #max span width in word tokens (10-12 for NER, 40+ for long span event detection)
 dump_missed_spans_on_import: True       #ture/false: true => dumps the annotated spans to the log file that could not be used due to the max_seq_len and max_span_width limits
 num_precision: full                     #full/half => the num precision to use for the model => full => 32bit, half=>16bit
 projection_layer_type: ffn           #simple/ffn (ffn uses too much memory). for the span_rep and rel_rep generation output layers.  'simple' to just use a simple projection layer for the output or a 'ffn' for a more complex ffn layer.  Not implemented yet, just use 'ffn'
@@ -146,10 +150,10 @@ lost_rel_alpha: 0.5                       #0 to inf, global adjustment of the lo
 ###############
 #rel rep config
 ###############
-rel_mode: between_context              #no_context/between_context/window_context/between_window_context => add context reps in (no context, from tokens between spans, from tokens in windows before/after each span)  => only beteween works well
+rel_mode: between_window_context              #no_context/between_context/window_context/between_window_context => add context reps in (no context, from tokens between spans, from tokens in windows before/after each span)  => only beteween works well
 rel_no_context_rep: emb                #zero/emb => whether to replace the context reps in the case of no valid context tokens, to all zero (zero) or a learned no context embedding (emb)
 rel_context_pooling: max               #max/attn => how to pool the valid context tokens to get one context rep.  max => max pool them, attn => use attention pooling with the maxpool of the head and tail rep as the query
-rel_window_size: 10                    #tokens or subtoken window size for the window algo
+rel_window_size: 20                    #tokens or subtoken window size for the window algo
 #rel marking config
 use_rel_marker: False                   #the top_k_rels will be marked and run through bert again to get enriched rel_reps => slow but good
 rel_marker_window: 1000                  #none = no window (only unmask span, marker and cls/sep tokens), attention mask window around the marked relations spans
@@ -178,10 +182,10 @@ graph_filter_head_type: single          #single/double => whether to use a singl
 #Training Parameters
 #####################################################################
 num_steps: 10000                        #how many batches to run through the system, the total batches in the dataset is going to be much smaller, so it just repeats the batches
-train_batch_size: 2  #4                  #num obs per train batch
+train_batch_size: 1  #4                  #num obs per train batch
 accumulation_steps: 1 #1                #accumulate losses for this many batches, so effective batch size is accumulation_steps*train_batch_size
-eval_batch_size: 6 #6                  #num obs per val/test batch
-eval_every: 500                         #eval every 'eval_every' batches
+eval_batch_size: 4 #6                  #num obs per val/test batch
+eval_every: 250                         #eval every 'eval_every' batches
 opt_type: 2                             #1/2 => 1 use the same lr and wd for all params, 2 => use specific lr/wds 
 opt_weight_decay:  0.01                 #adamw optimiser weight decay
 lr_encoder_span: 1e-5  #1e-5                 #this is the learning rate used for the tranformer encoder
@@ -191,8 +195,8 @@ lr_others: 5e-5   #5e-5                 #this is the learning rate used for all 
 warmup_ratio: 0.1                       #warmup_steps will thus be warmup_ratio * num_steps
 scheduler_type: linear                  #'cosine', 'linear', 'constant', 'polynomial', 'inverse_sqrt'
 loss_reduction: mean                    #mean/sum => whether to use loss reduction of sum or mean as well as whether to mean the accumulation losses or not before backprop => sum will have large grads, mean will have small grads
-clear_tensor_steps: 10    #10                 #clear the cuda cache and gc collect, it actually runs del tensors each step (which is fast)
-grad_clip: 1     #1                      #clip the grads to this max_norm => False to disable, do not set too high training gets unstable, 1 is good
+clear_tensor_steps: 3    #10                 #clear the cuda cache and gc collect, it actually runs del tensors each step (which is fast)
+grad_clip: 2     #1                      #clip the grads to this max_norm => False to disable, do not set too high training gets unstable, 1 is good
 collect_grads: False                    #true to collect and map gradients for debugging
 span_loss_mf: 1                         #mult the span loss by this much
 rel_loss_mf: 1                         #mult the rel loss by this much

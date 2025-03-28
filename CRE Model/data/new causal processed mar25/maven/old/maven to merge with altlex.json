@@ -1,0 +1,1281 @@
+{
+    "schema": {
+        "span_types": [
+            {
+                "name": "event",
+                "color": "rgba(255, 87, 51, 0.3)"
+            }
+        ],
+        "relation_types": [
+            {
+                "name": "causal",
+                "color": "rgba(255, 87, 51, 0.3)"
+            }
+        ]
+    },
+    "data": [
+        {
+            "tokens": [
+                "'Africaine",
+                "'",
+                "was",
+                "the",
+                "first",
+                "ship",
+                "to",
+                "reinforce",
+                "Rowley",
+                "'s",
+                "squadron",
+                ",",
+                "but",
+                "within",
+                "three",
+                "days",
+                "of",
+                "her",
+                "arrival",
+                "in",
+                "the",
+                "region",
+                "was",
+                "engaged",
+                "by",
+                "two",
+                "French",
+                "ships",
+                "while",
+                "attempting",
+                "to",
+                "drive",
+                "them",
+                "away",
+                "from",
+                "Saint",
+                "Denis",
+                "on",
+                "\u00cele",
+                "Bourbon",
+                "."
+            ],
+            "annotated_text": "<E3> 'Africaine ' was the first ship to reinforce Rowley 's squadron </E3> , but <E4> within three days of her arrival in the region was engaged by two French ships while attempting to drive them away from Saint Denis on \u00cele Bourbon </E4> .",
+            "spans": [
+                {
+                    "id": "E3",
+                    "type": "event",
+                    "start": 0,
+                    "end": 11,
+                    "span": "'Africaine ' was the first ship to reinforce Rowley 's squadron"
+                },
+                {
+                    "id": "E4",
+                    "type": "event",
+                    "start": 13,
+                    "end": 40,
+                    "span": "within three days of her arrival in the region was engaged by two French ships while attempting to drive them away from Saint Denis on \u00cele Bourbon"
+                }
+            ],
+            "relations": []
+        },
+        {
+            "tokens": [
+                "'Amethyst",
+                "'",
+                "retained",
+                "contact",
+                "throughout",
+                "the",
+                "night",
+                "and",
+                "brought",
+                "the",
+                "French",
+                "ship",
+                "to",
+                "action",
+                "on",
+                "the",
+                "morning",
+                "of",
+                "6",
+                "April",
+                "."
+            ],
+            "annotated_text": "<E0> 'Amethyst ' retained contact throughout the night </E0> and <E1> brought the French ship to action on the morning of 6 April </E1> .",
+            "spans": [
+                {
+                    "id": "E0",
+                    "type": "event",
+                    "start": 0,
+                    "end": 7,
+                    "span": "'Amethyst ' retained contact throughout the night"
+                },
+                {
+                    "id": "E1",
+                    "type": "event",
+                    "start": 8,
+                    "end": 20,
+                    "span": "brought the French ship to action on the morning of 6 April"
+                }
+            ],
+            "relations": [
+                {
+                    "id": "R0",
+                    "head": "E0",
+                    "tail": "E1",
+                    "type": "causal"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "'Belliqueux",
+                "'",
+                "rapidly",
+                "out",
+                "ran",
+                "Landolphe",
+                "'s",
+                "flagship",
+                "'Concorde",
+                "'",
+                ",",
+                "leaving",
+                "Landolphe",
+                "with",
+                "no",
+                "option",
+                "but",
+                "to",
+                "surrender",
+                "without",
+                "any",
+                "serious",
+                "resistance",
+                "."
+            ],
+            "annotated_text": "<E2> 'Belliqueux ' rapidly out ran Landolphe 's flagship 'Concorde ' </E2> , <E3> leaving Landolphe with no option but to surrender without any serious resistance </E3> .",
+            "spans": [
+                {
+                    "id": "E2",
+                    "type": "event",
+                    "start": 0,
+                    "end": 10,
+                    "span": "'Belliqueux ' rapidly out ran Landolphe 's flagship 'Concorde '"
+                },
+                {
+                    "id": "E3",
+                    "type": "event",
+                    "start": 11,
+                    "end": 23,
+                    "span": "leaving Landolphe with no option but to surrender without any serious resistance"
+                }
+            ],
+            "relations": [
+                {
+                    "id": "R0",
+                    "head": "E2",
+                    "tail": "E3",
+                    "type": "causal"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "'Chesapeake",
+                "'",
+                "suffered",
+                "early",
+                "in",
+                "the",
+                "exchange",
+                "of",
+                "gunfire",
+                ",",
+                "having",
+                "her",
+                "wheel",
+                "and",
+                "fore",
+                "topsail",
+                "halyard",
+                "shot",
+                "away",
+                ",",
+                "rendering",
+                "her",
+                "unmanoeuvrable",
+                "."
+            ],
+            "annotated_text": "<E3> 'Chesapeake ' suffered early in the exchange of gunfire , having her wheel and fore topsail halyard shot away </E3> , <2> rendering her unmanoeuvrable </2> .",
+            "spans": [
+                {
+                    "span": "rendering her unmanoeuvrable",
+                    "type": "event",
+                    "trigger": "rendering",
+                    "start": 20,
+                    "end": 23,
+                    "trigger_start": 20,
+                    "trigger_end": 21,
+                    "issues": "",
+                    "id": "2"
+                },
+                {
+                    "id": "E3",
+                    "type": "event",
+                    "start": 0,
+                    "end": 19,
+                    "span": "'Chesapeake ' suffered early in the exchange of gunfire , having her wheel and fore topsail halyard shot away"
+                }
+            ],
+            "relations": [
+                {
+                    "id": "R0",
+                    "head": "E3",
+                    "tail": "2",
+                    "type": "causal"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "'Confiante",
+                "'",
+                "was",
+                "badly",
+                "damaged",
+                "and",
+                "boarding",
+                "parties",
+                "from",
+                "'Hydra",
+                "'",
+                "and",
+                "the",
+                "other",
+                "ships",
+                "were",
+                "able",
+                "to",
+                "board",
+                "and",
+                "burn",
+                "her",
+                "the",
+                "following",
+                "morning",
+                "."
+            ],
+            "annotated_text": "<E0> 'Confiante ' was badly damaged </E0> and <E1> boarding parties from 'Hydra ' and the other ships were able to board and burn her the following morning </E1> .",
+            "spans": [
+                {
+                    "id": "E0",
+                    "type": "event",
+                    "start": 0,
+                    "end": 5,
+                    "span": "'Confiante ' was badly damaged"
+                },
+                {
+                    "id": "E1",
+                    "type": "event",
+                    "start": 6,
+                    "end": 25,
+                    "span": "boarding parties from 'Hydra ' and the other ships were able to board and burn her the following morning"
+                }
+            ],
+            "relations": [
+                {
+                    "id": "R0",
+                    "head": "E0",
+                    "tail": "E1",
+                    "type": "causal"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "'Earthquake",
+                "rates",
+                "have",
+                "recently",
+                "increased",
+                "markedly",
+                "in",
+                "multiple",
+                "areas",
+                "of",
+                "the",
+                "Central",
+                "and",
+                "Eastern",
+                "United",
+                "States",
+                "(",
+                "CEUS",
+                ")",
+                ",",
+                "especially",
+                "since",
+                "2010",
+                ",",
+                "and",
+                "scientific",
+                "studies",
+                "have",
+                "linked",
+                "the",
+                "majority",
+                "of",
+                "this",
+                "increased",
+                "activity",
+                "to",
+                "wastewater",
+                "injection",
+                "in",
+                "deep",
+                "disposal",
+                "wells",
+                ".",
+                "'"
+            ],
+            "annotated_text": "<0> 'Earthquake rates have recently increased markedly in multiple areas of the Central and Eastern United States ( CEUS ) </0> , especially since 2010 , and scientific studies have linked the majority of this increased activity to <1> wastewater injection in deep disposal wells </1> . '",
+            "spans": [
+                {
+                    "span": "'Earthquake rates have recently increased markedly in multiple areas of the Central and Eastern United States ( CEUS )",
+                    "type": "event",
+                    "trigger": "increased",
+                    "start": 0,
+                    "end": 19,
+                    "trigger_start": 4,
+                    "trigger_end": 5,
+                    "issues": "",
+                    "id": "0"
+                },
+                {
+                    "span": "wastewater injection in deep disposal wells",
+                    "type": "event",
+                    "trigger": "injection",
+                    "start": 36,
+                    "end": 42,
+                    "trigger_start": 37,
+                    "trigger_end": 38,
+                    "issues": "",
+                    "id": "1"
+                }
+            ],
+            "relations": [
+                {
+                    "head": "1",
+                    "tail": "0",
+                    "type": "causal",
+                    "id": "0"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "'Elisa",
+                "'",
+                "remained",
+                "in",
+                "this",
+                "position",
+                "until",
+                "23",
+                "December",
+                ",",
+                "when",
+                "the",
+                "boats",
+                "of",
+                "'Diana",
+                "'",
+                "entered",
+                "the",
+                "anchorage",
+                "at",
+                "night",
+                "and",
+                "set",
+                "the",
+                "beached",
+                "ship",
+                "on",
+                "fire",
+                ",",
+                "destroying",
+                "her",
+                "."
+            ],
+            "annotated_text": "<E6> 'Elisa ' remained in this position until 23 December </E6> , when <E5> the boats of 'Diana ' entered the anchorage at night </E5> and <E4> set the beached ship on fire </E4> , <3> destroying her </3> .",
+            "spans": [
+                {
+                    "span": "destroying her",
+                    "type": "event",
+                    "trigger": "destroying",
+                    "start": 29,
+                    "end": 31,
+                    "trigger_start": 29,
+                    "trigger_end": 30,
+                    "issues": "",
+                    "id": "3"
+                },
+                {
+                    "id": "E4",
+                    "type": "event",
+                    "start": 22,
+                    "end": 28,
+                    "span": "set the beached ship on fire"
+                },
+                {
+                    "id": "E5",
+                    "type": "event",
+                    "start": 11,
+                    "end": 21,
+                    "span": "the boats of 'Diana ' entered the anchorage at night"
+                },
+                {
+                    "id": "E6",
+                    "type": "event",
+                    "start": 0,
+                    "end": 9,
+                    "span": "'Elisa ' remained in this position until 23 December"
+                }
+            ],
+            "relations": [
+                {
+                    "id": "R0",
+                    "head": "E4",
+                    "tail": "3",
+                    "type": "causal"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "'Encomienda",
+                "'",
+                "rights",
+                "were",
+                "established",
+                ",",
+                "although",
+                "in",
+                "the",
+                "earlier",
+                "stages",
+                "of",
+                "conquest",
+                "these",
+                "amounted",
+                "to",
+                "little",
+                "more",
+                "than",
+                "slave-raiding",
+                "rights",
+                "."
+            ],
+            "annotated_text": "<E0> 'Encomienda ' rights were established </E0> , although in the earlier stages of conquest these amounted to little more than slave-raiding rights .",
+            "spans": [
+                {
+                    "id": "E0",
+                    "type": "event",
+                    "start": 0,
+                    "end": 5,
+                    "span": "'Encomienda ' rights were established"
+                }
+            ],
+            "relations": []
+        },
+        {
+            "tokens": [
+                "'End",
+                "of",
+                "Love",
+                "'",
+                "was",
+                "released",
+                "as",
+                "the",
+                "album",
+                "'s",
+                "lead",
+                "single",
+                ",",
+                "followed",
+                "by",
+                "'Ivory",
+                "Tower",
+                "'",
+                ",",
+                "and",
+                "'Are",
+                "You",
+                "Ready",
+                "'",
+                "(",
+                "a",
+                "cover",
+                "of",
+                "the",
+                "2005",
+                "hit",
+                "by",
+                "Australian",
+                "duo",
+                "Shakaya",
+                ")",
+                "."
+            ],
+            "annotated_text": "<E0> 'End of Love ' was released as the album 's lead single </E0> , followed by 'Ivory Tower ' , and 'Are You Ready ' ( a cover of the 2005 hit by Australian duo Shakaya ) .",
+            "spans": [
+                {
+                    "id": "E0",
+                    "type": "event",
+                    "start": 0,
+                    "end": 12,
+                    "span": "'End of Love ' was released as the album 's lead single"
+                }
+            ],
+            "relations": []
+        },
+        {
+            "tokens": [
+                "12",
+                "Indian",
+                "soldiers",
+                "and",
+                "1",
+                "civilian",
+                "were",
+                "killed",
+                "on",
+                "Indian",
+                "side",
+                "According",
+                "to",
+                "the",
+                "Indian",
+                "Army",
+                ",",
+                "the",
+                "skirmish",
+                "lasted",
+                "for",
+                "approximately",
+                "30",
+                "minutes",
+                ",",
+                "after",
+                "which",
+                "the",
+                "intruders",
+                "retreated",
+                "from",
+                "the",
+                "Indian",
+                "territory",
+                "."
+            ],
+            "annotated_text": "<0> 12 Indian soldiers and 1 civilian were killed on Indian side </0> According to the Indian Army , the skirmish lasted for approximately 30 minutes , after which the intruders retreated from the Indian territory .",
+            "spans": [
+                {
+                    "span": "12 Indian soldiers and 1 civilian were killed on Indian side",
+                    "type": "event",
+                    "trigger": "killed",
+                    "start": 0,
+                    "end": 11,
+                    "trigger_start": 7,
+                    "trigger_end": 8,
+                    "issues": "",
+                    "id": "0"
+                }
+            ],
+            "relations": []
+        },
+        {
+            "tokens": [
+                "12",
+                "people",
+                "died",
+                "and",
+                "46",
+                "were",
+                "injured",
+                "as",
+                "a",
+                "result",
+                "of",
+                "a",
+                "rear-end",
+                "collision",
+                "in",
+                "a",
+                "tunnel",
+                ",",
+                "caused",
+                "by",
+                "driver",
+                "error",
+                "after",
+                "a",
+                "signal",
+                "failure",
+                "."
+            ],
+            "annotated_text": "<E5> 12 people died and 46 were injured </E5> as a result of <2> a rear-end collision in a tunnel </2> , caused by <E6> driver error </E6> after <4> a signal failure </4> .",
+            "spans": [
+                {
+                    "span": "a rear-end collision in a tunnel",
+                    "type": "event",
+                    "trigger": "collision",
+                    "start": 11,
+                    "end": 17,
+                    "trigger_start": 13,
+                    "trigger_end": 14,
+                    "issues": "",
+                    "id": "2"
+                },
+                {
+                    "span": "a signal failure",
+                    "type": "event",
+                    "trigger": "failure",
+                    "start": 23,
+                    "end": 26,
+                    "trigger_start": 25,
+                    "trigger_end": 26,
+                    "issues": "",
+                    "id": "4"
+                },
+                {
+                    "id": "E5",
+                    "type": "event",
+                    "start": 0,
+                    "end": 7,
+                    "span": "12 people died and 46 were injured"
+                },
+                {
+                    "id": "E6",
+                    "type": "event",
+                    "start": 20,
+                    "end": 22,
+                    "span": "driver error"
+                }
+            ],
+            "relations": [
+                {
+                    "id": "R3",
+                    "head": "2",
+                    "tail": "E5",
+                    "type": "causal"
+                },
+                {
+                    "id": "R4",
+                    "head": "4",
+                    "tail": "E6",
+                    "type": "causal"
+                },
+                {
+                    "id": "R5",
+                    "head": "E6",
+                    "tail": "2",
+                    "type": "causal"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "30",
+                "large",
+                "lamps",
+                "had",
+                "been",
+                "installed",
+                "on",
+                "top",
+                "of",
+                "FBI",
+                "headquarters",
+                ",",
+                "and",
+                "they",
+                "were",
+                "causing",
+                "problems",
+                "with",
+                "their",
+                "surveillance",
+                "of",
+                "Colonel",
+                "Gaddafi",
+                ",",
+                "who",
+                "was",
+                "visiting",
+                "the",
+                "city",
+                "at",
+                "that",
+                "time",
+                "."
+            ],
+            "annotated_text": "<0> 30 large lamps had been installed on top of FBI headquarters </0> , and they were causing <E3> problems with their surveillance of Colonel Gaddafi , who was visiting the city at that time </E3> .",
+            "spans": [
+                {
+                    "span": "30 large lamps had been installed on top of FBI headquarters",
+                    "type": "event",
+                    "trigger": "installed",
+                    "start": 0,
+                    "end": 11,
+                    "trigger_start": 5,
+                    "trigger_end": 6,
+                    "issues": "",
+                    "id": "0"
+                },
+                {
+                    "id": "E3",
+                    "type": "event",
+                    "start": 16,
+                    "end": 32,
+                    "span": "problems with their surveillance of Colonel Gaddafi , who was visiting the city at that time"
+                }
+            ],
+            "relations": [
+                {
+                    "id": "R0",
+                    "head": "0",
+                    "tail": "E3",
+                    "type": "causal"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "47",
+                "people",
+                "were",
+                "killed",
+                "and",
+                "five",
+                "hundred",
+                "more",
+                "injured",
+                "in",
+                "what",
+                "has",
+                "been",
+                "called",
+                "the",
+                "'biggest",
+                "and",
+                "deadliest",
+                "'",
+                "bombing",
+                "in",
+                "Tripoli",
+                "since",
+                "the",
+                "end",
+                "of",
+                "Lebanon",
+                "'s",
+                "Civil",
+                "War",
+                "."
+            ],
+            "annotated_text": "<E0> 47 people were killed and five hundred more injured </E0> in what has been called <E1> the 'biggest and deadliest ' bombing in Tripoli since the end of Lebanon 's Civil War </E1> .",
+            "spans": [
+                {
+                    "id": "E0",
+                    "type": "event",
+                    "start": 0,
+                    "end": 9,
+                    "span": "47 people were killed and five hundred more injured"
+                },
+                {
+                    "id": "E1",
+                    "type": "event",
+                    "start": 14,
+                    "end": 30,
+                    "span": "the 'biggest and deadliest ' bombing in Tripoli since the end of Lebanon 's Civil War"
+                }
+            ],
+            "relations": [
+                {
+                    "id": "R0",
+                    "head": "E1",
+                    "tail": "E0",
+                    "type": "causal"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "569",
+                "athletes",
+                "representing",
+                "49",
+                "National",
+                "Paralympic",
+                "Committees",
+                "participated",
+                "in",
+                "these",
+                "Games",
+                ",",
+                "including",
+                "newcomers",
+                "Georgia",
+                ",",
+                "North",
+                "Korea",
+                "and",
+                "Tajikistan",
+                "."
+            ],
+            "annotated_text": "<E0> 569 athletes representing 49 National Paralympic Committees participated in these Games , including newcomers Georgia , North Korea and Tajikistan </E0> .",
+            "spans": [
+                {
+                    "id": "E0",
+                    "type": "event",
+                    "start": 0,
+                    "end": 20,
+                    "span": "569 athletes representing 49 National Paralympic Committees participated in these Games , including newcomers Georgia , North Korea and Tajikistan"
+                }
+            ],
+            "relations": []
+        },
+        {
+            "tokens": [
+                "74",
+                "people",
+                "were",
+                "killed",
+                "and",
+                "more",
+                "than",
+                "500",
+                "were",
+                "injured",
+                "after",
+                "thousands",
+                "of",
+                "Masry",
+                "spectators",
+                "stormed",
+                "the",
+                "stadium",
+                "stands",
+                "and",
+                "the",
+                "pitch",
+                ",",
+                "following",
+                "a",
+                "3",
+                "1",
+                "victory",
+                "by",
+                "their",
+                "team",
+                ",",
+                "and",
+                "violently",
+                "attacked",
+                "Ahly",
+                "fans",
+                "using",
+                "clubs",
+                ",",
+                "stones",
+                ",",
+                "bottles",
+                ",",
+                "and",
+                "fireworks",
+                ",",
+                "getting",
+                "them",
+                "all",
+                "trapped",
+                "in",
+                "El",
+                "Ahly",
+                "partition",
+                "of",
+                "the",
+                "stadium",
+                "."
+            ],
+            "annotated_text": "<E5> 74 people were killed and more than 500 were injured </E5> after <2> thousands of Masry spectators stormed the stadium stands and the pitch </2> , following <E6> a 3 1 victory by their team </E6> , and <E7> violently attacked Ahly fans using clubs , stones , bottles , and fireworks </E7> , <E8> getting them all trapped in El Ahly partition of the stadium </E8> .",
+            "spans": [
+                {
+                    "span": "thousands of Masry spectators stormed the stadium stands and the pitch",
+                    "type": "event",
+                    "trigger": "stormed",
+                    "start": 11,
+                    "end": 22,
+                    "trigger_start": 15,
+                    "trigger_end": 16,
+                    "issues": "",
+                    "id": "2"
+                },
+                {
+                    "id": "E5",
+                    "type": "event",
+                    "start": 0,
+                    "end": 10,
+                    "span": "74 people were killed and more than 500 were injured"
+                },
+                {
+                    "id": "E6",
+                    "type": "event",
+                    "start": 24,
+                    "end": 31,
+                    "span": "a 3 1 victory by their team"
+                },
+                {
+                    "id": "E7",
+                    "type": "event",
+                    "start": 33,
+                    "end": 46,
+                    "span": "violently attacked Ahly fans using clubs , stones , bottles , and fireworks"
+                },
+                {
+                    "id": "E8",
+                    "type": "event",
+                    "start": 47,
+                    "end": 58,
+                    "span": "getting them all trapped in El Ahly partition of the stadium"
+                }
+            ],
+            "relations": [
+                {
+                    "id": "R0",
+                    "head": "2",
+                    "tail": "E5",
+                    "type": "causal"
+                },
+                {
+                    "id": "R1",
+                    "head": "E6",
+                    "tail": "2",
+                    "type": "causal"
+                },
+                {
+                    "id": "R2",
+                    "head": "E6",
+                    "tail": "E7",
+                    "type": "causal"
+                },
+                {
+                    "id": "R3",
+                    "head": "E7",
+                    "tail": "E8",
+                    "type": "causal"
+                },
+                {
+                    "id": "R4",
+                    "head": "E7",
+                    "tail": "E5",
+                    "type": "causal"
+                },
+                {
+                    "id": "R5",
+                    "head": "2",
+                    "tail": "E8",
+                    "type": "causal"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "920",
+                "to",
+                "976",
+                ",",
+                "the",
+                "Byzantines",
+                "finally",
+                "broke",
+                "through",
+                "the",
+                "Muslim",
+                "defences",
+                "and",
+                "restored",
+                "their",
+                "control",
+                "over",
+                "northern",
+                "Syria",
+                "and",
+                "Greater",
+                "Armenia",
+                "."
+            ],
+            "annotated_text": "<E0> 920 to 976 , the Byzantines finally broke through the Muslim defences and restored their control over northern Syria and Greater Armenia </E0> .",
+            "spans": [
+                {
+                    "id": "E0",
+                    "type": "event",
+                    "start": 0,
+                    "end": 22,
+                    "span": "920 to 976 , the Byzantines finally broke through the Muslim defences and restored their control over northern Syria and Greater Armenia"
+                }
+            ],
+            "relations": []
+        },
+        {
+            "tokens": [
+                "95",
+                "%",
+                "of",
+                "the",
+                "buildings",
+                "in",
+                "San",
+                "Blas",
+                "were",
+                "damaged",
+                ",",
+                "and",
+                "hundreds",
+                "of",
+                "buildings",
+                "were",
+                "destroyed",
+                "along",
+                "coastal",
+                "areas",
+                "of",
+                "Puerto",
+                "Vallarta",
+                "."
+            ],
+            "annotated_text": "<E0> 95 % of the buildings in San Blas were damaged </E0> , and <E1> hundreds of buildings were destroyed along coastal areas of Puerto Vallarta </E1> .",
+            "spans": [
+                {
+                    "id": "E0",
+                    "type": "event",
+                    "start": 0,
+                    "end": 10,
+                    "span": "95 % of the buildings in San Blas were damaged"
+                },
+                {
+                    "id": "E1",
+                    "type": "event",
+                    "start": 12,
+                    "end": 23,
+                    "span": "hundreds of buildings were destroyed along coastal areas of Puerto Vallarta"
+                }
+            ],
+            "relations": []
+        },
+        {
+            "tokens": [
+                "970",
+                "until",
+                "1018",
+                ",",
+                "a",
+                "series",
+                "of",
+                "conflicts",
+                "between",
+                "the",
+                "Bulgarian",
+                "Empire",
+                "and",
+                "the",
+                "Byzantine",
+                "Empire",
+                "led",
+                "to",
+                "the",
+                "gradual",
+                "conquest",
+                "of",
+                "Bulgaria",
+                "by",
+                "the",
+                "Byzantines",
+                ",",
+                "who",
+                "thus",
+                "re-established",
+                "their",
+                "control",
+                "over",
+                "the",
+                "entire",
+                "Balkan",
+                "peninsula",
+                "for",
+                "the",
+                "first",
+                "time",
+                "since",
+                "the",
+                "7th-century",
+                "Slavic",
+                "invasions",
+                "."
+            ],
+            "annotated_text": "<E3> 970 until 1018 , a series of conflicts between the Bulgarian Empire and the Byzantine Empire </E3> led to <E4> the gradual conquest of Bulgaria by the Byzantines </E4> , who thus <E5> re-established their control over the entire Balkan peninsula for the first time since the 7th-century Slavic invasions </E5> .",
+            "spans": [
+                {
+                    "id": "E3",
+                    "type": "event",
+                    "start": 0,
+                    "end": 16,
+                    "span": "970 until 1018 , a series of conflicts between the Bulgarian Empire and the Byzantine Empire"
+                },
+                {
+                    "id": "E4",
+                    "type": "event",
+                    "start": 18,
+                    "end": 26,
+                    "span": "the gradual conquest of Bulgaria by the Byzantines"
+                },
+                {
+                    "id": "E5",
+                    "type": "event",
+                    "start": 29,
+                    "end": 46,
+                    "span": "re-established their control over the entire Balkan peninsula for the first time since the 7th-century Slavic invasions"
+                }
+            ],
+            "relations": [
+                {
+                    "id": "R0",
+                    "head": "E3",
+                    "tail": "E4",
+                    "type": "causal"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "A",
+                "12",
+                "April",
+                ",",
+                "2008",
+                "Chi",
+                "?",
+                "in",
+                "?",
+                "u",
+                "Antonov",
+                "An-32",
+                "crash",
+                "killed",
+                "eight",
+                "crew",
+                "when",
+                "a",
+                "departing",
+                "Sudanese",
+                "cargo",
+                "flight",
+                "to",
+                "Turkey",
+                "turned",
+                "back",
+                "and",
+                "crashed",
+                "short",
+                "of",
+                "the",
+                "runway",
+                "."
+            ],
+            "annotated_text": "A 12 April , 2008 Chi ? in ? u <E2> Antonov An-32 crash killed eight crew </E2> when a departing Sudanese cargo flight to Turkey turned back and <E1> crashed short of the runway </E1> .",
+            "spans": [
+                {
+                    "id": "E1",
+                    "type": "event",
+                    "start": 27,
+                    "end": 32,
+                    "span": "crashed short of the runway"
+                },
+                {
+                    "id": "E2",
+                    "type": "event",
+                    "start": 10,
+                    "end": 16,
+                    "span": "Antonov An-32 crash killed eight crew"
+                }
+            ],
+            "relations": [
+                {
+                    "id": "R0",
+                    "head": "E1",
+                    "tail": "E2",
+                    "type": "causal"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "A",
+                "1999",
+                "vote",
+                "to",
+                "determine",
+                "East",
+                "Timor",
+                "'s",
+                "future",
+                "resulted",
+                "in",
+                "an",
+                "overwhelming",
+                "majority",
+                "in",
+                "favour",
+                "of",
+                "independence",
+                ",",
+                "and",
+                "in",
+                "2002",
+                "East",
+                "Timor",
+                "became",
+                "an",
+                "independent",
+                "nation",
+                "."
+            ],
+            "annotated_text": "<E2> A 1999 vote to determine East Timor 's future resulted in an overwhelming majority in favour of independence </E2> , and <E3> in 2002 East Timor became an independent nation </E3> .",
+            "spans": [
+                {
+                    "id": "E2",
+                    "type": "event",
+                    "start": 0,
+                    "end": 18,
+                    "span": "A 1999 vote to determine East Timor 's future resulted in an overwhelming majority in favour of independence"
+                },
+                {
+                    "id": "E3",
+                    "type": "event",
+                    "start": 20,
+                    "end": 28,
+                    "span": "in 2002 East Timor became an independent nation"
+                }
+            ],
+            "relations": [
+                {
+                    "id": "R0",
+                    "head": "E2",
+                    "tail": "E3",
+                    "type": "causal"
+                }
+            ]
+        }
+    ]
+}

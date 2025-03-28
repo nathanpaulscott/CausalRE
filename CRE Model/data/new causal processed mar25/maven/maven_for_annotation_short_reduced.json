@@ -1,0 +1,5363 @@
+{
+    "data": [
+        {
+            "tokens": [
+                "'Amethyst",
+                "'",
+                "retained",
+                "contact",
+                "throughout",
+                "the",
+                "night",
+                "and",
+                "brought",
+                "the",
+                "French",
+                "ship",
+                "to",
+                "action",
+                "on",
+                "the",
+                "morning",
+                "of",
+                "6",
+                "April",
+                "."
+            ],
+            "annotated_text": "<E0> 'Amethyst ' retained contact throughout the night </E0> and <E1> brought the French ship to action on the morning of 6 April </E1> .",
+            "spans": [
+                {
+                    "id": "E0",
+                    "type": "event",
+                    "start": 0,
+                    "end": 7,
+                    "span": "'Amethyst ' retained contact throughout the night"
+                },
+                {
+                    "id": "E1",
+                    "type": "event",
+                    "start": 8,
+                    "end": 20,
+                    "span": "brought the French ship to action on the morning of 6 April"
+                }
+            ],
+            "relations": [
+                {
+                    "id": "R0",
+                    "head": "E0",
+                    "tail": "E1",
+                    "type": "causal"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "'Belliqueux",
+                "'",
+                "rapidly",
+                "out",
+                "ran",
+                "Landolphe",
+                "'s",
+                "flagship",
+                "'Concorde",
+                "'",
+                ",",
+                "leaving",
+                "Landolphe",
+                "with",
+                "no",
+                "option",
+                "but",
+                "to",
+                "surrender",
+                "without",
+                "any",
+                "serious",
+                "resistance",
+                "."
+            ],
+            "annotated_text": "<E2> 'Belliqueux ' rapidly out ran Landolphe 's flagship 'Concorde ' </E2> , <E3> leaving Landolphe with no option but to surrender without any serious resistance </E3> .",
+            "spans": [
+                {
+                    "id": "E2",
+                    "type": "event",
+                    "start": 0,
+                    "end": 10,
+                    "span": "'Belliqueux ' rapidly out ran Landolphe 's flagship 'Concorde '"
+                },
+                {
+                    "id": "E3",
+                    "type": "event",
+                    "start": 11,
+                    "end": 23,
+                    "span": "leaving Landolphe with no option but to surrender without any serious resistance"
+                }
+            ],
+            "relations": [
+                {
+                    "id": "R0",
+                    "head": "E2",
+                    "tail": "E3",
+                    "type": "causal"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "'Chesapeake",
+                "'",
+                "suffered",
+                "early",
+                "in",
+                "the",
+                "exchange",
+                "of",
+                "gunfire",
+                ",",
+                "having",
+                "her",
+                "wheel",
+                "and",
+                "fore",
+                "topsail",
+                "halyard",
+                "shot",
+                "away",
+                ",",
+                "rendering",
+                "her",
+                "unmanoeuvrable",
+                "."
+            ],
+            "annotated_text": "<E3> 'Chesapeake ' suffered early in the exchange of gunfire , having her wheel and fore topsail halyard shot away </E3> , <2> rendering her unmanoeuvrable </2> .",
+            "spans": [
+                {
+                    "span": "rendering her unmanoeuvrable",
+                    "type": "event",
+                    "trigger": "rendering",
+                    "start": 20,
+                    "end": 23,
+                    "trigger_start": 20,
+                    "trigger_end": 21,
+                    "issues": "",
+                    "id": "2"
+                },
+                {
+                    "id": "E3",
+                    "type": "event",
+                    "start": 0,
+                    "end": 19,
+                    "span": "'Chesapeake ' suffered early in the exchange of gunfire , having her wheel and fore topsail halyard shot away"
+                }
+            ],
+            "relations": [
+                {
+                    "id": "R0",
+                    "head": "E3",
+                    "tail": "2",
+                    "type": "causal"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "'Confiante",
+                "'",
+                "was",
+                "badly",
+                "damaged",
+                "and",
+                "boarding",
+                "parties",
+                "from",
+                "'Hydra",
+                "'",
+                "and",
+                "the",
+                "other",
+                "ships",
+                "were",
+                "able",
+                "to",
+                "board",
+                "and",
+                "burn",
+                "her",
+                "the",
+                "following",
+                "morning",
+                "."
+            ],
+            "annotated_text": "<E0> 'Confiante ' was badly damaged </E0> and <E1> boarding parties from 'Hydra ' and the other ships were able to board and burn her the following morning </E1> .",
+            "spans": [
+                {
+                    "id": "E0",
+                    "type": "event",
+                    "start": 0,
+                    "end": 5,
+                    "span": "'Confiante ' was badly damaged"
+                },
+                {
+                    "id": "E1",
+                    "type": "event",
+                    "start": 6,
+                    "end": 25,
+                    "span": "boarding parties from 'Hydra ' and the other ships were able to board and burn her the following morning"
+                }
+            ],
+            "relations": [
+                {
+                    "id": "R0",
+                    "head": "E0",
+                    "tail": "E1",
+                    "type": "causal"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "'Earthquake",
+                "rates",
+                "have",
+                "recently",
+                "increased",
+                "markedly",
+                "in",
+                "multiple",
+                "areas",
+                "of",
+                "the",
+                "Central",
+                "and",
+                "Eastern",
+                "United",
+                "States",
+                "(",
+                "CEUS",
+                ")",
+                ",",
+                "especially",
+                "since",
+                "2010",
+                ",",
+                "and",
+                "scientific",
+                "studies",
+                "have",
+                "linked",
+                "the",
+                "majority",
+                "of",
+                "this",
+                "increased",
+                "activity",
+                "to",
+                "wastewater",
+                "injection",
+                "in",
+                "deep",
+                "disposal",
+                "wells",
+                ".",
+                "'"
+            ],
+            "annotated_text": "<0> 'Earthquake rates have recently increased markedly in multiple areas of the Central and Eastern United States ( CEUS ) </0> , especially since 2010 , and scientific studies have linked the majority of this increased activity to <1> wastewater injection in deep disposal wells </1> . '",
+            "spans": [
+                {
+                    "span": "'Earthquake rates have recently increased markedly in multiple areas of the Central and Eastern United States ( CEUS )",
+                    "type": "event",
+                    "trigger": "increased",
+                    "start": 0,
+                    "end": 19,
+                    "trigger_start": 4,
+                    "trigger_end": 5,
+                    "issues": "",
+                    "id": "0"
+                },
+                {
+                    "span": "wastewater injection in deep disposal wells",
+                    "type": "event",
+                    "trigger": "injection",
+                    "start": 36,
+                    "end": 42,
+                    "trigger_start": 37,
+                    "trigger_end": 38,
+                    "issues": "",
+                    "id": "1"
+                }
+            ],
+            "relations": [
+                {
+                    "head": "1",
+                    "tail": "0",
+                    "type": "causal",
+                    "id": "0"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "'Elisa",
+                "'",
+                "remained",
+                "in",
+                "this",
+                "position",
+                "until",
+                "23",
+                "December",
+                ",",
+                "when",
+                "the",
+                "boats",
+                "of",
+                "'Diana",
+                "'",
+                "entered",
+                "the",
+                "anchorage",
+                "at",
+                "night",
+                "and",
+                "set",
+                "the",
+                "beached",
+                "ship",
+                "on",
+                "fire",
+                ",",
+                "destroying",
+                "her",
+                "."
+            ],
+            "annotated_text": "<E6> 'Elisa ' remained in this position until 23 December </E6> , when <E5> the boats of 'Diana ' entered the anchorage at night </E5> and <E4> set the beached ship on fire </E4> , <3> destroying her </3> .",
+            "spans": [
+                {
+                    "span": "destroying her",
+                    "type": "event",
+                    "trigger": "destroying",
+                    "start": 29,
+                    "end": 31,
+                    "trigger_start": 29,
+                    "trigger_end": 30,
+                    "issues": "",
+                    "id": "3"
+                },
+                {
+                    "id": "E4",
+                    "type": "event",
+                    "start": 22,
+                    "end": 28,
+                    "span": "set the beached ship on fire"
+                },
+                {
+                    "id": "E5",
+                    "type": "event",
+                    "start": 11,
+                    "end": 21,
+                    "span": "the boats of 'Diana ' entered the anchorage at night"
+                },
+                {
+                    "id": "E6",
+                    "type": "event",
+                    "start": 0,
+                    "end": 9,
+                    "span": "'Elisa ' remained in this position until 23 December"
+                }
+            ],
+            "relations": [
+                {
+                    "id": "R0",
+                    "head": "E4",
+                    "tail": "3",
+                    "type": "causal"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "12",
+                "people",
+                "died",
+                "and",
+                "46",
+                "were",
+                "injured",
+                "as",
+                "a",
+                "result",
+                "of",
+                "a",
+                "rear-end",
+                "collision",
+                "in",
+                "a",
+                "tunnel",
+                ",",
+                "caused",
+                "by",
+                "driver",
+                "error",
+                "after",
+                "a",
+                "signal",
+                "failure",
+                "."
+            ],
+            "annotated_text": "<E5> 12 people died and 46 were injured </E5> as a result of <2> a rear-end collision in a tunnel </2> , caused by <E6> driver error </E6> after <4> a signal failure </4> .",
+            "spans": [
+                {
+                    "span": "a rear-end collision in a tunnel",
+                    "type": "event",
+                    "trigger": "collision",
+                    "start": 11,
+                    "end": 17,
+                    "trigger_start": 13,
+                    "trigger_end": 14,
+                    "issues": "",
+                    "id": "2"
+                },
+                {
+                    "span": "a signal failure",
+                    "type": "event",
+                    "trigger": "failure",
+                    "start": 23,
+                    "end": 26,
+                    "trigger_start": 25,
+                    "trigger_end": 26,
+                    "issues": "",
+                    "id": "4"
+                },
+                {
+                    "id": "E5",
+                    "type": "event",
+                    "start": 0,
+                    "end": 7,
+                    "span": "12 people died and 46 were injured"
+                },
+                {
+                    "id": "E6",
+                    "type": "event",
+                    "start": 20,
+                    "end": 22,
+                    "span": "driver error"
+                }
+            ],
+            "relations": [
+                {
+                    "id": "R3",
+                    "head": "2",
+                    "tail": "E5",
+                    "type": "causal"
+                },
+                {
+                    "id": "R4",
+                    "head": "4",
+                    "tail": "E6",
+                    "type": "causal"
+                },
+                {
+                    "id": "R5",
+                    "head": "E6",
+                    "tail": "2",
+                    "type": "causal"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "30",
+                "large",
+                "lamps",
+                "had",
+                "been",
+                "installed",
+                "on",
+                "top",
+                "of",
+                "FBI",
+                "headquarters",
+                ",",
+                "and",
+                "they",
+                "were",
+                "causing",
+                "problems",
+                "with",
+                "their",
+                "surveillance",
+                "of",
+                "Colonel",
+                "Gaddafi",
+                ",",
+                "who",
+                "was",
+                "visiting",
+                "the",
+                "city",
+                "at",
+                "that",
+                "time",
+                "."
+            ],
+            "annotated_text": "<0> 30 large lamps had been installed on top of FBI headquarters </0> , and they were causing <E3> problems with their surveillance of Colonel Gaddafi , who was visiting the city at that time </E3> .",
+            "spans": [
+                {
+                    "span": "30 large lamps had been installed on top of FBI headquarters",
+                    "type": "event",
+                    "trigger": "installed",
+                    "start": 0,
+                    "end": 11,
+                    "trigger_start": 5,
+                    "trigger_end": 6,
+                    "issues": "",
+                    "id": "0"
+                },
+                {
+                    "id": "E3",
+                    "type": "event",
+                    "start": 16,
+                    "end": 32,
+                    "span": "problems with their surveillance of Colonel Gaddafi , who was visiting the city at that time"
+                }
+            ],
+            "relations": [
+                {
+                    "id": "R0",
+                    "head": "0",
+                    "tail": "E3",
+                    "type": "causal"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "47",
+                "people",
+                "were",
+                "killed",
+                "and",
+                "five",
+                "hundred",
+                "more",
+                "injured",
+                "in",
+                "what",
+                "has",
+                "been",
+                "called",
+                "the",
+                "'biggest",
+                "and",
+                "deadliest",
+                "'",
+                "bombing",
+                "in",
+                "Tripoli",
+                "since",
+                "the",
+                "end",
+                "of",
+                "Lebanon",
+                "'s",
+                "Civil",
+                "War",
+                "."
+            ],
+            "annotated_text": "<E0> 47 people were killed and five hundred more injured </E0> in what has been called <E1> the 'biggest and deadliest ' bombing in Tripoli since the end of Lebanon 's Civil War </E1> .",
+            "spans": [
+                {
+                    "id": "E0",
+                    "type": "event",
+                    "start": 0,
+                    "end": 9,
+                    "span": "47 people were killed and five hundred more injured"
+                },
+                {
+                    "id": "E1",
+                    "type": "event",
+                    "start": 14,
+                    "end": 30,
+                    "span": "the 'biggest and deadliest ' bombing in Tripoli since the end of Lebanon 's Civil War"
+                }
+            ],
+            "relations": [
+                {
+                    "id": "R0",
+                    "head": "E1",
+                    "tail": "E0",
+                    "type": "causal"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "74",
+                "people",
+                "were",
+                "killed",
+                "and",
+                "more",
+                "than",
+                "500",
+                "were",
+                "injured",
+                "after",
+                "thousands",
+                "of",
+                "Masry",
+                "spectators",
+                "stormed",
+                "the",
+                "stadium",
+                "stands",
+                "and",
+                "the",
+                "pitch",
+                ",",
+                "following",
+                "a",
+                "3",
+                "1",
+                "victory",
+                "by",
+                "their",
+                "team",
+                ",",
+                "and",
+                "violently",
+                "attacked",
+                "Ahly",
+                "fans",
+                "using",
+                "clubs",
+                ",",
+                "stones",
+                ",",
+                "bottles",
+                ",",
+                "and",
+                "fireworks",
+                ",",
+                "getting",
+                "them",
+                "all",
+                "trapped",
+                "in",
+                "El",
+                "Ahly",
+                "partition",
+                "of",
+                "the",
+                "stadium",
+                "."
+            ],
+            "annotated_text": "<E5> 74 people were killed and more than 500 were injured </E5> after <2> thousands of Masry spectators stormed the stadium stands and the pitch </2> , following <E6> a 3 1 victory by their team </E6> , and <E7> violently attacked Ahly fans using clubs , stones , bottles , and fireworks </E7> , <E8> getting them all trapped in El Ahly partition of the stadium </E8> .",
+            "spans": [
+                {
+                    "span": "thousands of Masry spectators stormed the stadium stands and the pitch",
+                    "type": "event",
+                    "trigger": "stormed",
+                    "start": 11,
+                    "end": 22,
+                    "trigger_start": 15,
+                    "trigger_end": 16,
+                    "issues": "",
+                    "id": "2"
+                },
+                {
+                    "id": "E5",
+                    "type": "event",
+                    "start": 0,
+                    "end": 10,
+                    "span": "74 people were killed and more than 500 were injured"
+                },
+                {
+                    "id": "E6",
+                    "type": "event",
+                    "start": 24,
+                    "end": 31,
+                    "span": "a 3 1 victory by their team"
+                },
+                {
+                    "id": "E7",
+                    "type": "event",
+                    "start": 33,
+                    "end": 46,
+                    "span": "violently attacked Ahly fans using clubs , stones , bottles , and fireworks"
+                },
+                {
+                    "id": "E8",
+                    "type": "event",
+                    "start": 47,
+                    "end": 58,
+                    "span": "getting them all trapped in El Ahly partition of the stadium"
+                }
+            ],
+            "relations": [
+                {
+                    "id": "R0",
+                    "head": "2",
+                    "tail": "E5",
+                    "type": "causal"
+                },
+                {
+                    "id": "R1",
+                    "head": "E6",
+                    "tail": "2",
+                    "type": "causal"
+                },
+                {
+                    "id": "R2",
+                    "head": "E6",
+                    "tail": "E7",
+                    "type": "causal"
+                },
+                {
+                    "id": "R3",
+                    "head": "E7",
+                    "tail": "E8",
+                    "type": "causal"
+                },
+                {
+                    "id": "R4",
+                    "head": "E7",
+                    "tail": "E5",
+                    "type": "causal"
+                },
+                {
+                    "id": "R5",
+                    "head": "2",
+                    "tail": "E8",
+                    "type": "causal"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "970",
+                "until",
+                "1018",
+                ",",
+                "a",
+                "series",
+                "of",
+                "conflicts",
+                "between",
+                "the",
+                "Bulgarian",
+                "Empire",
+                "and",
+                "the",
+                "Byzantine",
+                "Empire",
+                "led",
+                "to",
+                "the",
+                "gradual",
+                "conquest",
+                "of",
+                "Bulgaria",
+                "by",
+                "the",
+                "Byzantines",
+                ",",
+                "who",
+                "thus",
+                "re-established",
+                "their",
+                "control",
+                "over",
+                "the",
+                "entire",
+                "Balkan",
+                "peninsula",
+                "for",
+                "the",
+                "first",
+                "time",
+                "since",
+                "the",
+                "7th-century",
+                "Slavic",
+                "invasions",
+                "."
+            ],
+            "annotated_text": "<E3> 970 until 1018 , a series of conflicts between the Bulgarian Empire and the Byzantine Empire </E3> led to <E4> the gradual conquest of Bulgaria by the Byzantines </E4> , who thus <E5> re-established their control over the entire Balkan peninsula for the first time since the 7th-century Slavic invasions </E5> .",
+            "spans": [
+                {
+                    "id": "E3",
+                    "type": "event",
+                    "start": 0,
+                    "end": 16,
+                    "span": "970 until 1018 , a series of conflicts between the Bulgarian Empire and the Byzantine Empire"
+                },
+                {
+                    "id": "E4",
+                    "type": "event",
+                    "start": 18,
+                    "end": 26,
+                    "span": "the gradual conquest of Bulgaria by the Byzantines"
+                },
+                {
+                    "id": "E5",
+                    "type": "event",
+                    "start": 29,
+                    "end": 46,
+                    "span": "re-established their control over the entire Balkan peninsula for the first time since the 7th-century Slavic invasions"
+                }
+            ],
+            "relations": [
+                {
+                    "id": "R0",
+                    "head": "E3",
+                    "tail": "E4",
+                    "type": "causal"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "A",
+                "12",
+                "April",
+                ",",
+                "2008",
+                "Chi",
+                "?",
+                "in",
+                "?",
+                "u",
+                "Antonov",
+                "An-32",
+                "crash",
+                "killed",
+                "eight",
+                "crew",
+                "when",
+                "a",
+                "departing",
+                "Sudanese",
+                "cargo",
+                "flight",
+                "to",
+                "Turkey",
+                "turned",
+                "back",
+                "and",
+                "crashed",
+                "short",
+                "of",
+                "the",
+                "runway",
+                "."
+            ],
+            "annotated_text": "A 12 April , 2008 Chi ? in ? u <E2> Antonov An-32 crash killed eight crew </E2> when a departing Sudanese cargo flight to Turkey turned back and <E1> crashed short of the runway </E1> .",
+            "spans": [
+                {
+                    "id": "E1",
+                    "type": "event",
+                    "start": 27,
+                    "end": 32,
+                    "span": "crashed short of the runway"
+                },
+                {
+                    "id": "E2",
+                    "type": "event",
+                    "start": 10,
+                    "end": 16,
+                    "span": "Antonov An-32 crash killed eight crew"
+                }
+            ],
+            "relations": [
+                {
+                    "id": "R0",
+                    "head": "E1",
+                    "tail": "E2",
+                    "type": "causal"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "A",
+                "1999",
+                "vote",
+                "to",
+                "determine",
+                "East",
+                "Timor",
+                "'s",
+                "future",
+                "resulted",
+                "in",
+                "an",
+                "overwhelming",
+                "majority",
+                "in",
+                "favour",
+                "of",
+                "independence",
+                ",",
+                "and",
+                "in",
+                "2002",
+                "East",
+                "Timor",
+                "became",
+                "an",
+                "independent",
+                "nation",
+                "."
+            ],
+            "annotated_text": "<E2> A 1999 vote to determine East Timor 's future resulted in an overwhelming majority in favour of independence </E2> , and <E3> in 2002 East Timor became an independent nation </E3> .",
+            "spans": [
+                {
+                    "id": "E2",
+                    "type": "event",
+                    "start": 0,
+                    "end": 18,
+                    "span": "A 1999 vote to determine East Timor 's future resulted in an overwhelming majority in favour of independence"
+                },
+                {
+                    "id": "E3",
+                    "type": "event",
+                    "start": 20,
+                    "end": 28,
+                    "span": "in 2002 East Timor became an independent nation"
+                }
+            ],
+            "relations": [
+                {
+                    "id": "R0",
+                    "head": "E2",
+                    "tail": "E3",
+                    "type": "causal"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "A",
+                "Category",
+                "5",
+                "upon",
+                "landfall",
+                "on",
+                "the",
+                "Yucatán",
+                "Peninsula",
+                ",",
+                "Janet",
+                "caused",
+                "severe",
+                "devastation",
+                "in",
+                "areas",
+                "of",
+                "Quintana",
+                "Roo",
+                "and",
+                "British",
+                "Honduras",
+                "."
+            ],
+            "annotated_text": "<E2> A Category 5 upon landfall on the Yucatán Peninsula </E2> , Janet caused <E3> severe devastation in areas of Quintana Roo and British Honduras </E3> .",
+            "spans": [
+                {
+                    "id": "E2",
+                    "type": "event",
+                    "start": 0,
+                    "end": 9,
+                    "span": "A Category 5 upon landfall on the Yucatán Peninsula"
+                },
+                {
+                    "id": "E3",
+                    "type": "event",
+                    "start": 12,
+                    "end": 22,
+                    "span": "severe devastation in areas of Quintana Roo and British Honduras"
+                }
+            ],
+            "relations": [
+                {
+                    "id": "R0",
+                    "head": "E2",
+                    "tail": "E3",
+                    "type": "causal"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "'Forte",
+                "'s",
+                "crew",
+                "continued",
+                "to",
+                "resist",
+                "for",
+                "more",
+                "than",
+                "two",
+                "hours",
+                ",",
+                "only",
+                "surrendering",
+                "when",
+                "their",
+                "ship",
+                "had",
+                "been",
+                "reduced",
+                "to",
+                "a",
+                "battered",
+                "wreck",
+                "and",
+                "more",
+                "than",
+                "a",
+                "third",
+                "of",
+                "the",
+                "crew",
+                "killed",
+                "or",
+                "wounded",
+                "."
+            ],
+            "annotated_text": "<E0> 'Forte 's crew continued to resist for more than two hours </E0> , only <E1> surrendering when their ship had been reduced to a battered wreck and more than a third of the crew killed or wounded </E1> .",
+            "spans": [
+                {
+                    "id": "E0",
+                    "type": "event",
+                    "start": 0,
+                    "end": 11,
+                    "span": "'Forte 's crew continued to resist for more than two hours"
+                },
+                {
+                    "id": "E1",
+                    "type": "event",
+                    "start": 13,
+                    "end": 35,
+                    "span": "surrendering when their ship had been reduced to a battered wreck and more than a third of the crew killed or wounded"
+                }
+            ],
+            "relations": []
+        },
+        {
+            "tokens": [
+                "A",
+                "Spanish",
+                "expeditionary",
+                "force",
+                "under",
+                "Matías",
+                "de",
+                "Gálvez",
+                ",",
+                "the",
+                "Captain",
+                "General",
+                "of",
+                "Spanish",
+                "Guatemala",
+                ",",
+                "gained",
+                "control",
+                "of",
+                "the",
+                "British-held",
+                "island",
+                "after",
+                "bombarding",
+                "its",
+                "main",
+                "defences",
+                "."
+            ],
+            "annotated_text": "A Spanish expeditionary force under Matías de Gálvez , the Captain General of Spanish Guatemala , <0> gained control of the British-held island </0> after <1> bombarding its main defences </1> .",
+            "spans": [
+                {
+                    "span": "gained control of the British-held island",
+                    "type": "event",
+                    "trigger": "gained",
+                    "start": 16,
+                    "end": 22,
+                    "trigger_start": 16,
+                    "trigger_end": 17,
+                    "issues": "",
+                    "id": "0"
+                },
+                {
+                    "span": "bombarding its main defences",
+                    "type": "event",
+                    "trigger": "bombarding",
+                    "start": 23,
+                    "end": 27,
+                    "trigger_start": 23,
+                    "trigger_end": 24,
+                    "issues": "",
+                    "id": "1"
+                }
+            ],
+            "relations": [
+                {
+                    "head": "1",
+                    "tail": "0",
+                    "type": "causal",
+                    "id": "0"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "A",
+                "Supreme",
+                "Central",
+                "Junta",
+                "led",
+                "resistance",
+                "to",
+                "Joseph",
+                "'s",
+                "government",
+                "and",
+                "the",
+                "French",
+                "occupation",
+                "of",
+                "Spain",
+                ",",
+                "but",
+                "eventually",
+                "suffered",
+                "a",
+                "series",
+                "of",
+                "reversals",
+                "that",
+                "resulted",
+                "in",
+                "the",
+                "Spanish",
+                "loss",
+                "of",
+                "the",
+                "northern",
+                "half",
+                "of",
+                "the",
+                "country",
+                "."
+            ],
+            "annotated_text": "<0> A Supreme Central Junta led resistance to Joseph 's government and the French occupation of Spain </0> , but eventually <1> suffered a series of reversals </1> that <2> resulted in the Spanish loss of the northern half of the country </2> .",
+            "spans": [
+                {
+                    "span": "A Supreme Central Junta led resistance to Joseph 's government and the French occupation of Spain",
+                    "type": "event",
+                    "trigger": "led",
+                    "start": 0,
+                    "end": 16,
+                    "trigger_start": 4,
+                    "trigger_end": 5,
+                    "issues": "",
+                    "id": "0"
+                },
+                {
+                    "span": "suffered a series of reversals",
+                    "type": "event",
+                    "trigger": "suffered",
+                    "start": 19,
+                    "end": 24,
+                    "trigger_start": 19,
+                    "trigger_end": 20,
+                    "issues": "",
+                    "id": "1"
+                },
+                {
+                    "span": "resulted in the Spanish loss of the northern half of the country",
+                    "type": "event",
+                    "trigger": "loss",
+                    "start": 25,
+                    "end": 37,
+                    "trigger_start": 29,
+                    "trigger_end": 30,
+                    "issues": "",
+                    "id": "2"
+                }
+            ],
+            "relations": [
+                {
+                    "head": "1",
+                    "tail": "2",
+                    "type": "causal",
+                    "id": "0"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "A",
+                "Swiss",
+                "investigation",
+                "concluded",
+                "that",
+                "the",
+                "crash",
+                "was",
+                "caused",
+                "by",
+                "a",
+                "short",
+                "circuit",
+                ",",
+                "which",
+                "led",
+                "to",
+                "the",
+                "failure",
+                "of",
+                "the",
+                "aircraft",
+                "'s",
+                "NAV",
+                "receiver",
+                "."
+            ],
+            "annotated_text": "A Swiss investigation concluded that <0> the crash </0> was caused by <1> a short circuit </1> , which led to <2> the failure of the aircraft 's NAV receiver </2> .",
+            "spans": [
+                {
+                    "span": "the crash",
+                    "type": "event",
+                    "trigger": "crash",
+                    "start": 5,
+                    "end": 7,
+                    "trigger_start": 6,
+                    "trigger_end": 7,
+                    "issues": "",
+                    "id": "0"
+                },
+                {
+                    "span": "a short circuit",
+                    "type": "event",
+                    "trigger": "short circuit",
+                    "start": 10,
+                    "end": 13,
+                    "trigger_start": 11,
+                    "trigger_end": 13,
+                    "issues": "",
+                    "id": "1"
+                },
+                {
+                    "span": "the failure of the aircraft 's NAV receiver",
+                    "type": "event",
+                    "trigger": "failure",
+                    "start": 17,
+                    "end": 25,
+                    "trigger_start": 18,
+                    "trigger_end": 19,
+                    "issues": "",
+                    "id": "2"
+                }
+            ],
+            "relations": [
+                {
+                    "head": "1",
+                    "tail": "0",
+                    "type": "causal",
+                    "id": "0"
+                },
+                {
+                    "head": "1",
+                    "tail": "2",
+                    "type": "causal",
+                    "id": "1"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "A",
+                "Vickers",
+                "Viscount",
+                "flying",
+                "the",
+                "route",
+                "crashed",
+                "in",
+                "Chase",
+                ",",
+                "Maryland",
+                ",",
+                "on",
+                "May",
+                "12",
+                ",",
+                "1959",
+                ",",
+                "with",
+                "the",
+                "loss",
+                "of",
+                "all",
+                "on",
+                "board",
+                "."
+            ],
+            "annotated_text": "A <E2> Vickers Viscount flying the route crashed in Chase , Maryland , on May 12 , 1959 </E2> , with <1> the loss of all on board </1> .",
+            "spans": [
+                {
+                    "span": "the loss of all on board",
+                    "type": "event",
+                    "trigger": "loss",
+                    "start": 19,
+                    "end": 25,
+                    "trigger_start": 20,
+                    "trigger_end": 21,
+                    "issues": "",
+                    "id": "1"
+                },
+                {
+                    "id": "E2",
+                    "type": "event",
+                    "start": 1,
+                    "end": 17,
+                    "span": "Vickers Viscount flying the route crashed in Chase , Maryland , on May 12 , 1959"
+                }
+            ],
+            "relations": [
+                {
+                    "id": "R0",
+                    "head": "E2",
+                    "tail": "1",
+                    "type": "causal"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "A",
+                "breakdown",
+                "in",
+                "the",
+                "negotiations",
+                "with",
+                "Showtime",
+                "Networks",
+                "to",
+                "purchase",
+                "ProElite",
+                "resulted",
+                "in",
+                "the",
+                "company",
+                "'s",
+                "funding",
+                "to",
+                "disappear",
+                ",",
+                "forcing",
+                "them",
+                "out",
+                "of",
+                "business",
+                "."
+            ],
+            "annotated_text": "<0> A breakdown in the negotiations with Showtime Networks to purchase ProElite </0> resulted in <1> the company 's funding to disappear </1> , <2> forcing them out of business </2> .",
+            "spans": [
+                {
+                    "span": "A breakdown in the negotiations with Showtime Networks to purchase ProElite",
+                    "type": "event",
+                    "trigger": "breakdown",
+                    "start": 0,
+                    "end": 11,
+                    "trigger_start": 1,
+                    "trigger_end": 2,
+                    "issues": "",
+                    "id": "0"
+                },
+                {
+                    "span": "the company 's funding to disappear",
+                    "type": "event",
+                    "trigger": "disappear",
+                    "start": 13,
+                    "end": 19,
+                    "trigger_start": 18,
+                    "trigger_end": 19,
+                    "issues": "",
+                    "id": "1"
+                },
+                {
+                    "span": "forcing them out of business",
+                    "type": "event",
+                    "trigger": "forcing",
+                    "start": 20,
+                    "end": 25,
+                    "trigger_start": 20,
+                    "trigger_end": 21,
+                    "issues": "",
+                    "id": "2"
+                }
+            ],
+            "relations": [
+                {
+                    "head": "0",
+                    "tail": "1",
+                    "type": "causal",
+                    "id": "0"
+                },
+                {
+                    "head": "1",
+                    "tail": "2",
+                    "type": "causal",
+                    "id": "1"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "A",
+                "brigade",
+                "of",
+                "Virginians",
+                "under",
+                "the",
+                "relatively",
+                "unknown",
+                "brigadier",
+                "general",
+                "from",
+                "the",
+                "Virginia",
+                "Military",
+                "Institute",
+                ",",
+                "Thomas",
+                "J.",
+                "Jackson",
+                ",",
+                "stood",
+                "its",
+                "ground",
+                ",",
+                "which",
+                "resulted",
+                "in",
+                "Jackson",
+                "receiving",
+                "his",
+                "famous",
+                "nickname",
+                ",",
+                "'Stonewall",
+                "'",
+                "."
+            ],
+            "annotated_text": "A brigade of Virginians under the relatively unknown brigadier general from the Virginia Military Institute , Thomas J. Jackson , <0> stood its ground </0> , which <1> resulted in Jackson receiving his famous nickname , 'Stonewall ' </1> .",
+            "spans": [
+                {
+                    "span": "stood its ground",
+                    "type": "event",
+                    "trigger": "stood",
+                    "start": 20,
+                    "end": 23,
+                    "trigger_start": 20,
+                    "trigger_end": 21,
+                    "issues": "",
+                    "id": "0"
+                },
+                {
+                    "span": "resulted in Jackson receiving his famous nickname , 'Stonewall '",
+                    "type": "event",
+                    "trigger": "receiving",
+                    "start": 25,
+                    "end": 35,
+                    "trigger_start": 28,
+                    "trigger_end": 29,
+                    "issues": "",
+                    "id": "1"
+                }
+            ],
+            "relations": [
+                {
+                    "head": "0",
+                    "tail": "1",
+                    "type": "causal",
+                    "id": "0"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "A",
+                "cold",
+                "front",
+                "off",
+                "the",
+                "East",
+                "Coast",
+                "of",
+                "the",
+                "United",
+                "States",
+                "caused",
+                "the",
+                "system",
+                "to",
+                "turn",
+                "northward",
+                "and",
+                "eventually",
+                "northeastward",
+                "by",
+                "October",
+                "16",
+                ",",
+                "at",
+                "which",
+                "time",
+                "Rafael",
+                "attained",
+                "its",
+                "peak",
+                "intensity",
+                "with",
+                "maximum",
+                "sustained",
+                "winds",
+                "of",
+                "90",
+                "mph",
+                "(",
+                "150",
+                "km/h",
+                ")",
+                "."
+            ],
+            "annotated_text": "<0> A cold front off the East Coast of the United States caused the system to turn northward </0> and eventually northeastward by October 16 , at which time <1> Rafael attained its peak intensity </1> with maximum sustained winds of 90 mph ( 150 km/h ) .",
+            "spans": [
+                {
+                    "span": "A cold front off the East Coast of the United States caused the system to turn northward",
+                    "type": "event",
+                    "trigger": "caused",
+                    "start": 0,
+                    "end": 17,
+                    "trigger_start": 11,
+                    "trigger_end": 12,
+                    "issues": "",
+                    "id": "0"
+                },
+                {
+                    "span": "Rafael attained its peak intensity",
+                    "type": "event",
+                    "trigger": "attained",
+                    "start": 27,
+                    "end": 32,
+                    "trigger_start": 28,
+                    "trigger_end": 29,
+                    "issues": "",
+                    "id": "1"
+                }
+            ],
+            "relations": [
+                {
+                    "head": "0",
+                    "tail": "1",
+                    "type": "causal",
+                    "id": "0"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "A",
+                "combination",
+                "of",
+                "a",
+                "high",
+                "spring",
+                "tide",
+                "and",
+                "a",
+                "severe",
+                "European",
+                "windstorm",
+                "over",
+                "the",
+                "North",
+                "Sea",
+                "caused",
+                "a",
+                "storm",
+                "tide",
+                ";",
+                "the",
+                "combination",
+                "of",
+                "wind",
+                ",",
+                "high",
+                "tide",
+                ",",
+                "and",
+                "low",
+                "pressure",
+                "led",
+                "to",
+                "a",
+                "water",
+                "level",
+                "of",
+                "more",
+                "than",
+                "above",
+                "mean",
+                "sea",
+                "level",
+                "in",
+                "some",
+                "locations",
+                "."
+            ],
+            "annotated_text": "<0> A combination of a high spring tide and a severe European windstorm over the North Sea caused a storm tide </0> ; the combination of wind , high tide , and low pressure <1> led to a water level of more than above mean sea level </1> in some locations .",
+            "spans": [
+                {
+                    "span": "A combination of a high spring tide and a severe European windstorm over the North Sea caused a storm tide",
+                    "type": "event",
+                    "trigger": "caused",
+                    "start": 0,
+                    "end": 20,
+                    "trigger_start": 16,
+                    "trigger_end": 17,
+                    "issues": "",
+                    "id": "0"
+                },
+                {
+                    "span": "led to a water level of more than above mean sea level",
+                    "type": "event",
+                    "trigger": "led",
+                    "start": 32,
+                    "end": 44,
+                    "trigger_start": 32,
+                    "trigger_end": 33,
+                    "issues": "",
+                    "id": "1"
+                }
+            ],
+            "relations": [
+                {
+                    "head": "0",
+                    "tail": "1",
+                    "type": "causal",
+                    "id": "0"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "A",
+                "devaluation",
+                "of",
+                "Bernese",
+                "money",
+                "caused",
+                "a",
+                "tax",
+                "revolt",
+                "that",
+                "spread",
+                "from",
+                "the",
+                "Entlebuch",
+                "valley",
+                "in",
+                "the",
+                "Canton",
+                "of",
+                "Lucerne",
+                "to",
+                "the",
+                "Emmental",
+                "valley",
+                "in",
+                "the",
+                "Canton",
+                "of",
+                "Bern",
+                "and",
+                "then",
+                "to",
+                "the",
+                "cantons",
+                "of",
+                "Solothurn",
+                "and",
+                "Basel",
+                "and",
+                "also",
+                "to",
+                "the",
+                "Aargau",
+                "."
+            ],
+            "annotated_text": "<0> A devaluation of Bernese money </0> caused <1> a tax revolt </1> that <2> spread from the Entlebuch valley in the Canton of Lucerne to the Emmental valley in the Canton of Bern and then to the cantons of Solothurn and Basel and also to the Aargau </2> .",
+            "spans": [
+                {
+                    "span": "A devaluation of Bernese money",
+                    "type": "event",
+                    "trigger": "devaluation",
+                    "start": 0,
+                    "end": 5,
+                    "trigger_start": 1,
+                    "trigger_end": 2,
+                    "issues": "",
+                    "id": "0"
+                },
+                {
+                    "span": "a tax revolt",
+                    "type": "event",
+                    "trigger": "revolt",
+                    "start": 6,
+                    "end": 9,
+                    "trigger_start": 8,
+                    "trigger_end": 9,
+                    "issues": "",
+                    "id": "1"
+                },
+                {
+                    "span": "spread from the Entlebuch valley in the Canton of Lucerne to the Emmental valley in the Canton of Bern and then to the cantons of Solothurn and Basel and also to the Aargau",
+                    "type": "event",
+                    "trigger": "spread",
+                    "start": 10,
+                    "end": 43,
+                    "trigger_start": 10,
+                    "trigger_end": 11,
+                    "issues": "",
+                    "id": "2"
+                }
+            ],
+            "relations": [
+                {
+                    "head": "0",
+                    "tail": "1",
+                    "type": "causal",
+                    "id": "0"
+                },
+                {
+                    "head": "1",
+                    "tail": "2",
+                    "type": "causal",
+                    "id": "1"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "A",
+                "developing",
+                "trough",
+                "to",
+                "its",
+                "west",
+                "caused",
+                "the",
+                "initial",
+                "influx",
+                "of",
+                "moisture",
+                "and",
+                "Norman",
+                "'s",
+                "turn",
+                "to",
+                "the",
+                "north",
+                "as",
+                "a",
+                "weakening",
+                "tropical",
+                "storm",
+                "."
+            ],
+            "annotated_text": "<0> A developing trough to its west <1> caused the initial influx of moisture </1> and <2> Norman 's turn to the north as a weakening tropical storm </2> .",
+            "spans": [
+                {
+                    "span": "A developing trough to its west",
+                    "type": "event",
+                    "trigger": "developing",
+                    "start": 0,
+                    "end": 6,
+                    "trigger_start": 1,
+                    "trigger_end": 2,
+                    "issues": "",
+                    "id": "0"
+                },
+                {
+                    "span": "caused the initial influx of moisture",
+                    "type": "event",
+                    "trigger": "caused",
+                    "start": 6,
+                    "end": 12,
+                    "trigger_start": 6,
+                    "trigger_end": 7,
+                    "issues": "",
+                    "id": "1"
+                },
+                {
+                    "span": "Norman 's turn to the north as a weakening tropical storm",
+                    "type": "event",
+                    "trigger": "turn",
+                    "start": 13,
+                    "end": 24,
+                    "trigger_start": 15,
+                    "trigger_end": 16,
+                    "issues": "",
+                    "id": "2"
+                }
+            ],
+            "relations": [
+                {
+                    "head": "0",
+                    "tail": "1",
+                    "type": "causal",
+                    "id": "0"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "A",
+                "failed",
+                "counterattack",
+                "by",
+                "German",
+                "forces",
+                "on",
+                "8",
+                "August",
+                "left",
+                "50,000",
+                "soldiers",
+                "of",
+                "the",
+                "7th",
+                "Army",
+                "trapped",
+                "in",
+                "the",
+                "Falaise",
+                "pocket",
+                "."
+            ],
+            "annotated_text": "<0> A failed counterattack by German forces </0> on 8 August <1> left 50,000 soldiers of the 7th Army trapped in the Falaise pocket </1> .",
+            "spans": [
+                {
+                    "span": "A failed counterattack by German forces",
+                    "type": "event",
+                    "trigger": "counterattack",
+                    "start": 0,
+                    "end": 6,
+                    "trigger_start": 2,
+                    "trigger_end": 3,
+                    "issues": "",
+                    "id": "0"
+                },
+                {
+                    "span": "left 50,000 soldiers of the 7th Army trapped in the Falaise pocket",
+                    "type": "event",
+                    "trigger": "trapped",
+                    "start": 9,
+                    "end": 21,
+                    "trigger_start": 16,
+                    "trigger_end": 17,
+                    "issues": "",
+                    "id": "1"
+                }
+            ],
+            "relations": [
+                {
+                    "head": "0",
+                    "tail": "1",
+                    "type": "causal",
+                    "id": "0"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "A",
+                "few",
+                "days",
+                "before",
+                ",",
+                "when",
+                "pay",
+                "did",
+                "not",
+                "arrive",
+                "on",
+                "time",
+                ",",
+                "the",
+                "English",
+                "soldiers",
+                "mutinied",
+                ",",
+                "and",
+                "was",
+                "rumored",
+                "that",
+                "Wingfield",
+                "had",
+                "intended",
+                "to",
+                "surrender",
+                "(",
+                "or",
+                "'sold",
+                "'",
+                ")",
+                "the",
+                "city",
+                "to",
+                "the",
+                "Spaniards",
+                "."
+            ],
+            "annotated_text": "A few days before , when pay did not arrive on time , the English soldiers mutinied , and was rumored that Wingfield had intended to surrender ( or 'sold ' ) the city to the Spaniards .",
+            "spans": [],
+            "relations": []
+        },
+        {
+            "tokens": [
+                "A",
+                "few",
+                "days",
+                "later",
+                ",",
+                "thousands",
+                "of",
+                "houses",
+                "in",
+                "Ipswich",
+                "and",
+                "Brisbane",
+                "were",
+                "inundated",
+                "as",
+                "the",
+                "Brisbane",
+                "River",
+                "rose",
+                "and",
+                "Wivenhoe",
+                "Dam",
+                "used",
+                "a",
+                "considerable",
+                "proportion",
+                "of",
+                "its",
+                "flood",
+                "mitigation",
+                "capacity",
+                "."
+            ],
+            "annotated_text": "A few days later , thousands of houses in Ipswich and Brisbane were inundated as the Brisbane River rose and Wivenhoe Dam used a considerable proportion of its flood mitigation capacity .",
+            "spans": [],
+            "relations": []
+        },
+        {
+            "tokens": [
+                "A",
+                "few",
+                "months",
+                "after",
+                "the",
+                "hotel",
+                "'s",
+                "bombing",
+                "the",
+                "Government",
+                "of",
+                "Pakistan",
+                "had",
+                "re-constructed",
+                "it",
+                ",",
+                "and",
+                "the",
+                "Islamabad",
+                "Marriott",
+                "reopened",
+                "officially",
+                "on",
+                "28",
+                "December",
+                "2008",
+                "."
+            ],
+            "annotated_text": "A few months after the hotel 's bombing the Government of Pakistan had re-constructed it , and the Islamabad Marriott reopened officially on 28 December 2008 .",
+            "spans": [],
+            "relations": []
+        },
+        {
+            "tokens": [
+                "A",
+                "few",
+                "more",
+                "losses",
+                "did",
+                "not",
+                "affect",
+                "either",
+                "fleet",
+                ",",
+                "when",
+                "a",
+                "sudden",
+                "wind",
+                "made",
+                "it",
+                "impossible",
+                "for",
+                "the",
+                "Swedish",
+                "navy",
+                "to",
+                "continue",
+                "its",
+                "pursuit",
+                "of",
+                "the",
+                "Danish",
+                "fleet",
+                ",",
+                "which",
+                "was",
+                "anchored",
+                "to",
+                "the",
+                "Gotland",
+                "coast",
+                "to",
+                "bury",
+                "the",
+                "Danish",
+                "vice-admiral",
+                "Christopher",
+                "Morgisen",
+                "on",
+                "hallowed",
+                "ground",
+                "after",
+                "his",
+                "death",
+                "from",
+                "a",
+                "cannonball",
+                "."
+            ],
+            "annotated_text": "A few more losses did not affect either fleet , when <E3> a sudden wind </E3> made it <E4> impossible for the Swedish navy to continue its pursuit of the Danish fleet </E4> , <1> which was anchored to the Gotland coast to bury the Danish vice-admiral Christopher Morgisen on hallowed ground after <2> his death from a cannonball </2> .",
+            "spans": [
+                {
+                    "span": "which was anchored to the Gotland coast to bury the Danish vice-admiral Christopher Morgisen on hallowed ground after his death from a cannonball",
+                    "type": "event",
+                    "trigger": "anchored",
+                    "start": 30,
+                    "end": 53,
+                    "trigger_start": 32,
+                    "trigger_end": 33,
+                    "issues": "",
+                    "id": "1"
+                },
+                {
+                    "span": "his death from a cannonball",
+                    "type": "event",
+                    "trigger": "death",
+                    "start": 48,
+                    "end": 53,
+                    "trigger_start": 49,
+                    "trigger_end": 50,
+                    "issues": "",
+                    "id": "2"
+                },
+                {
+                    "id": "E3",
+                    "type": "event",
+                    "start": 11,
+                    "end": 14,
+                    "span": "a sudden wind"
+                },
+                {
+                    "id": "E4",
+                    "type": "event",
+                    "start": 16,
+                    "end": 29,
+                    "span": "impossible for the Swedish navy to continue its pursuit of the Danish fleet"
+                }
+            ],
+            "relations": [
+                {
+                    "head": "2",
+                    "tail": "1",
+                    "type": "causal",
+                    "id": "0"
+                },
+                {
+                    "id": "R1",
+                    "head": "E3",
+                    "tail": "E4",
+                    "type": "causal"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "A",
+                "final",
+                "series",
+                "of",
+                "four",
+                "tests",
+                "in",
+                "August",
+                "and",
+                "September",
+                "1958",
+                ",",
+                "known",
+                "as",
+                "Grapple",
+                "Z",
+                ",",
+                "tested",
+                "techniques",
+                "for",
+                "boosting",
+                "and",
+                "making",
+                "bombs",
+                "immune",
+                "to",
+                "predetonation",
+                "caused",
+                "by",
+                "nearby",
+                "nuclear",
+                "explosions",
+                "."
+            ],
+            "annotated_text": "A final series of four tests in August and September 1958 , known as Grapple Z , tested techniques for boosting and making bombs immune to predetonation caused by nearby nuclear explosions .",
+            "spans": [],
+            "relations": []
+        },
+        {
+            "tokens": [
+                "A",
+                "further",
+                "public",
+                "investigation",
+                ",",
+                "closing",
+                "at",
+                "the",
+                "end",
+                "of",
+                "June",
+                "2014",
+                ",",
+                "attributed",
+                "the",
+                "crash",
+                "to",
+                "a",
+                "non-criminal",
+                "error",
+                "on",
+                "the",
+                "part",
+                "of",
+                "the",
+                "coach",
+                "driver",
+                "."
+            ],
+            "annotated_text": "<E3> A further public investigation , closing at the end of June 2014 </E3> , attributed <1> the crash </1> to <E4> a non-criminal error on the part of the coach driver </E4> .",
+            "spans": [
+                {
+                    "span": "the crash",
+                    "type": "event",
+                    "trigger": "crash",
+                    "start": 14,
+                    "end": 16,
+                    "trigger_start": 15,
+                    "trigger_end": 16,
+                    "issues": "",
+                    "id": "1"
+                },
+                {
+                    "id": "E3",
+                    "type": "event",
+                    "start": 0,
+                    "end": 12,
+                    "span": "A further public investigation , closing at the end of June 2014"
+                },
+                {
+                    "id": "E4",
+                    "type": "event",
+                    "start": 17,
+                    "end": 27,
+                    "span": "a non-criminal error on the part of the coach driver"
+                }
+            ],
+            "relations": [
+                {
+                    "id": "R0",
+                    "head": "E4",
+                    "tail": "1",
+                    "type": "causal"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "A",
+                "government",
+                "inquiry",
+                "later",
+                "found",
+                "that",
+                ",",
+                "while",
+                "long-standing",
+                "tensions",
+                "existed",
+                "between",
+                "Boko",
+                "Haram",
+                "and",
+                "the",
+                "Nigerian",
+                "Security",
+                "forces",
+                ",",
+                "the",
+                "immediate",
+                "cause",
+                "of",
+                "the",
+                "violence",
+                "stemmed",
+                "from",
+                "a",
+                "confrontation",
+                "between",
+                "a",
+                "group",
+                "of",
+                "sect",
+                "members",
+                "and",
+                "police",
+                "in",
+                "the",
+                "city",
+                "of",
+                "Maiduguri",
+                "."
+            ],
+            "annotated_text": "A government inquiry later found that , while <E3> long-standing tensions existed between Boko Haram and the Nigerian Security forces </E3> , the immediate cause of <E5> the violence </E5> stemmed from <E4> a confrontation between a group of sect members and police in the city of Maiduguri </E4> .",
+            "spans": [
+                {
+                    "id": "E3",
+                    "type": "event",
+                    "start": 8,
+                    "end": 19,
+                    "span": "long-standing tensions existed between Boko Haram and the Nigerian Security forces"
+                },
+                {
+                    "id": "E4",
+                    "type": "event",
+                    "start": 28,
+                    "end": 43,
+                    "span": "a confrontation between a group of sect members and police in the city of Maiduguri"
+                },
+                {
+                    "id": "E5",
+                    "type": "event",
+                    "start": 24,
+                    "end": 26,
+                    "span": "the violence"
+                }
+            ],
+            "relations": [
+                {
+                    "id": "R0",
+                    "head": "E4",
+                    "tail": "E5",
+                    "type": "causal"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "A",
+                "group",
+                "of",
+                "armed",
+                "Uyghur",
+                "men",
+                "killed",
+                "two",
+                "people",
+                "inside",
+                "of",
+                "the",
+                "restaurant",
+                "and",
+                "four",
+                "people",
+                "outside",
+                ",",
+                "injuring",
+                "15",
+                "other",
+                "people",
+                "."
+            ],
+            "annotated_text": "<E0> A group of armed Uyghur men killed two people inside of the restaurant and four people outside , injuring 15 other people </E0> .",
+            "spans": [
+                {
+                    "id": "E0",
+                    "type": "event",
+                    "start": 0,
+                    "end": 22,
+                    "span": "A group of armed Uyghur men killed two people inside of the restaurant and four people outside , injuring 15 other people"
+                }
+            ],
+            "relations": []
+        },
+        {
+            "tokens": [
+                "A",
+                "gunman",
+                "killed",
+                "a",
+                "young",
+                "Jewish",
+                "man",
+                "on",
+                "security",
+                "duty",
+                "during",
+                "a",
+                "bat",
+                "mitzvah",
+                "celebration",
+                ",",
+                "and",
+                "wounded",
+                "two",
+                "police",
+                "officers",
+                "."
+            ],
+            "annotated_text": "<E0> A gunman killed a young Jewish man on security duty during a bat mitzvah celebration , and wounded two police officers </E0> .",
+            "spans": [
+                {
+                    "id": "E0",
+                    "type": "event",
+                    "start": 0,
+                    "end": 21,
+                    "span": "A gunman killed a young Jewish man on security duty during a bat mitzvah celebration , and wounded two police officers"
+                }
+            ],
+            "relations": []
+        },
+        {
+            "tokens": [
+                "A",
+                "gunman",
+                "killed",
+                "at",
+                "least",
+                "18",
+                "people",
+                ",",
+                "including",
+                "15",
+                "Iranians",
+                "and",
+                "another",
+                "7",
+                "were",
+                "wounded",
+                ",",
+                "including",
+                "5",
+                "Iranians",
+                "in",
+                "Diyala",
+                "Governorate",
+                ",",
+                "Iraq",
+                "."
+            ],
+            "annotated_text": "<E0> A gunman killed at least 18 people , including 15 Iranians and another 7 were wounded , including 5 Iranians in Diyala Governorate , Iraq </E0> .",
+            "spans": [
+                {
+                    "id": "E0",
+                    "type": "event",
+                    "start": 0,
+                    "end": 25,
+                    "span": "A gunman killed at least 18 people , including 15 Iranians and another 7 were wounded , including 5 Iranians in Diyala Governorate , Iraq"
+                }
+            ],
+            "relations": []
+        },
+        {
+            "tokens": [
+                "A",
+                "hard-fought",
+                "affair",
+                "at",
+                "close",
+                "range",
+                ",",
+                "the",
+                "disciplined",
+                "Viet",
+                "Cong",
+                "force",
+                "matched",
+                "the",
+                "Australians",
+                "as",
+                "both",
+                "sides",
+                "stood",
+                "their",
+                "ground",
+                ",",
+                "inflicting",
+                "heavy",
+                "casualties",
+                "on",
+                "each",
+                "other",
+                ",",
+                "before",
+                "each",
+                "fell",
+                "back",
+                "."
+            ],
+            "annotated_text": "A hard-fought affair at close range , <0> the disciplined Viet Cong force matched the Australians </0> as <1> both sides stood their ground </1> , <2> inflicting heavy casualties on each other </2> , before <3> each fell back </3> .",
+            "spans": [
+                {
+                    "span": "the disciplined Viet Cong force matched the Australians",
+                    "type": "event",
+                    "trigger": "matched",
+                    "start": 7,
+                    "end": 15,
+                    "trigger_start": 12,
+                    "trigger_end": 13,
+                    "issues": "",
+                    "id": "0"
+                },
+                {
+                    "span": "both sides stood their ground",
+                    "type": "event",
+                    "trigger": "stood",
+                    "start": 16,
+                    "end": 21,
+                    "trigger_start": 18,
+                    "trigger_end": 19,
+                    "issues": "",
+                    "id": "1"
+                },
+                {
+                    "span": "inflicting heavy casualties on each other",
+                    "type": "event",
+                    "trigger": "inflicting",
+                    "start": 22,
+                    "end": 28,
+                    "trigger_start": 22,
+                    "trigger_end": 23,
+                    "issues": "",
+                    "id": "2"
+                },
+                {
+                    "span": "each fell back",
+                    "type": "event",
+                    "trigger": "fell",
+                    "start": 30,
+                    "end": 33,
+                    "trigger_start": 31,
+                    "trigger_end": 32,
+                    "issues": "",
+                    "id": "3"
+                }
+            ],
+            "relations": [
+                {
+                    "head": "1",
+                    "tail": "2",
+                    "type": "causal",
+                    "id": "0"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "A",
+                "high-ranking",
+                "IDF",
+                "officer",
+                "was",
+                "killed",
+                "and",
+                "another",
+                "wounded",
+                ",",
+                "when",
+                "LAF",
+                "snipers",
+                "opened",
+                "fire",
+                "on",
+                "an",
+                "Israeli",
+                "observation",
+                "post",
+                "after",
+                "receiving",
+                "authorization",
+                "from",
+                "senior",
+                "Lebanese",
+                "commanders",
+                "."
+            ],
+            "annotated_text": "A <E3> high-ranking IDF officer was killed and another wounded </E3> , when <E4> LAF snipers opened fire on an Israeli observation post after receiving authorization from senior Lebanese commanders </E4> .",
+            "spans": [
+                {
+                    "id": "E3",
+                    "type": "event",
+                    "start": 1,
+                    "end": 9,
+                    "span": "high-ranking IDF officer was killed and another wounded"
+                },
+                {
+                    "id": "E4",
+                    "type": "event",
+                    "start": 11,
+                    "end": 27,
+                    "span": "LAF snipers opened fire on an Israeli observation post after receiving authorization from senior Lebanese commanders"
+                }
+            ],
+            "relations": [
+                {
+                    "id": "R0",
+                    "head": "E4",
+                    "tail": "E3",
+                    "type": "causal"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "A",
+                "high-voltage",
+                "line",
+                "running",
+                "adjacent",
+                "to",
+                "the",
+                "plant",
+                "and",
+                "over",
+                "the",
+                "Missouri",
+                "River",
+                "was",
+                "damaged",
+                ",",
+                "disrupting",
+                "power",
+                "in",
+                "the",
+                "neighboring",
+                "state",
+                "of",
+                "Nebraska",
+                "."
+            ],
+            "annotated_text": "<0> A high-voltage line running adjacent to the plant and over the Missouri River was damaged </0> , <1> disrupting power in the neighboring state of Nebraska </1> .",
+            "spans": [
+                {
+                    "span": "A high-voltage line running adjacent to the plant and over the Missouri River was damaged",
+                    "type": "event",
+                    "trigger": "damaged",
+                    "start": 0,
+                    "end": 15,
+                    "trigger_start": 14,
+                    "trigger_end": 15,
+                    "issues": "",
+                    "id": "0"
+                },
+                {
+                    "span": "disrupting power in the neighboring state of Nebraska",
+                    "type": "event",
+                    "trigger": "disrupting",
+                    "start": 16,
+                    "end": 24,
+                    "trigger_start": 16,
+                    "trigger_end": 17,
+                    "issues": "",
+                    "id": "1"
+                }
+            ],
+            "relations": [
+                {
+                    "head": "0",
+                    "tail": "1",
+                    "type": "causal",
+                    "id": "0"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "A",
+                "lack",
+                "of",
+                "communication",
+                "between",
+                "the",
+                "army",
+                "and",
+                "the",
+                "navy",
+                "meant",
+                "that",
+                "5th",
+                "Infantry",
+                "Brigade",
+                "had",
+                "not",
+                "notified",
+                "anyone",
+                "of",
+                "the",
+                "helicopter",
+                "'s",
+                "flight",
+                "."
+            ],
+            "annotated_text": "<0> A lack of communication between the army and the navy </0> meant that <1> 5th Infantry Brigade had not notified anyone of the helicopter 's flight </1> .",
+            "spans": [
+                {
+                    "span": "A lack of communication between the army and the navy",
+                    "type": "event",
+                    "trigger": "lack",
+                    "start": 0,
+                    "end": 10,
+                    "trigger_start": 1,
+                    "trigger_end": 2,
+                    "issues": "",
+                    "id": "0"
+                },
+                {
+                    "span": "5th Infantry Brigade had not notified anyone of the helicopter 's flight",
+                    "type": "event",
+                    "trigger": "notified",
+                    "start": 12,
+                    "end": 24,
+                    "trigger_start": 17,
+                    "trigger_end": 18,
+                    "issues": "",
+                    "id": "1"
+                }
+            ],
+            "relations": [
+                {
+                    "head": "0",
+                    "tail": "1",
+                    "type": "causal",
+                    "id": "0"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "A",
+                "large",
+                "amount",
+                "of",
+                "energy",
+                "was",
+                "suddenly",
+                "released",
+                ",",
+                "vapourising",
+                "superheated",
+                "cooling",
+                "water",
+                "and",
+                "rupturing",
+                "the",
+                "reactor",
+                "core",
+                "in",
+                "a",
+                "highly",
+                "destructive",
+                "steam",
+                "explosion",
+                "."
+            ],
+            "annotated_text": "<E0> A large amount of energy was suddenly released </E0> , <E1> vapourising superheated cooling water </E1> and <E2> rupturing the reactor core in a highly destructive steam explosion </E2> .",
+            "spans": [
+                {
+                    "id": "E0",
+                    "type": "event",
+                    "start": 0,
+                    "end": 8,
+                    "span": "A large amount of energy was suddenly released"
+                },
+                {
+                    "id": "E1",
+                    "type": "event",
+                    "start": 9,
+                    "end": 13,
+                    "span": "vapourising superheated cooling water"
+                },
+                {
+                    "id": "E2",
+                    "type": "event",
+                    "start": 14,
+                    "end": 24,
+                    "span": "rupturing the reactor core in a highly destructive steam explosion"
+                }
+            ],
+            "relations": [
+                {
+                    "id": "R0",
+                    "head": "E0",
+                    "tail": "E1",
+                    "type": "causal"
+                },
+                {
+                    "id": "R1",
+                    "head": "E0",
+                    "tail": "E2",
+                    "type": "causal"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "'Junon",
+                "'",
+                "was",
+                "on",
+                "a",
+                "mission",
+                "to",
+                "carry",
+                "trade",
+                "goods",
+                "from",
+                "the",
+                "Îles",
+                "des",
+                "Saintes",
+                "near",
+                "Guadeloupe",
+                "back",
+                "to",
+                "France",
+                "and",
+                "was",
+                "part",
+                "of",
+                "a",
+                "succession",
+                "of",
+                "French",
+                "warships",
+                "sent",
+                "during",
+                "1808",
+                "and",
+                "the",
+                "early",
+                "months",
+                "of",
+                "1809",
+                "in",
+                "an",
+                "effort",
+                "to",
+                "break",
+                "the",
+                "British",
+                "blockade",
+                "of",
+                "the",
+                "French",
+                "Caribbean",
+                ",",
+                "which",
+                "was",
+                "destroying",
+                "the",
+                "economies",
+                "and",
+                "morale",
+                "of",
+                "the",
+                "islands",
+                "."
+            ],
+            "annotated_text": "'Junon ' was on a mission to carry trade goods from the Îles des Saintes near Guadeloupe back to France and was part of a succession of French warships sent during 1808 and the early months of 1809 in an effort to break <E0> the British blockade of the French Caribbean </E0> , which was <E1> destroying the economies and morale of the islands </E1> .",
+            "spans": [
+                {
+                    "id": "E0",
+                    "type": "event",
+                    "start": 43,
+                    "end": 50,
+                    "span": "the British blockade of the French Caribbean"
+                },
+                {
+                    "id": "E1",
+                    "type": "event",
+                    "start": 53,
+                    "end": 61,
+                    "span": "destroying the economies and morale of the islands"
+                }
+            ],
+            "relations": [
+                {
+                    "id": "R0",
+                    "head": "E0",
+                    "tail": "E1",
+                    "type": "causal"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "A",
+                "large",
+                "number",
+                "of",
+                "German",
+                "casualties",
+                "were",
+                "caused",
+                "by",
+                "the",
+                "change",
+                "in",
+                "the",
+                "wind",
+                "direction",
+                "and",
+                "the",
+                "decision",
+                "to",
+                "go",
+                "ahead",
+                "against",
+                "protests",
+                "by",
+                "local",
+                "officers",
+                ",",
+                "which",
+                "were",
+                "increased",
+                "by",
+                "British",
+                "troops",
+                ",",
+                "who",
+                "fired",
+                "on",
+                "German",
+                "soldiers",
+                "as",
+                "they",
+                "fled",
+                "in",
+                "the",
+                "open",
+                "."
+            ],
+            "annotated_text": "<E0> A large number of German casualties </E0> were caused by <E1> the change in the wind direction </E1> and <E2> the decision to go ahead against protests by local officers </E2> , which were increased by <E3> British troops , who fired on German soldiers as they fled in the open </E3> .",
+            "spans": [
+                {
+                    "id": "E0",
+                    "type": "event",
+                    "start": 0,
+                    "end": 6,
+                    "span": "A large number of German casualties"
+                },
+                {
+                    "id": "E1",
+                    "type": "event",
+                    "start": 9,
+                    "end": 15,
+                    "span": "the change in the wind direction"
+                },
+                {
+                    "id": "E2",
+                    "type": "event",
+                    "start": 16,
+                    "end": 26,
+                    "span": "the decision to go ahead against protests by local officers"
+                },
+                {
+                    "id": "E3",
+                    "type": "event",
+                    "start": 31,
+                    "end": 45,
+                    "span": "British troops , who fired on German soldiers as they fled in the open"
+                }
+            ],
+            "relations": [
+                {
+                    "id": "R0",
+                    "head": "E1",
+                    "tail": "E0",
+                    "type": "causal"
+                },
+                {
+                    "id": "R1",
+                    "head": "E2",
+                    "tail": "E0",
+                    "type": "causal"
+                },
+                {
+                    "id": "R2",
+                    "head": "E3",
+                    "tail": "E0",
+                    "type": "causal"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "A",
+                "large",
+                "storm",
+                "system",
+                "involving",
+                "the",
+                "remnants",
+                "of",
+                "Gonzalo",
+                "battered",
+                "the",
+                "British",
+                "Isles",
+                "and",
+                "central",
+                "Europe",
+                "on",
+                "October",
+                "21",
+                ",",
+                "killing",
+                "three",
+                "people",
+                "in",
+                "the",
+                "United",
+                "Kingdom",
+                "and",
+                "severely",
+                "hindering",
+                "transportation",
+                "."
+            ],
+            "annotated_text": "A <E0> large storm system involving the remnants of Gonzalo battered the British Isles and central Europe on October 21 </E0> , <E1> killing three people in the United Kingdom </E1> and <E2> severely hindering transportation </E2> .",
+            "spans": [
+                {
+                    "id": "E0",
+                    "type": "event",
+                    "start": 1,
+                    "end": 19,
+                    "span": "large storm system involving the remnants of Gonzalo battered the British Isles and central Europe on October 21"
+                },
+                {
+                    "id": "E1",
+                    "type": "event",
+                    "start": 20,
+                    "end": 27,
+                    "span": "killing three people in the United Kingdom"
+                },
+                {
+                    "id": "E2",
+                    "type": "event",
+                    "start": 28,
+                    "end": 31,
+                    "span": "severely hindering transportation"
+                }
+            ],
+            "relations": [
+                {
+                    "id": "R0",
+                    "head": "E0",
+                    "tail": "E1",
+                    "type": "causal"
+                },
+                {
+                    "id": "R1",
+                    "head": "E0",
+                    "tail": "E2",
+                    "type": "causal"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "A",
+                "large-scale",
+                ",",
+                "drought-induced",
+                "famine",
+                "occurred",
+                "in",
+                "Africa",
+                "'s",
+                "Sahel",
+                "region",
+                "and",
+                "many",
+                "parts",
+                "of",
+                "the",
+                "neighboring",
+                "Sénégal",
+                "River",
+                "Area",
+                "from",
+                "February",
+                "to",
+                "August",
+                "2010",
+                "."
+            ],
+            "annotated_text": "<E0> A large-scale , drought-induced famine occurred in Africa 's Sahel region and many parts of the neighboring Sénégal River Area from February to August 2010 </E0> .",
+            "spans": [
+                {
+                    "id": "E0",
+                    "type": "event",
+                    "start": 0,
+                    "end": 25,
+                    "span": "A large-scale , drought-induced famine occurred in Africa 's Sahel region and many parts of the neighboring Sénégal River Area from February to August 2010"
+                }
+            ],
+            "relations": []
+        },
+        {
+            "tokens": [
+                "A",
+                "later",
+                "investigation",
+                ",",
+                "the",
+                "United",
+                "States",
+                "House",
+                "Select",
+                "Committee",
+                "on",
+                "Assassinations",
+                "(",
+                "HSCA",
+                ")",
+                "agreed",
+                "with",
+                "the",
+                "Warren",
+                "Commission",
+                "that",
+                "the",
+                "injuries",
+                "that",
+                "Kennedy",
+                "and",
+                "Connally",
+                "sustained",
+                "were",
+                "caused",
+                "by",
+                "Oswald",
+                "'s",
+                "three",
+                "rifle",
+                "shots",
+                ",",
+                "but",
+                "they",
+                "also",
+                "concluded",
+                "that",
+                "Kennedy",
+                "was",
+                "'probably",
+                "assassinated",
+                "as",
+                "a",
+                "result",
+                "of",
+                "a",
+                "conspiracy",
+                "'",
+                "as",
+                "analysis",
+                "of",
+                "a",
+                "dictabelt",
+                "audio",
+                "recording",
+                "pointed",
+                "to",
+                "the",
+                "existence",
+                "of",
+                "an",
+                "additional",
+                "gunshot",
+                "and",
+                "therefore",
+                "'",
+                "...",
+                "a",
+                "high",
+                "probability",
+                "that",
+                "two",
+                "gunmen",
+                "fired",
+                "at",
+                "[",
+                "the",
+                "]",
+                "President",
+                "'",
+                "."
+            ],
+            "annotated_text": "A later investigation , the United States House Select Committee on Assassinations ( HSCA ) agreed with the Warren Commission that <E0> the injuries that Kennedy and Connally sustained </E0> were caused by <E1> Oswald 's three rifle shots </E1> , but they also concluded that Kennedy was 'probably assassinated as a result of a conspiracy ' as <E3> analysis of a dictabelt audio recording pointed to the existence of an additional gunshot </E3> and therefore ' ... a high probability that <E2> two gunmen fired at [ the ] President </E2> ' .",
+            "spans": [
+                {
+                    "id": "E0",
+                    "type": "event",
+                    "start": 21,
+                    "end": 28,
+                    "span": "the injuries that Kennedy and Connally sustained"
+                },
+                {
+                    "id": "E1",
+                    "type": "event",
+                    "start": 31,
+                    "end": 36,
+                    "span": "Oswald 's three rifle shots"
+                },
+                {
+                    "id": "E2",
+                    "type": "event",
+                    "start": 76,
+                    "end": 84,
+                    "span": "two gunmen fired at [ the ] President"
+                },
+                {
+                    "id": "E3",
+                    "type": "event",
+                    "start": 54,
+                    "end": 68,
+                    "span": "analysis of a dictabelt audio recording pointed to the existence of an additional gunshot"
+                }
+            ],
+            "relations": [
+                {
+                    "id": "R0",
+                    "head": "E1",
+                    "tail": "E0",
+                    "type": "causal"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "A",
+                "mandatory",
+                "evacuation",
+                "for",
+                "Ocracoke",
+                "and",
+                "Hatteras",
+                "islands",
+                "displaced",
+                "160,000",
+                "people",
+                "during",
+                "the",
+                "busy",
+                "Labor",
+                "Day",
+                "weekend",
+                ";",
+                "the",
+                "loss",
+                "in",
+                "tourism",
+                "revenue",
+                "amounted",
+                "to",
+                "$",
+                "10",
+                "million",
+                "(",
+                "1993",
+                "USD",
+                ")",
+                "."
+            ],
+            "annotated_text": "<E0> A mandatory evacuation for Ocracoke and Hatteras islands displaced 160,000 people during the busy Labor Day weekend </E0> ; <E1> the loss in tourism revenue amounted to $ 10 million ( 1993 USD ) </E1> .",
+            "spans": [
+                {
+                    "id": "E0",
+                    "type": "event",
+                    "start": 0,
+                    "end": 17,
+                    "span": "A mandatory evacuation for Ocracoke and Hatteras islands displaced 160,000 people during the busy Labor Day weekend"
+                },
+                {
+                    "id": "E1",
+                    "type": "event",
+                    "start": 18,
+                    "end": 32,
+                    "span": "the loss in tourism revenue amounted to $ 10 million ( 1993 USD )"
+                }
+            ],
+            "relations": [
+                {
+                    "id": "R0",
+                    "head": "E0",
+                    "tail": "E1",
+                    "type": "causal"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "A",
+                "medical",
+                "examination",
+                "following",
+                "the",
+                "accident",
+                "diagnosed",
+                "sleep",
+                "apnea",
+                ",",
+                "which",
+                "had",
+                "hampered",
+                "his",
+                "ability",
+                "to",
+                "fully",
+                "adjust",
+                "his",
+                "sleep",
+                "patterns",
+                "to",
+                "the",
+                "morning",
+                "shift",
+                "which",
+                "he",
+                "had",
+                "begun",
+                "working",
+                "two",
+                "weeks",
+                "earlier",
+                "."
+            ],
+            "annotated_text": "<E0> A medical examination following the accident diagnosed sleep apnea </E0> , which <E1> had hampered his ability to fully adjust his sleep patterns to the morning shift </E1> which <E2> he had begun working two weeks earlier </E2> .",
+            "spans": [
+                {
+                    "id": "E0",
+                    "type": "event",
+                    "start": 0,
+                    "end": 9,
+                    "span": "A medical examination following the accident diagnosed sleep apnea"
+                },
+                {
+                    "id": "E1",
+                    "type": "event",
+                    "start": 11,
+                    "end": 25,
+                    "span": "had hampered his ability to fully adjust his sleep patterns to the morning shift"
+                },
+                {
+                    "id": "E2",
+                    "type": "event",
+                    "start": 26,
+                    "end": 33,
+                    "span": "he had begun working two weeks earlier"
+                }
+            ],
+            "relations": [
+                {
+                    "id": "R0",
+                    "head": "E0",
+                    "tail": "E1",
+                    "type": "causal"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "A",
+                "member",
+                "of",
+                "the",
+                "Cherokee",
+                "tribe",
+                "and",
+                "a",
+                "member",
+                "of",
+                "the",
+                "Oglala",
+                "Lakota",
+                "tribe",
+                "were",
+                "both",
+                "killed",
+                "by",
+                "shootings",
+                "in",
+                "April",
+                "1973",
+                "."
+            ],
+            "annotated_text": "A <E1> member of the Cherokee tribe and a member of the Oglala Lakota tribe were both killed </E1> by <E0> shootings in April 1973 </E0> .",
+            "spans": [
+                {
+                    "id": "E0",
+                    "type": "event",
+                    "start": 18,
+                    "end": 22,
+                    "span": "shootings in April 1973"
+                },
+                {
+                    "id": "E1",
+                    "type": "event",
+                    "start": 1,
+                    "end": 17,
+                    "span": "member of the Cherokee tribe and a member of the Oglala Lakota tribe were both killed"
+                }
+            ],
+            "relations": [
+                {
+                    "id": "R0",
+                    "head": "E0",
+                    "tail": "E1",
+                    "type": "causal"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "A",
+                "month",
+                "later",
+                ",",
+                "Hamelin",
+                "'s",
+                "raiding",
+                "campaign",
+                "skirted",
+                "disaster",
+                "when",
+                "a",
+                "winter",
+                "hurricane",
+                "on",
+                "the",
+                "voyage",
+                "back",
+                "to",
+                "Île",
+                "de",
+                "France",
+                "almost",
+                "wrecked",
+                "his",
+                "flagship",
+                "'Vénus",
+                "'",
+                "."
+            ],
+            "annotated_text": "<E2> A month later , Hamelin 's raiding campaign skirted disaster </E2> when <1> a winter hurricane on the voyage back to Île de France almost wrecked his flagship 'Vénus ' </1> .",
+            "spans": [
+                {
+                    "span": "a winter hurricane on the voyage back to Île de France almost wrecked his flagship 'Vénus '",
+                    "type": "event",
+                    "trigger": "wrecked",
+                    "start": 11,
+                    "end": 28,
+                    "trigger_start": 23,
+                    "trigger_end": 24,
+                    "issues": "",
+                    "id": "1"
+                },
+                {
+                    "id": "E2",
+                    "type": "event",
+                    "start": 0,
+                    "end": 10,
+                    "span": "A month later , Hamelin 's raiding campaign skirted disaster"
+                }
+            ],
+            "relations": []
+        },
+        {
+            "tokens": [
+                "A",
+                "month",
+                "later",
+                ",",
+                "unsafe",
+                "conditions",
+                "inspired",
+                "hundreds",
+                "of",
+                "servicemen",
+                "to",
+                "refuse",
+                "to",
+                "load",
+                "munitions",
+                ",",
+                "an",
+                "act",
+                "known",
+                "as",
+                "the",
+                "Port",
+                "Chicago",
+                "Mutiny",
+                "."
+            ],
+            "annotated_text": "A month later , <E0> unsafe conditions </E0> inspired <E1> hundreds of servicemen to refuse to load munitions </E1> , an act known as the Port Chicago Mutiny .",
+            "spans": [
+                {
+                    "id": "E0",
+                    "type": "event",
+                    "start": 4,
+                    "end": 6,
+                    "span": "unsafe conditions"
+                },
+                {
+                    "id": "E1",
+                    "type": "event",
+                    "start": 7,
+                    "end": 15,
+                    "span": "hundreds of servicemen to refuse to load munitions"
+                }
+            ],
+            "relations": [
+                {
+                    "id": "R0",
+                    "head": "E0",
+                    "tail": "E1",
+                    "type": "causal"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "A",
+                "motorist",
+                "was",
+                "killed",
+                "after",
+                "his",
+                "vehicle",
+                "was",
+                "caught",
+                "by",
+                "floodwater",
+                "and",
+                "landslides",
+                "halted",
+                "rail",
+                "services",
+                "between",
+                "England",
+                "and",
+                "Scotland",
+                "."
+            ],
+            "annotated_text": "<0> A motorist was killed </0> after <1> his vehicle was caught by floodwater </1> and <2> landslides halted rail services between England and Scotland </2> .",
+            "spans": [
+                {
+                    "span": "A motorist was killed",
+                    "type": "event",
+                    "trigger": "killed",
+                    "start": 0,
+                    "end": 4,
+                    "trigger_start": 3,
+                    "trigger_end": 4,
+                    "issues": "",
+                    "id": "0"
+                },
+                {
+                    "span": "his vehicle was caught by floodwater",
+                    "type": "event",
+                    "trigger": "caught",
+                    "start": 5,
+                    "end": 11,
+                    "trigger_start": 8,
+                    "trigger_end": 9,
+                    "issues": "",
+                    "id": "1"
+                },
+                {
+                    "span": "landslides halted rail services between England and Scotland",
+                    "type": "event",
+                    "trigger": "halted",
+                    "start": 12,
+                    "end": 20,
+                    "trigger_start": 13,
+                    "trigger_end": 14,
+                    "issues": "",
+                    "id": "2"
+                }
+            ],
+            "relations": [
+                {
+                    "head": "1",
+                    "tail": "0",
+                    "type": "causal",
+                    "id": "0"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "A",
+                "nighttime",
+                "attack",
+                "by",
+                "Sultan",
+                "Al-Kamil",
+                "resulted",
+                "in",
+                "a",
+                "great",
+                "number",
+                "of",
+                "crusader",
+                "losses",
+                ",",
+                "and",
+                "eventually",
+                "in",
+                "the",
+                "surrender",
+                "of",
+                "the",
+                "army",
+                "."
+            ],
+            "annotated_text": "<E2> A nighttime attack by Sultan Al-Kamil </E2> resulted in <E3> a great number of crusader losses </E3> , and eventually in <1> the surrender of the army </1> .",
+            "spans": [
+                {
+                    "span": "the surrender of the army",
+                    "type": "event",
+                    "trigger": "surrender",
+                    "start": 18,
+                    "end": 23,
+                    "trigger_start": 19,
+                    "trigger_end": 20,
+                    "issues": "",
+                    "id": "1"
+                },
+                {
+                    "id": "E2",
+                    "type": "event",
+                    "start": 0,
+                    "end": 6,
+                    "span": "A nighttime attack by Sultan Al-Kamil"
+                },
+                {
+                    "id": "E3",
+                    "type": "event",
+                    "start": 8,
+                    "end": 14,
+                    "span": "a great number of crusader losses"
+                }
+            ],
+            "relations": [
+                {
+                    "id": "R0",
+                    "head": "E2",
+                    "tail": "E3",
+                    "type": "causal"
+                },
+                {
+                    "id": "R1",
+                    "head": "E2",
+                    "tail": "1",
+                    "type": "causal"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "A",
+                "number",
+                "of",
+                "bridges",
+                "collapsed",
+                ",",
+                "one",
+                "of",
+                "which",
+                "led",
+                "to",
+                "the",
+                "death",
+                "of",
+                "a",
+                "police",
+                "officer",
+                ",",
+                "who",
+                "was",
+                "standing",
+                "on",
+                "the",
+                "bridge",
+                "when",
+                "it",
+                "collapsed",
+                "."
+            ],
+            "annotated_text": "A <E3> number of bridges collapsed </E3> , one of which led to <E4> the death of a police officer , who was standing on the bridge when it collapsed </E4> .",
+            "spans": [
+                {
+                    "id": "E3",
+                    "type": "event",
+                    "start": 1,
+                    "end": 5,
+                    "span": "number of bridges collapsed"
+                },
+                {
+                    "id": "E4",
+                    "type": "event",
+                    "start": 11,
+                    "end": 27,
+                    "span": "the death of a police officer , who was standing on the bridge when it collapsed"
+                }
+            ],
+            "relations": [
+                {
+                    "id": "R0",
+                    "head": "E3",
+                    "tail": "E4",
+                    "type": "causal"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "A",
+                "number",
+                "of",
+                "the",
+                "refugees",
+                "died",
+                "during",
+                "the",
+                "exodus",
+                "from",
+                "exhaustion",
+                "and",
+                "dehydration",
+                ",",
+                "with",
+                "estimates",
+                "ranging",
+                "from",
+                "a",
+                "handful",
+                "to",
+                "a",
+                "figure",
+                "of",
+                "500",
+                "."
+            ],
+            "annotated_text": "<E0> A number of the refugees died during the exodus </E0> from <E1> exhaustion </E1> and <E2> dehydration </E2> , with estimates ranging from a handful to a figure of 500 .",
+            "spans": [
+                {
+                    "id": "E0",
+                    "type": "event",
+                    "start": 0,
+                    "end": 9,
+                    "span": "A number of the refugees died during the exodus"
+                },
+                {
+                    "id": "E1",
+                    "type": "event",
+                    "start": 10,
+                    "end": 11,
+                    "span": "exhaustion"
+                },
+                {
+                    "id": "E2",
+                    "type": "event",
+                    "start": 12,
+                    "end": 13,
+                    "span": "dehydration"
+                }
+            ],
+            "relations": [
+                {
+                    "id": "R0",
+                    "head": "E1",
+                    "tail": "E0",
+                    "type": "causal"
+                },
+                {
+                    "id": "R1",
+                    "head": "E2",
+                    "tail": "E0",
+                    "type": "causal"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "A",
+                "period",
+                "of",
+                "heavy",
+                "rain",
+                "led",
+                "to",
+                "a",
+                "build-up",
+                "of",
+                "water",
+                "within",
+                "the",
+                "tip",
+                "which",
+                "caused",
+                "it",
+                "to",
+                "suddenly",
+                "slide",
+                "downhill",
+                "as",
+                "a",
+                "slurry",
+                ",",
+                "killing",
+                "116",
+                "children",
+                "and",
+                "28",
+                "adults",
+                "as",
+                "it",
+                "engulfed",
+                "the",
+                "local",
+                "junior",
+                "school",
+                "and",
+                "other",
+                "buildings",
+                "."
+            ],
+            "annotated_text": "<0> A period of heavy rain </0> led to <1> a build-up of water within the tip </1> which caused it to <E5> suddenly slide downhill as a slurry </E5> , <3> killing 116 children and 28 adults </3> as <4> it engulfed the local junior school and other buildings </4> .",
+            "spans": [
+                {
+                    "span": "A period of heavy rain",
+                    "type": "event",
+                    "trigger": "rain",
+                    "start": 0,
+                    "end": 5,
+                    "trigger_start": 4,
+                    "trigger_end": 5,
+                    "issues": "",
+                    "id": "0"
+                },
+                {
+                    "span": "a build-up of water within the tip",
+                    "type": "event",
+                    "trigger": "build-up",
+                    "start": 7,
+                    "end": 14,
+                    "trigger_start": 8,
+                    "trigger_end": 9,
+                    "issues": "",
+                    "id": "1"
+                },
+                {
+                    "span": "killing 116 children and 28 adults",
+                    "type": "event",
+                    "trigger": "killing",
+                    "start": 25,
+                    "end": 31,
+                    "trigger_start": 25,
+                    "trigger_end": 26,
+                    "issues": "",
+                    "id": "3"
+                },
+                {
+                    "span": "it engulfed the local junior school and other buildings",
+                    "type": "event",
+                    "trigger": "engulfed",
+                    "start": 32,
+                    "end": 41,
+                    "trigger_start": 33,
+                    "trigger_end": 34,
+                    "issues": "",
+                    "id": "4"
+                },
+                {
+                    "id": "E5",
+                    "type": "event",
+                    "start": 18,
+                    "end": 24,
+                    "span": "suddenly slide downhill as a slurry"
+                }
+            ],
+            "relations": [
+                {
+                    "head": "0",
+                    "tail": "1",
+                    "type": "causal",
+                    "id": "0"
+                },
+                {
+                    "id": "R1",
+                    "head": "1",
+                    "tail": "E5",
+                    "type": "causal"
+                },
+                {
+                    "id": "R3",
+                    "head": "E5",
+                    "tail": "4",
+                    "type": "causal"
+                },
+                {
+                    "id": "R4",
+                    "head": "4",
+                    "tail": "3",
+                    "type": "causal"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "A",
+                "pressure",
+                "wave",
+                "snapped",
+                "trees",
+                ",",
+                "bent",
+                "iron",
+                "rails",
+                ",",
+                "demolished",
+                "buildings",
+                ",",
+                "grounded",
+                "vessels",
+                "(",
+                "including",
+                "'Imo",
+                "'",
+                ",",
+                "which",
+                "was",
+                "washed",
+                "ashore",
+                "by",
+                "the",
+                "ensuing",
+                "tsunami",
+                ")",
+                ",",
+                "and",
+                "scattered",
+                "fragments",
+                "of",
+                "'Mont-Blanc",
+                "'",
+                "for",
+                "kilometres",
+                "."
+            ],
+            "annotated_text": "<E8> A pressure wave <E9> snapped trees </E9> , <E10> bent iron rails </E10> , <E11> demolished buildings </E11> , <E12> grounded vessels </E12> ( including <E13> 'Imo ' , which was washed ashore </E13> by the ensuing <E14> tsunami </E14> ) , and <5> scattered fragments of 'Mont-Blanc ' for kilometres </5> .",
+            "spans": [
+                {
+                    "span": "scattered fragments of 'Mont-Blanc ' for kilometres",
+                    "type": "event",
+                    "trigger": "scattered",
+                    "start": 31,
+                    "end": 38,
+                    "trigger_start": 31,
+                    "trigger_end": 32,
+                    "issues": "",
+                    "id": "5"
+                },
+                {
+                    "id": "E8",
+                    "type": "event",
+                    "start": 0,
+                    "end": 3,
+                    "span": "A pressure wave"
+                },
+                {
+                    "id": "E9",
+                    "type": "event",
+                    "start": 3,
+                    "end": 5,
+                    "span": "snapped trees"
+                },
+                {
+                    "id": "E10",
+                    "type": "event",
+                    "start": 6,
+                    "end": 9,
+                    "span": "bent iron rails"
+                },
+                {
+                    "id": "E11",
+                    "type": "event",
+                    "start": 10,
+                    "end": 12,
+                    "span": "demolished buildings"
+                },
+                {
+                    "id": "E12",
+                    "type": "event",
+                    "start": 13,
+                    "end": 15,
+                    "span": "grounded vessels"
+                },
+                {
+                    "id": "E13",
+                    "type": "event",
+                    "start": 17,
+                    "end": 24,
+                    "span": "'Imo ' , which was washed ashore"
+                },
+                {
+                    "id": "E14",
+                    "type": "event",
+                    "start": 27,
+                    "end": 28,
+                    "span": "tsunami"
+                }
+            ],
+            "relations": [
+                {
+                    "id": "R0",
+                    "head": "E8",
+                    "tail": "E9",
+                    "type": "causal"
+                },
+                {
+                    "id": "R1",
+                    "head": "E8",
+                    "tail": "E10",
+                    "type": "causal"
+                },
+                {
+                    "id": "R2",
+                    "head": "E8",
+                    "tail": "E11",
+                    "type": "causal"
+                },
+                {
+                    "id": "R3",
+                    "head": "E8",
+                    "tail": "E12",
+                    "type": "causal"
+                },
+                {
+                    "id": "R4",
+                    "head": "E14",
+                    "tail": "E13",
+                    "type": "causal"
+                },
+                {
+                    "id": "R5",
+                    "head": "E8",
+                    "tail": "5",
+                    "type": "causal"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "A",
+                "rescheduled",
+                "tournament",
+                "with",
+                "seven",
+                "teams",
+                "in",
+                "two",
+                "groups",
+                "was",
+                "arranged",
+                ",",
+                "however",
+                "Fiji",
+                "and",
+                "Vanuatu",
+                "withdrew",
+                ",",
+                "resulting",
+                "in",
+                "a",
+                "five",
+                "nation",
+                "championship",
+                "of",
+                "one",
+                "group",
+                "."
+            ],
+            "annotated_text": "<E2> A rescheduled tournament with seven teams in two groups was arranged </E2> , however <0> Fiji and Vanuatu withdrew </0> , <1> resulting in a five nation championship of one group </1> .",
+            "spans": [
+                {
+                    "span": "Fiji and Vanuatu withdrew",
+                    "type": "event",
+                    "trigger": "withdrew",
+                    "start": 13,
+                    "end": 17,
+                    "trigger_start": 16,
+                    "trigger_end": 17,
+                    "issues": "",
+                    "id": "0"
+                },
+                {
+                    "span": "resulting in a five nation championship of one group",
+                    "type": "event",
+                    "trigger": "resulting",
+                    "start": 18,
+                    "end": 27,
+                    "trigger_start": 18,
+                    "trigger_end": 19,
+                    "issues": "",
+                    "id": "1"
+                },
+                {
+                    "id": "E2",
+                    "type": "event",
+                    "start": 0,
+                    "end": 11,
+                    "span": "A rescheduled tournament with seven teams in two groups was arranged"
+                }
+            ],
+            "relations": [
+                {
+                    "head": "0",
+                    "tail": "1",
+                    "type": "causal",
+                    "id": "0"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "A",
+                "riot",
+                "(",
+                "the",
+                "'Dekemvriana",
+                "'",
+                ")",
+                "erupted",
+                "and",
+                "Greek",
+                "government",
+                "gendarmes",
+                ",",
+                "with",
+                "British",
+                "forces",
+                "standing",
+                "in",
+                "the",
+                "background",
+                ",",
+                "opened",
+                "fire",
+                "on",
+                "a",
+                "pro-EAM",
+                "rally",
+                ",",
+                "killing",
+                "28",
+                "demonstrators",
+                "and",
+                "injuring",
+                "dozens",
+                "."
+            ],
+            "annotated_text": "<E3> A riot ( the 'Dekemvriana ' ) erupted </E3> and <E4> Greek government gendarmes , with British forces standing in the background , opened fire on a pro-EAM rally </E4> , <E5> killing 28 demonstrators and injuring dozens </E5> .",
+            "spans": [
+                {
+                    "id": "E3",
+                    "type": "event",
+                    "start": 0,
+                    "end": 8,
+                    "span": "A riot ( the 'Dekemvriana ' ) erupted"
+                },
+                {
+                    "id": "E4",
+                    "type": "event",
+                    "start": 9,
+                    "end": 27,
+                    "span": "Greek government gendarmes , with British forces standing in the background , opened fire on a pro-EAM rally"
+                },
+                {
+                    "id": "E5",
+                    "type": "event",
+                    "start": 28,
+                    "end": 34,
+                    "span": "killing 28 demonstrators and injuring dozens"
+                }
+            ],
+            "relations": [
+                {
+                    "id": "R0",
+                    "head": "E3",
+                    "tail": "E4",
+                    "type": "causal"
+                },
+                {
+                    "id": "R1",
+                    "head": "E4",
+                    "tail": "E5",
+                    "type": "causal"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "A",
+                "second",
+                "attempt",
+                "by",
+                "the",
+                "Germans",
+                "on",
+                "17",
+                "June",
+                "caused",
+                "about",
+                "the",
+                "same",
+                "number",
+                "of",
+                "gas",
+                "casualties",
+                "but",
+                "the",
+                "British",
+                "again",
+                "easily",
+                "repulsed",
+                "German",
+                "patrols",
+                "."
+            ],
+            "annotated_text": "<E2> A second attempt by the Germans on 17 June </E2> caused about <E3> the same number of gas casualties </E3> but <1> the British again easily repulsed German patrols </1> .",
+            "spans": [
+                {
+                    "span": "the British again easily repulsed German patrols",
+                    "type": "event",
+                    "trigger": "repulsed",
+                    "start": 18,
+                    "end": 25,
+                    "trigger_start": 22,
+                    "trigger_end": 23,
+                    "issues": "",
+                    "id": "1"
+                },
+                {
+                    "id": "E2",
+                    "type": "event",
+                    "start": 0,
+                    "end": 9,
+                    "span": "A second attempt by the Germans on 17 June"
+                },
+                {
+                    "id": "E3",
+                    "type": "event",
+                    "start": 11,
+                    "end": 17,
+                    "span": "the same number of gas casualties"
+                }
+            ],
+            "relations": [
+                {
+                    "id": "R0",
+                    "head": "E2",
+                    "tail": "E3",
+                    "type": "causal"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "A",
+                "secondary",
+                "low",
+                "developed",
+                "over",
+                "South",
+                "Carolina",
+                "on",
+                "the",
+                "next",
+                "day",
+                ",",
+                "supported",
+                "by",
+                "the",
+                "merger",
+                "of",
+                "two",
+                "troughs",
+                "aloft",
+                "."
+            ],
+            "annotated_text": "<0> A secondary low developed over South Carolina on the next day </0> , supported by <1> the merger of two troughs aloft </1> .",
+            "spans": [
+                {
+                    "span": "A secondary low developed over South Carolina on the next day",
+                    "type": "event",
+                    "trigger": "developed",
+                    "start": 0,
+                    "end": 11,
+                    "trigger_start": 3,
+                    "trigger_end": 4,
+                    "issues": "",
+                    "id": "0"
+                },
+                {
+                    "span": "the merger of two troughs aloft",
+                    "type": "event",
+                    "trigger": "merger",
+                    "start": 14,
+                    "end": 20,
+                    "trigger_start": 15,
+                    "trigger_end": 16,
+                    "issues": "",
+                    "id": "1"
+                }
+            ],
+            "relations": [
+                {
+                    "head": "1",
+                    "tail": "0",
+                    "type": "causal",
+                    "id": "0"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "A",
+                "series",
+                "of",
+                "Royalist",
+                "attacks",
+                "led",
+                "to",
+                "a",
+                "large",
+                "number",
+                "of",
+                "casualties",
+                "and",
+                "the",
+                "slow",
+                "retreat",
+                "of",
+                "Essex",
+                "'s",
+                "force",
+                ",",
+                "which",
+                "was",
+                "driven",
+                "from",
+                "the",
+                "central",
+                "hill",
+                "and",
+                "almost",
+                "encircled",
+                ";",
+                "Essex",
+                "succeeded",
+                "in",
+                "rallying",
+                "his",
+                "infantry",
+                ",",
+                "however",
+                ",",
+                "and",
+                "pushed",
+                "forward",
+                "in",
+                "a",
+                "counter-attack",
+                "."
+            ],
+            "annotated_text": "<E5> A series of Royalist attacks </E5> led to <E6> a large number of casualties </E6> and <1> the slow retreat of Essex 's force </1> , which <2> was driven from the central hill and almost encircled </2> ; <3> Essex succeeded in rallying his infantry </3> , however , and <4> pushed forward in a counter-attack </4> .",
+            "spans": [
+                {
+                    "span": "the slow retreat of Essex 's force",
+                    "type": "event",
+                    "trigger": "retreat",
+                    "start": 13,
+                    "end": 20,
+                    "trigger_start": 15,
+                    "trigger_end": 16,
+                    "issues": "",
+                    "id": "1"
+                },
+                {
+                    "span": "was driven from the central hill and almost encircled",
+                    "type": "event",
+                    "trigger": "driven",
+                    "start": 22,
+                    "end": 31,
+                    "trigger_start": 23,
+                    "trigger_end": 24,
+                    "issues": "",
+                    "id": "2"
+                },
+                {
+                    "span": "Essex succeeded in rallying his infantry",
+                    "type": "event",
+                    "trigger": "rallying",
+                    "start": 32,
+                    "end": 38,
+                    "trigger_start": 35,
+                    "trigger_end": 36,
+                    "id": "3"
+                },
+                {
+                    "span": "pushed forward in a counter-attack",
+                    "type": "event",
+                    "trigger": "pushed",
+                    "start": 42,
+                    "end": 47,
+                    "trigger_start": 42,
+                    "trigger_end": 43,
+                    "issues": "",
+                    "id": "4"
+                },
+                {
+                    "id": "E5",
+                    "type": "event",
+                    "start": 0,
+                    "end": 5,
+                    "span": "A series of Royalist attacks"
+                },
+                {
+                    "id": "E6",
+                    "type": "event",
+                    "start": 7,
+                    "end": 12,
+                    "span": "a large number of casualties"
+                }
+            ],
+            "relations": [
+                {
+                    "id": "R3",
+                    "head": "E5",
+                    "tail": "E6",
+                    "type": "causal"
+                },
+                {
+                    "id": "R4",
+                    "head": "E5",
+                    "tail": "1",
+                    "type": "causal"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "A",
+                "series",
+                "of",
+                "events",
+                "were",
+                "organised",
+                "throughout",
+                "the",
+                "year",
+                ",",
+                "culminating",
+                "with",
+                "a",
+                "3-day",
+                "celebration",
+                ",",
+                "to",
+                "mark",
+                "this",
+                "auspicious",
+                "year",
+                "for",
+                "Keat",
+                "Hwa",
+                ",",
+                "from",
+                "28",
+                "to",
+                "31",
+                "July",
+                "2011",
+                "."
+            ],
+            "annotated_text": "<0> A series of events were organised throughout the year </0> , culminating with a 3-day celebration , to mark this auspicious year for Keat Hwa , from 28 to 31 July 2011 .",
+            "spans": [
+                {
+                    "span": "A series of events were organised throughout the year",
+                    "type": "event",
+                    "trigger": "organised",
+                    "start": 0,
+                    "end": 9,
+                    "trigger_start": 5,
+                    "trigger_end": 6,
+                    "issues": "",
+                    "id": "0"
+                }
+            ],
+            "relations": []
+        },
+        {
+            "tokens": [
+                "A",
+                "series",
+                "of",
+                "low",
+                "pressure",
+                "systems",
+                "steered",
+                "by",
+                "the",
+                "jet",
+                "stream",
+                "brought",
+                "the",
+                "wettest",
+                "April",
+                "in",
+                "100",
+                "years",
+                ",",
+                "and",
+                "flooding",
+                "across",
+                "Britain",
+                "and",
+                "Ireland",
+                "."
+            ],
+            "annotated_text": "<E2> A series of low pressure systems steered by the jet stream </E2> brought the <E3> wettest April in 100 years </E3> , and <1> flooding across Britain and Ireland </1> .",
+            "spans": [
+                {
+                    "span": "flooding across Britain and Ireland",
+                    "type": "event",
+                    "trigger": "flooding",
+                    "start": 20,
+                    "end": 25,
+                    "trigger_start": 20,
+                    "trigger_end": 21,
+                    "issues": "",
+                    "id": "1"
+                },
+                {
+                    "id": "E2",
+                    "type": "event",
+                    "start": 0,
+                    "end": 11,
+                    "span": "A series of low pressure systems steered by the jet stream"
+                },
+                {
+                    "id": "E3",
+                    "type": "event",
+                    "start": 13,
+                    "end": 18,
+                    "span": "wettest April in 100 years"
+                }
+            ],
+            "relations": [
+                {
+                    "id": "R0",
+                    "head": "E2",
+                    "tail": "E3",
+                    "type": "causal"
+                },
+                {
+                    "id": "R1",
+                    "head": "E2",
+                    "tail": "1",
+                    "type": "causal"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "A",
+                "severe",
+                "outbreak",
+                "of",
+                "SARS",
+                "in",
+                "early",
+                "2003",
+                "affected",
+                "Guangdong",
+                "in",
+                "southern",
+                "China",
+                "and",
+                "prompted",
+                "FIFA",
+                "to",
+                "move",
+                "the",
+                "Women",
+                "'s",
+                "World",
+                "Cup",
+                "to",
+                "the",
+                "United",
+                "States",
+                ",",
+                "who",
+                "had",
+                "hosted",
+                "the",
+                "previous",
+                "edition",
+                "in",
+                "1999",
+                "."
+            ],
+            "annotated_text": "<0> A severe outbreak of SARS in early 2003 affected Guangdong in southern China </0> and <1> prompted FIFA to move the Women 's World Cup to the United States </1> , who had hosted the previous edition in 1999 .",
+            "spans": [
+                {
+                    "span": "A severe outbreak of SARS in early 2003 affected Guangdong in southern China",
+                    "type": "event",
+                    "trigger": "affected",
+                    "start": 0,
+                    "end": 13,
+                    "trigger_start": 8,
+                    "trigger_end": 9,
+                    "issues": "",
+                    "id": "0"
+                },
+                {
+                    "span": "prompted FIFA to move the Women 's World Cup to the United States",
+                    "type": "event",
+                    "trigger": "prompted",
+                    "start": 14,
+                    "end": 27,
+                    "trigger_start": 14,
+                    "trigger_end": 15,
+                    "issues": "",
+                    "id": "1"
+                }
+            ],
+            "relations": [
+                {
+                    "head": "0",
+                    "tail": "1",
+                    "type": "causal",
+                    "id": "0"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "A",
+                "shell",
+                "shortage",
+                "forced",
+                "Werder",
+                "to",
+                "lower",
+                "the",
+                "intensity",
+                "of",
+                "the",
+                "German",
+                "fire",
+                "on",
+                "26",
+                "August",
+                "and",
+                "switch",
+                "to",
+                "formal",
+                "siege",
+                "operations",
+                "."
+            ],
+            "annotated_text": "<0> A shell shortage </0> forced Werder to <E1> lower the intensity of the German fire on 26 August and switch to formal siege operations </E1> .",
+            "spans": [
+                {
+                    "span": "A shell shortage",
+                    "type": "event",
+                    "trigger": "shortage",
+                    "start": 0,
+                    "end": 3,
+                    "trigger_start": 2,
+                    "trigger_end": 3,
+                    "issues": "",
+                    "id": "0"
+                },
+                {
+                    "id": "E1",
+                    "type": "event",
+                    "start": 6,
+                    "end": 22,
+                    "span": "lower the intensity of the German fire on 26 August and switch to formal siege operations"
+                }
+            ],
+            "relations": [
+                {
+                    "id": "R0",
+                    "head": "0",
+                    "tail": "E1",
+                    "type": "causal"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "A",
+                "shortage",
+                "of",
+                "transport",
+                "aircraft",
+                "meant",
+                "the",
+                "division",
+                "could",
+                "not",
+                "land",
+                "in",
+                "their",
+                "traditional",
+                "way",
+                "by",
+                "parachute",
+                "and",
+                "glider",
+                ",",
+                "and",
+                "all",
+                "the",
+                "landing",
+                "craft",
+                "in",
+                "the",
+                "area",
+                "were",
+                "already",
+                "allocated",
+                "to",
+                "the",
+                "other",
+                "landings",
+                ":",
+                "Operation",
+                "Avalanche",
+                "at",
+                "Salerno",
+                "on",
+                "the",
+                "western",
+                "coast",
+                ",",
+                "and",
+                "Operation",
+                "Baytown",
+                "at",
+                "Calabria",
+                "."
+            ],
+            "annotated_text": "<0> A shortage of transport aircraft </0> meant <1> the division could not land in their traditional way by parachute and glider </1> , and <2> all the landing craft in the area were already allocated to the other landings </2> : Operation Avalanche at Salerno on the western coast , and Operation Baytown at Calabria .",
+            "spans": [
+                {
+                    "span": "A shortage of transport aircraft",
+                    "type": "event",
+                    "trigger": "shortage",
+                    "start": 0,
+                    "end": 5,
+                    "trigger_start": 1,
+                    "trigger_end": 2,
+                    "issues": "",
+                    "id": "0"
+                },
+                {
+                    "span": "the division could not land in their traditional way by parachute and glider",
+                    "type": "event",
+                    "trigger": "land",
+                    "start": 6,
+                    "end": 19,
+                    "trigger_start": 10,
+                    "trigger_end": 11,
+                    "issues": "",
+                    "id": "1"
+                },
+                {
+                    "span": "all the landing craft in the area were already allocated to the other landings",
+                    "type": "event",
+                    "trigger": "allocated",
+                    "start": 21,
+                    "end": 35,
+                    "trigger_start": 30,
+                    "trigger_end": 31,
+                    "issues": "",
+                    "id": "2"
+                }
+            ],
+            "relations": [
+                {
+                    "head": "0",
+                    "tail": "1",
+                    "type": "causal",
+                    "id": "0"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "A",
+                "similar",
+                "accident",
+                "had",
+                "happened",
+                "three",
+                "years",
+                "before",
+                "in",
+                "1989",
+                ",",
+                "when",
+                "Air",
+                "Ontario",
+                "Flight",
+                "1363",
+                "crashed",
+                "shortly",
+                "after",
+                "takeoff",
+                "at",
+                "Dryden",
+                "Regional",
+                "Airport",
+                "after",
+                "ice",
+                "had",
+                "accumulated",
+                "on",
+                "the",
+                "wings",
+                "and",
+                "airframe",
+                "."
+            ],
+            "annotated_text": "<E3> A similar accident had happened three years before in 1989 </E3> , when <1> Air Ontario Flight 1363 crashed shortly after takeoff at Dryden Regional Airport </1> after <2> ice had accumulated on the wings and airframe </2> .",
+            "spans": [
+                {
+                    "span": "Air Ontario Flight 1363 crashed shortly after takeoff at Dryden Regional Airport",
+                    "type": "event",
+                    "trigger": "crashed",
+                    "start": 12,
+                    "end": 24,
+                    "trigger_start": 16,
+                    "trigger_end": 17,
+                    "issues": "",
+                    "id": "1"
+                },
+                {
+                    "span": "ice had accumulated on the wings and airframe",
+                    "type": "event",
+                    "trigger": "accumulated",
+                    "start": 25,
+                    "end": 33,
+                    "trigger_start": 27,
+                    "trigger_end": 28,
+                    "issues": "",
+                    "id": "2"
+                },
+                {
+                    "id": "E3",
+                    "type": "event",
+                    "start": 0,
+                    "end": 10,
+                    "span": "A similar accident had happened three years before in 1989"
+                }
+            ],
+            "relations": [
+                {
+                    "head": "2",
+                    "tail": "1",
+                    "type": "causal",
+                    "id": "0"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "A",
+                "small",
+                "resistance",
+                "effort",
+                "to",
+                "another",
+                "roundup",
+                "in",
+                "January",
+                "1943",
+                "was",
+                "partially",
+                "successful",
+                "and",
+                "spurred",
+                "the",
+                "Polish",
+                "groups",
+                "to",
+                "support",
+                "the",
+                "Jews",
+                "in",
+                "earnest",
+                "."
+            ],
+            "annotated_text": "<E2> A small resistance effort to another roundup in January 1943 was partially successful </E2> and <1> spurred the Polish groups to support the Jews in earnest </1> .",
+            "spans": [
+                {
+                    "span": "spurred the Polish groups to support the Jews in earnest",
+                    "type": "event",
+                    "trigger": "spurred",
+                    "start": 14,
+                    "end": 24,
+                    "trigger_start": 14,
+                    "trigger_end": 15,
+                    "issues": "",
+                    "id": "1"
+                },
+                {
+                    "id": "E2",
+                    "type": "event",
+                    "start": 0,
+                    "end": 13,
+                    "span": "A small resistance effort to another roundup in January 1943 was partially successful"
+                }
+            ],
+            "relations": [
+                {
+                    "id": "R0",
+                    "head": "E2",
+                    "tail": "1",
+                    "type": "causal"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "A",
+                "split",
+                "in",
+                "the",
+                "Zaian",
+                "Confederation",
+                "between",
+                "those",
+                "who",
+                "supported",
+                "submission",
+                "and",
+                "those",
+                "still",
+                "opposed",
+                "led",
+                "to",
+                "infighting",
+                "and",
+                "the",
+                "death",
+                "of",
+                "Hammou",
+                "in",
+                "Spring",
+                "1921",
+                "."
+            ],
+            "annotated_text": "A <E0> split in the Zaian Confederation between those who supported submission and those still opposed </E0> led to <E1> infighting </E1> and <E2> the death of Hammou in Spring 1921 </E2> .",
+            "spans": [
+                {
+                    "id": "E0",
+                    "type": "event",
+                    "start": 1,
+                    "end": 15,
+                    "span": "split in the Zaian Confederation between those who supported submission and those still opposed"
+                },
+                {
+                    "id": "E1",
+                    "type": "event",
+                    "start": 17,
+                    "end": 18,
+                    "span": "infighting"
+                },
+                {
+                    "id": "E2",
+                    "type": "event",
+                    "start": 19,
+                    "end": 26,
+                    "span": "the death of Hammou in Spring 1921"
+                }
+            ],
+            "relations": [
+                {
+                    "id": "R0",
+                    "head": "E0",
+                    "tail": "E1",
+                    "type": "causal"
+                },
+                {
+                    "id": "R1",
+                    "head": "E0",
+                    "tail": "E2",
+                    "type": "causal"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "A",
+                "spot",
+                "fixing",
+                "case",
+                "was",
+                "revealed",
+                "by",
+                "Delhi",
+                "Police",
+                ",",
+                "leading",
+                "to",
+                "arrest",
+                "of",
+                "three",
+                "cricketers",
+                "from",
+                "Rajasthan",
+                "Royals",
+                "and",
+                "other",
+                "persons",
+                "."
+            ],
+            "annotated_text": "<E2> A spot fixing case was revealed by Delhi Police </E2> , leading to <E3> arrest of three cricketers from Rajasthan Royals and other persons </E3> .",
+            "spans": [
+                {
+                    "id": "E2",
+                    "type": "event",
+                    "start": 0,
+                    "end": 9,
+                    "span": "A spot fixing case was revealed by Delhi Police"
+                },
+                {
+                    "id": "E3",
+                    "type": "event",
+                    "start": 12,
+                    "end": 22,
+                    "span": "arrest of three cricketers from Rajasthan Royals and other persons"
+                }
+            ],
+            "relations": [
+                {
+                    "id": "R0",
+                    "head": "E2",
+                    "tail": "E3",
+                    "type": "causal"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "'Personal",
+                "relationships",
+                "were",
+                "in",
+                "trouble",
+                "and",
+                "it",
+                "put",
+                "a",
+                "terrible",
+                "strain",
+                "on",
+                "everybody",
+                ",",
+                "emotionally",
+                "and",
+                "physically",
+                ",",
+                "'",
+                "agreed",
+                "Illsley",
+                "."
+            ],
+            "annotated_text": "<0> 'Personal relationships were in trouble </0> and <1> it put a terrible strain on everybody , emotionally and physically </1> , ' agreed Illsley .",
+            "spans": [
+                {
+                    "span": "'Personal relationships were in trouble",
+                    "type": "event",
+                    "trigger": "trouble",
+                    "start": 0,
+                    "end": 5,
+                    "trigger_start": 4,
+                    "trigger_end": 5,
+                    "id": "0"
+                },
+                {
+                    "span": "it put a terrible strain on everybody , emotionally and physically",
+                    "type": "event",
+                    "trigger": "strain",
+                    "start": 6,
+                    "end": 17,
+                    "trigger_start": 10,
+                    "trigger_end": 11,
+                    "issues": "",
+                    "id": "1"
+                }
+            ],
+            "relations": [
+                {
+                    "head": "0",
+                    "tail": "1",
+                    "type": "causal",
+                    "id": "0"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "'Superb",
+                "'",
+                "fired",
+                "on",
+                "the",
+                "rearmost",
+                "ships",
+                ",",
+                "setting",
+                "the",
+                "112-gun",
+                "'Real",
+                "Carlos",
+                "'",
+                "on",
+                "fire",
+                "and",
+                "capturing",
+                "the",
+                "'Saint",
+                "Antoine",
+                "'",
+                "."
+            ],
+            "annotated_text": "<0> 'Superb ' fired on the rearmost ships </0> , <1> setting the 112-gun 'Real Carlos ' on fire </1> and <2> capturing the 'Saint Antoine ' </2> .",
+            "spans": [
+                {
+                    "span": "'Superb ' fired on the rearmost ships",
+                    "type": "event",
+                    "trigger": "fired",
+                    "start": 0,
+                    "end": 7,
+                    "trigger_start": 2,
+                    "trigger_end": 3,
+                    "issues": "",
+                    "id": "0"
+                },
+                {
+                    "span": "setting the 112-gun 'Real Carlos ' on fire",
+                    "type": "event",
+                    "trigger": "setting",
+                    "start": 8,
+                    "end": 16,
+                    "trigger_start": 8,
+                    "trigger_end": 9,
+                    "issues": "",
+                    "id": "1"
+                },
+                {
+                    "span": "capturing the 'Saint Antoine '",
+                    "type": "event",
+                    "trigger": "capturing",
+                    "start": 17,
+                    "end": 22,
+                    "trigger_start": 17,
+                    "trigger_end": 18,
+                    "issues": "",
+                    "id": "2"
+                }
+            ],
+            "relations": [
+                {
+                    "head": "0",
+                    "tail": "1",
+                    "type": "causal",
+                    "id": "0"
+                },
+                {
+                    "head": "0",
+                    "tail": "2",
+                    "type": "causal",
+                    "id": "1"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "'The",
+                "New",
+                "York",
+                "Times",
+                "'",
+                ",",
+                "speaking",
+                "of",
+                "the",
+                "three-week",
+                "conflict",
+                "in",
+                "Gaza",
+                ",",
+                "wrote",
+                ",",
+                "'Israel",
+                "’",
+                "s",
+                "attack",
+                "has",
+                "razed",
+                "buildings",
+                "and",
+                "upended",
+                "families",
+                "in",
+                "much",
+                "of",
+                "crowded",
+                "Gaza",
+                "."
+            ],
+            "annotated_text": "'The New York Times ' , speaking of the three-week conflict in Gaza , wrote , <E1> 'Israel ’ s attack </E1> has <E0> razed buildings and upended families in much of crowded Gaza </E0> .",
+            "spans": [
+                {
+                    "id": "E0",
+                    "type": "event",
+                    "start": 21,
+                    "end": 31,
+                    "span": "razed buildings and upended families in much of crowded Gaza"
+                },
+                {
+                    "id": "E1",
+                    "type": "event",
+                    "start": 16,
+                    "end": 20,
+                    "span": "'Israel ’ s attack"
+                }
+            ],
+            "relations": [
+                {
+                    "id": "R0",
+                    "head": "E1",
+                    "tail": "E0",
+                    "type": "causal"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "'Vincennes",
+                "'",
+                "had",
+                "entered",
+                "Iranian",
+                "territory",
+                "after",
+                "one",
+                "of",
+                "its",
+                "helicopters",
+                "drew",
+                "warning",
+                "fire",
+                "from",
+                "Iranian",
+                "speedboats",
+                "operating",
+                "within",
+                "Iranian",
+                "territorial",
+                "limits",
+                "."
+            ],
+            "annotated_text": "<E1> 'Vincennes ' had entered Iranian territory </E1> after <E0> one of its helicopters drew warning fire from Iranian speedboats operating within Iranian territorial limits </E0> .",
+            "spans": [
+                {
+                    "id": "E0",
+                    "type": "event",
+                    "start": 7,
+                    "end": 22,
+                    "span": "one of its helicopters drew warning fire from Iranian speedboats operating within Iranian territorial limits"
+                },
+                {
+                    "id": "E1",
+                    "type": "event",
+                    "start": 0,
+                    "end": 6,
+                    "span": "'Vincennes ' had entered Iranian territory"
+                }
+            ],
+            "relations": [
+                {
+                    "id": "R0",
+                    "head": "E0",
+                    "tail": "E1",
+                    "type": "causal"
+                }
+            ]
+        },
+        {
+            "tokens": [
+                "'",
+                "[",
+                "L",
+                "]",
+                "ong-dormant",
+                "'",
+                "land",
+                "disputes",
+                "between",
+                "'Hema",
+                "herders",
+                "and",
+                "Lendu",
+                "farmers",
+                "'",
+                "were",
+                "re-ignited",
+                "in",
+                "December",
+                "2017",
+                "resulting",
+                "in",
+                "a",
+                "surge",
+                "of",
+                "massacres",
+                "with",
+                "entire",
+                "Hema",
+                "villages",
+                "razed",
+                "and",
+                "over",
+                "a",
+                "hundred",
+                "casualties",
+                "."
+            ],
+            "annotated_text": "<E2> ' [ L ] ong-dormant ' land disputes between 'Hema herders and Lendu farmers ' were re-ignited in December 2017 </E2> resulting in <E1> a surge of massacres with entire Hema villages razed and over a hundred casualties </E1> .",
+            "spans": [
+                {
+                    "id": "E1",
+                    "type": "event",
+                    "start": 22,
+                    "end": 36,
+                    "span": "a surge of massacres with entire Hema villages razed and over a hundred casualties"
+                },
+                {
+                    "id": "E2",
+                    "type": "event",
+                    "start": 0,
+                    "end": 20,
+                    "span": "' [ L ] ong-dormant ' land disputes between 'Hema herders and Lendu farmers ' were re-ignited in December 2017"
+                }
+            ],
+            "relations": [
+                {
+                    "id": "R0",
+                    "head": "E2",
+                    "tail": "E1",
+                    "type": "causal"
+                }
+            ]
+        }
+    ],
+    "schema": {
+        "span_types": [
+            {
+                "name": "event",
+                "color": "rgba(255, 87, 51, 0.3)"
+            }
+        ],
+        "relation_types": [
+            {
+                "name": "causal",
+                "color": "rgba(255, 87, 51, 0.3)"
+            }
+        ]
+    }
+}
