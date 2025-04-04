@@ -17,6 +17,9 @@ class CustomEncoder(JSONEncoder):
         # Let the base class default method raise the TypeError
         return JSONEncoder.default(self, obj)        
         
+
+
+
 class ImmutableNamespace:
     def __init__(self, **kwargs):
         # Store attributes in a private dictionary to prevent direct access and modification
@@ -68,7 +71,9 @@ class Config:
         """
         return self.cfg
 
-
+    @property
+    def to_dict(self):
+        return self.cfg.get_data_copy()
 
     @property
     def dump_as_json_str(self):

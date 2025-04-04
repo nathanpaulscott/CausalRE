@@ -15,8 +15,6 @@ class DataProcessor(object):
     '''
     def __init__(self, config):
         self.config = config
-        #set the has_labels flag based on the self.config.run_type being train (not predict)
-        self.has_labels = self.config.run_type == 'train'
 
 
     def batch_list_to_dict_converter(self, batch):
@@ -46,13 +44,13 @@ class DataProcessor(object):
         - This function maintains a clear separation of data and control signals, using a mask tensor for validity marking.
         - All properties are initialized in the `dataprocessor.__init__` method, including `self.config.s_to_id`, `self.config.id_to_s`, etc.
         '''
-        seq_length  = torch.tensor([x["seq_length"] for x in batch], dtype=torch.long)
+        seq_length  = torch.tensor([obs["seq_length"] for obs in batch], dtype=torch.long)
         span_ids    = torch.nn.utils.rnn.pad_sequence([obs["span_ids"] for obs in batch], batch_first=True, padding_value=0)
         span_masks  = torch.nn.utils.rnn.pad_sequence([obs["span_masks"] for obs in batch], batch_first=True, padding_value=False)
         tokens      = [obs["tokens"] for obs in batch]
         
         spans, relations, span_labels, orig_map = None, None, None, None
-        if self.has_labels:
+        if self.config.has_labels:
             spans       = [obs["spans"] for obs in batch]
             relations   = [obs["relations"] for obs in batch]
             span_labels = torch.nn.utils.rnn.pad_sequence([obs["span_labels"] for obs in batch], batch_first=True, padding_value=0)
@@ -162,7 +160,7 @@ class DataProcessor(object):
         span_ids = [x for x in self.config.all_span_ids if x[0] < seq_len]
 
         #basic processing if we have no labels
-        if not self.has_labels:
+        if not self.config.has_labels:
             span_ids = torch.tensor(span_ids, dtype=torch.long)          #shape => (num_possible_spans)
             span_masks = self.generate_span_mask_for_obs(span_ids, seq_len, self.config.max_span_width)
             spans, relations, span_labels, orig_map = None, None, None, None
@@ -193,13 +191,13 @@ class DataProcessor(object):
         #Return a dictionary with the preprocessed observations
         return dict(
             tokens      = tokens,             #the word tokens of the input seq
-            spans       = obs['spans'],       #the simplified list of span tuples [(start, end, type), ...]   NOTE: None for no labels
-            relations   = obs['relations'],   #the simplified list of rel tuples [(head, tail, type), ...]    NOTE: None for no labels
+            spans       = obs['spans'] if self.config.has_labels else None,       #the simplified list of span tuples [(start, end, type), ...]   NOTE: None for no labels
+            relations   = obs['relations'] if self.config.has_labels else None,   #the simplified list of rel tuples [(head, tail, type), ...]    NOTE: None for no labels
             span_ids    = span_ids,           #tensor (seq_len*max_span_width, 2) all possible span (start,end) tuples starting within tokens
             span_labels = span_labels,        #tensor (seq_len*max_span_width) int for unilabel, (seq_len*max_span_width, num span types) bool for multilabel.  The span labels aligning with each element in span_idx.  NOTE: None for no labels
             span_masks  = span_masks,         #tensor (seq_len*max_span_width) the span mask aligning with each element in span_idx, 1 if the span is valid and selected for use   NOTE: 1 for all valid spans and 0 for pad and invalid spans
             orig_map    = orig_map,           #this makes the dict mapping the original span idx in spans to the dim 0 idx in the span_ids tensor here      NOTE: None if no labels
-            seq_length  = seq_len,            #length of tokens, a scalar
+            seq_length  = seq_len            #length of tokens, a scalar
         )
 
 
@@ -243,7 +241,7 @@ class DataProcessor(object):
 
         elif self.config.run_type == 'predict':
             loaders = dict(
-                predict =  DataLoader(data['predict'],  collate_fn=self.collate_fn, batch_size=self.config.eval_batch_size,  shuffle=False, **kwargs)
+                predict =  DataLoader(data[self.config.predict_split],  collate_fn=self.collate_fn, batch_size=self.config.eval_batch_size,  shuffle=False, **kwargs)
             )
         return loaders
 
@@ -251,96 +249,3 @@ class DataProcessor(object):
 
 
 
-
-
-
-#######################################################################33
-#unused code
-
-#this is the code for neg sampling, but for this model, it is not neccessary
-#span_masks = self.generate_span_mask_for_obs_w_neg_sampling(span_ids, seq_len, span_labels, self.config.neg_sample_rate, self.config.min_limit)
-
-class blank():
-    def calc_neg_samples_count(self, valid_neg_indices, neg_sample_rate, min_limit):
-        '''
-        Calculate the number of negative samples to select based on the available indices, a specified sample rate, 
-        and a minimum limit. This function ensures that the number of selected samples does not exceed the number 
-        of available negative indices and respects the defined minimum limit.
-
-        Parameters:
-        - valid_neg_indices (list or similar iterable): A collection of indices representing valid negative samples.
-        - neg_sample_rate (float): The desired rate of negative sampling as a percentage (e.g., 20 for 20%).
-        - min_limit (int): The minimum number of negative samples to be selected, regardless of the sample rate.
-
-        Returns:
-        - int: The number of negative samples to select. This number respects the negative sample rate, does not exceed 
-        the number of available negatives, and adheres to the minimum limit specified.
-
-        Example:
-        - Given 100 valid negative indices, a sample rate of 20%, and a minimum limit of 10, this function will calculate
-        an initial sample of 20 (20% of 100). Since 20 is greater than the minimum limit of 10, and less than the total 
-        available negatives, the function returns 20.
-        '''
-        total_negs = len(valid_neg_indices)
-        initial_neg_sample = total_negs * (neg_sample_rate / 100)
-        negs_after_min_limit = max(initial_neg_sample, min_limit)
-        num_negs_to_select = int(min(negs_after_min_limit, total_negs))
-        return num_negs_to_select
-
-
-    def generate_span_mask_for_obs_w_neg_sampling(self, span_ids, seq_len, span_labels=None, neg_sample_rate=None, min_limit=None):
-        """
-        Generates a single mask for a given observation indicating spans that are both valid and selected. 
-        Valid spans are those that do not extend beyond the specified sequence length. The selection includes negative sampling from valid negative spans along with all valid positive spans.
-
-        Args:
-        span_ids (torch.Tensor): Tensor of shape (num_spans, 2) containing start and end indices for each span.
-        seq_len (int): Length of the sequence, used to determine the validity of each span.
-        span_labels (torch.Tensor): Tensor of shape (num_spans) unilabel or (num_spans, num_pos_classes) multilabel containing label values,
-                                    where 0 represents negative samples, and >0 represents positive samples.
-        neg_sample_rate (float): Fraction of negative samples to randomly select from the valid negative spans.
-        min_limit (int): Minimum number of negative samples to retain, if possible.
-
-        Returns:
-        torch.Tensor: A mask tensor where 1 indicates selected spans (both negative and positive) from valid spans, 0 otherwise. The selected negative samples are determined through a random selection process adhering to the specified negative sampling rate and minimum limit.
-
-        Process:
-        1. Validity Check: Create a mask indicating valid spans based on the end indices not exceeding the sequence length.
-        2. Negative Sampling: From valid spans, perform negative sampling on negative labels to determine which negative spans to include.
-        3. Final Mask Assembly: Combine the results of negative sampling and the inclusion of all valid positive spans into a single mask indicating which spans are selected for use.
-        """
-        num_spans, _ = span_ids.shape
-
-        #Create a mask indicating valid spans based on the end indices not exceeding the sequence length
-        valid_span_mask = torch.ones(num_spans, dtype=torch.bool)
-        valid_span_mask[span_ids[:, 1] > seq_len] = False    #no seq_len-1 here as we have pythonic end indices
-        #return if we do not have labels as we do not do any neg samping
-        if not self.has_labels:
-            return valid_span_mask
-
-        #Determine if span_labels are multilabel and aggregate, binarize in both case for ease of neg sampling
-        span_labels_b = (span_labels > 0)
-
-        #make the final span_mask including neg sampling on the valid neg spans and the pos cases
-        #############################################
-        #Initialize the sample mask as zeros (False), meaning no spans are selected by default
-        span_mask = torch.zeros_like(valid_span_mask, dtype=torch.bool)
-        #Find indices where spans are valid
-        valid_indices = torch.nonzero(valid_span_mask, as_tuple=True)[0]
-        valid_labels = span_labels_b[valid_indices]
-        #Separate indices for negative and positive valid labels
-        valid_neg_indices = torch.nonzero(valid_labels == False, as_tuple=True)[0]
-        valid_pos_indices = torch.nonzero(valid_labels == True, as_tuple=True)[0]
-        ##########################################
-        #do the neg sampling adhering to the sample rate and the min limit
-        num_negs_to_select = self.calc_neg_samples_count(valid_neg_indices, neg_sample_rate, min_limit)
-        selected_neg_indices = valid_neg_indices[torch.randperm(len(valid_neg_indices))[:num_negs_to_select]]
-        ##########################################
-        #Map selected negative indices back to the original span_labels tensor indices
-        selected_neg_indices = valid_indices[selected_neg_indices]
-        valid_pos_indices = valid_indices[valid_pos_indices]
-        #set the selected neg_ind and valid_pos_ind to True in the sample_mask
-        span_mask[selected_neg_indices] = True
-        span_mask[valid_pos_indices] = True
-
-        return span_mask

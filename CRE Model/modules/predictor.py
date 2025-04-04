@@ -2,7 +2,6 @@ import torch
 import numpy as np
 from torch.profiler import record_function
 
-from .utils import remove_span_types_from_full_rels
 
 
 class Predictor:
@@ -15,19 +14,87 @@ class Predictor:
 
 
     def reset_data(self):
-        self.all_preds_out = {'spans': [], 'rels': [], 'rels_mod': []}
+        self.data = dict(
+            tokens      = [], 
+            span_labels = [], 
+            rel_labels  = [], 
+            span_preds  = [],
+            rel_preds   = [],
+            rel_mod_preds = []
+            )
 
 
-    def prep_and_add_batch_preds(self, span_preds, rel_preds):
+    def remove_span_types_from_full_rels(self, rel_preds):
+        '''
+        This removes the span types from the full rels as this is required for some analysis
+        NOTE: as there could be doubles, we set and list each batch obj list
+
+        was:
+        #return [list(set([(rel[0],rel[1],rel[3],rel[4],rel[6]) for rel in obs])) for obs in rel_preds]
+        '''
+        rel_mod_preds = []
+        for obs in rel_preds:
+            rel_mod_obs = []
+            for rel in obs:
+                rel_mod_obs.append((rel[0],rel[1],rel[3],rel[4],rel[6]))
+            #remove duplicates
+            rel_mod_obs = list(set(rel_mod_obs))            
+            #add the rels_mod
+            rel_mod_preds.append(rel_mod_obs)
+        
+        return rel_mod_preds        
+
+
+
+    def prep_and_add_batch_preds(self, model_in, span_preds, rel_preds, rel_mod_preds):
         '''
         function to add the batch of preds (list of list of tuples) to the internal store to be returned later
         '''
-        #make the rel_preds without the span types
-        rel_preds_mod = remove_span_types_from_full_rels(rel_preds)
         #add to the output dicts
-        self.all_preds_out['spans'].extend(span_preds)
-        self.all_preds_out['rels'].extend(rel_preds)
-        self.all_preds_out['rels_mod'].extend(rel_preds_mod)
+        self.data['tokens'].extend(model_in['tokens'])
+        self.data['span_labels'].extend(model_in['spans'])
+        self.data['rel_labels'].extend(model_in['relations'])
+        self.data['span_preds'].extend(span_preds)
+        self.data['rel_preds'].extend(rel_preds)
+        self.data['rel_mod_preds'].extend(rel_mod_preds)
+
+
+
+    def gather_preds_and_convert_preds_to_list_of_dicts(self):
+        '''
+        converts data to a list of dicts format
+        '''
+        output = []
+        output_raw = self.data
+        num_obs = len(output_raw['tokens'])
+        for i in range(num_obs):
+            obs = dict(counts = {})
+            for k in [x for x in output_raw.keys() if x != 'rel_mod_preds']:
+                raw_obs = output_raw[k][i]
+                if k == 'span_preds':
+                    obs[k] = [dict(start=x[0], 
+                                   end=x[1], 
+                                   type=self.config.id_to_s[x[2]]) for x in raw_obs]
+                elif k == 'rel_preds':
+                    obs[k] = [dict(head=(x[0], x[1], self.config.id_to_s[x[2]]), 
+                                   tail=(x[3], x[4], self.config.id_to_s[x[5]]), 
+                                   type=self.config.id_to_r[x[6]]) for x in raw_obs]
+                elif k == 'span_labels':
+                    obs[k] = [dict(start=x[0], 
+                                   end=x[1], 
+                                   type=x[2]) for x in raw_obs]
+                elif k == 'rel_labels':
+                    obs[k] = [dict(head=[v for v in obs['span_labels'][x[0]].values()], 
+                                   tail=[v for v in obs['span_labels'][x[1]].values()], 
+                                   type=x[2]) for x in raw_obs]
+                else:
+                    obs[k] = raw_obs
+
+                obs['counts'][k] = len(obs[k])
+            
+            output.append(obs)
+        
+        return output
 
 
     def predict_unilabel(self, logits):
@@ -96,24 +163,18 @@ class Predictor:
         batch_indices = batch_indices.cpu().numpy()
 
         # Initialize the spans output data structure, list of empty lists
-        spans = [[] for _ in range(span_logits.shape[0])]  # batch_size is the first dimension
+        span_preds = [[] for _ in range(span_logits.shape[0])]  # batch_size is the first dimension
         conf = [[] for _ in range(span_logits.shape[0])]  # if confidence data is needed
         #Iterate through the positive pred indices and fill the output data
         for i in range(len(batch_indices)):
-            spans[batch_indices[i]].append((all_span_starts[i], 
-                                            all_span_ends[i], 
-                                            all_span_types[i]))
-
-            # Fill the confidence if requested
-        if self.config.predict_conf:
-        #    conf[batch_indices[i]].append(probs[batch_indices[i], span_indices[i]].item())  # Assuming conf still needs item()
-            pass
-
-        return spans, conf, preds
+            span_preds[batch_indices[i]].append((int(all_span_starts[i]), 
+                                                  int(all_span_ends[i]), 
+                                                  int(all_span_types[i])))
+        return span_preds, preds
 
 
 
-    def predict_rels_unilabel(self, model_out, span_preds):
+    def predict_rels_unilabel(self, model_out, span_type_preds):
         '''
         Extracts positive relation predictions for a unilabel classification task from the given logits. 
         This function constructs a list of lists of tuples, where each list corresponds to a batch item.
@@ -127,7 +188,7 @@ class Predictor:
         - rel_logits (torch.Tensor): Logits for relation types (shape: [batch_size, num_relations, num_relation_types]).
         - rel_ids (torch.Tensor): Indices of head and tail spans (shape: [batch_size, num_relations, 2]).
         - span_ids (torch.Tensor): Start and end indices of spans (shape: [batch_size, num_spans, 2]).
-        - span_preds (torch.Tensor): Predicted labels for each span (shape: [batch_size, num_spans]).
+        - span_type_preds (torch.Tensor): Predicted labels for each span (shape: [batch_size, num_spans]).
         
         Returns:
         - list of lists of tuples: For each batch item, a list of tuples describing the predicted relations.
@@ -149,32 +210,27 @@ class Predictor:
         all_tail_span_ids = rel_ids[batch_indices, rel_indices, 1]
         all_head_spans = span_ids[batch_indices, all_head_span_ids].cpu().numpy()
         all_tail_spans = span_ids[batch_indices, all_tail_span_ids].cpu().numpy()
-        all_head_types = span_preds[batch_indices, all_head_span_ids].cpu().numpy()
-        all_tail_types = span_preds[batch_indices, all_tail_span_ids].cpu().numpy()
+        all_head_types = span_type_preds[batch_indices, all_head_span_ids].cpu().numpy()
+        all_tail_types = span_type_preds[batch_indices, all_tail_span_ids].cpu().numpy()
         all_rel_types = preds[batch_indices, rel_indices].cpu().numpy()
         batch_indices = batch_indices.cpu().numpy()
 
         # Initialize list of lists for output
-        rels = [[] for _ in range(rel_logits.shape[0])]
+        rel_preds = [[] for _ in range(rel_logits.shape[0])]
         conf = [[] for _ in range(rel_logits.shape[0])]  # if confidence data is needed
         for i in range(len(batch_indices)):
-            rels[batch_indices[i]].append((all_head_spans[i][0], 
-                                           all_head_spans[i][1], 
-                                           all_head_types[i],
-                                           all_tail_spans[i][0], 
-                                           all_tail_spans[i][1], 
-                                           all_tail_types[i],
-                                           all_rel_types[i]))
+            rel_preds[batch_indices[i]].append((int(all_head_spans[i][0]), 
+                                                int(all_head_spans[i][1]), 
+                                                int(all_head_types[i]),
+                                                int(all_tail_spans[i][0]), 
+                                                int(all_tail_spans[i][1]), 
+                                                int(all_tail_types[i]),
+                                                int(all_rel_types[i])))
 
-        # Fill the confidence if requested
-        if self.config.predict_conf:
-        #    conf[batch_indices[i]].append(probs[batch_indices[i], span_indices[i]].item())  # Assuming conf still needs item()
-            pass
-            
-        return rels, conf
+        return rel_preds
 
 
-    def predict_rels_multilabel(self, model_out, span_preds):
+    def predict_rels_multilabel(self, model_out, span_type_preds):
         '''
         Extracts the pos relation predictions for multilabel classification from the given logits,
         where each relation can have multiple types. This function constructs a list of lists of tuples,
@@ -189,7 +245,7 @@ class Predictor:
         - rel_logits (torch.Tensor): Logits for relation types (shape: [batch_size, num_relations, num_relation_types]).
         - rel_ids (torch.Tensor): Indices of head and tail spans (shape: [batch_size, num_relations, 2]).
         - span_ids (torch.Tensor): Start and end word token indices of spans (shape: [batch_size, num_spans, 2]).
-        - span_preds (torch.Tensor): Predicted labels for each span (shape: [batch_size, num_spans]).   (span_labels are unilabel only)
+        - span_type_preds (torch.Tensor): Predicted labels for each span (shape: [batch_size, num_spans]).   (span_labels are unilabel only)
 
         Returns:
         - list of lists of tuples: For each batch item, a list of tuples describing the predicted relations.
@@ -206,34 +262,29 @@ class Predictor:
         #Get the indices for the valid positive cases in preds as we only need these for the eval
         batch_indices, rel_indices, rel_type_indices = torch.where(valid_preds)
 
-        #Gather span data an dmove to numpy for efficient scalar access
+        #Gather span data and move to numpy for efficient scalar access
         all_head_span_ids = rel_ids[batch_indices, rel_indices, 0]
         all_tail_span_ids = rel_ids[batch_indices, rel_indices, 1]
         all_head_spans = span_ids[batch_indices, all_head_span_ids].cpu().numpy()
         all_tail_spans = span_ids[batch_indices, all_tail_span_ids].cpu().numpy()
-        all_head_types = span_preds[batch_indices, all_head_span_ids].cpu().numpy()
-        all_tail_types = span_preds[batch_indices, all_tail_span_ids].cpu().numpy()
+        all_head_types = span_type_preds[batch_indices, all_head_span_ids].cpu().numpy()
+        all_tail_types = span_type_preds[batch_indices, all_tail_span_ids].cpu().numpy()
         all_rel_types = rel_type_indices.cpu().numpy()
         batch_indices = batch_indices.cpu().numpy()
 
         # Initialize list of lists for output
-        rels = [[] for _ in range(rel_logits.shape[0])]
+        rel_preds = [[] for _ in range(rel_logits.shape[0])]
         conf = [[] for _ in range(rel_logits.shape[0])]  # if confidence data is needed
         for i in range(len(batch_indices)):
-            rels[batch_indices[i]].append((all_head_spans[i][0], 
-                                           all_head_spans[i][1], 
-                                           all_head_types[i],
-                                           all_tail_spans[i][0], 
-                                           all_tail_spans[i][1], 
-                                           all_tail_types[i],
-                                           all_rel_types[i]))
+            rel_preds[batch_indices[i]].append((int(all_head_spans[i][0]), 
+                                                int(all_head_spans[i][1]), 
+                                                int(all_head_types[i]),
+                                                int(all_tail_spans[i][0]), 
+                                                int(all_tail_spans[i][1]), 
+                                                int(all_tail_types[i]),
+                                                int(all_rel_types[i])))
 
-        # Fill the confidence if requested
-        if self.config.predict_conf:
-        #    conf[batch_indices[i]].append(probs[batch_indices[i], rel_indices[i]].item())  # Assuming conf still needs item()
-            pass
-
-        return rels, conf
+        return rel_preds
 
 
 
@@ -255,7 +306,7 @@ class Predictor:
             return self.predict_rels_multilabel(model_out, span_preds)
 
 
-    def predict(self, model_out, return_and_reset_results=False):
+    def predict(self, model_in, model_out, return_and_reset_results=False):
         """
         Runs predictions for spans and relations based on the model output and configuration.
         Handles both unilabel and multilabel predictions as configured.
@@ -266,17 +317,19 @@ class Predictor:
         Returns:
             dict: A deep copy of all predictions if return_and_reset_results is True, otherwise None.
         """
-        #get the span labels and preds
-        spans, span_conf, span_preds = self.predict_spans(model_out)
-        #get the rel labels and preds
-        rels, rel_conf = self.predict_rels(model_out, span_preds)
-        #prep and add to the all_preds_out object
-        self.prep_and_add_batch_preds(spans, rels)
+        #get span preds
+        span_preds, span_type_preds = self.predict_spans(model_out)
+        #get the rel preds
+        rel_preds = self.predict_rels(model_out, span_type_preds)
+        #get the rel_mod_preds
+        rel_mod_preds = self.remove_span_types_from_full_rels(rel_preds)
+        #prep and add to the data object
+        self.prep_and_add_batch_preds(model_in, span_preds, rel_preds, rel_mod_preds)
         #return data and reset if requested
         if return_and_reset_results:
             result = {}
-            for key, batches in self.all_preds_out.items():
-                result[key] = [list(batch) for batch in batches]
+            for k,v in self.data.items():
+                result[k] = [list(obs) for obs in v]
             #now reset the original data
             self.reset_data()
             return result

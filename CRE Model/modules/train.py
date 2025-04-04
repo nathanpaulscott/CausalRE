@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from pathlib import Path
 from typing import Tuple, List, Dict, Union
-import os, re
+import os, re, math
 
 ###############################################
 #custom imports
@@ -19,7 +19,7 @@ from .evaluator import make_evaluator
 from .predictor import Predictor
 from .model_manager import ModelManager, Optimizer, Scheduler
 from .data_preparation import DataPreparation
-from .utils import clear_gpu_tensors, set_all_seeds
+from .utils import clear_gpu_tensors, set_all_seeds, save_to_json
 
 
 
@@ -32,7 +32,7 @@ class Trainer:
     '''
     def __init__(self, main_configs):
         self.main_configs = main_configs
-        self.config = main_configs.as_namespace
+        self.config = self.main_configs.as_namespace
 
 
     def load_loader(self, data_loader, device, infinite=True):
@@ -122,8 +122,6 @@ class Trainer:
         warmup_ratio = config.warmup_ratio
         num_warmup_steps = int(num_steps * warmup_ratio) if warmup_ratio < 1 else int(warmup_ratio)
         eval_every = config.eval_every
-        save_top_k = config.save_top_k
-        log_folder = config.log_folder
         #Initialize structure to store gradient data
         grad_stats = dict(
             high_thd   = 1.0,  # Define thresholds for high gradients
@@ -165,6 +163,9 @@ class Trainer:
         optimizer.zero_grad()    # Zero out gradients for next accumulation
         pbar_train = tqdm(range(num_steps), position=0, leave=True)
         train_loss = []
+        model_save_score = -self.config.num_limit
+        model_local_folder = "/content"
+        model_early_stop_cnt = 0
         for step in pbar_train:
             loss, lost_rel_cnt = self.train_step(model, scaler, iter_loader_inf, step)
             if loss is None: continue  # Skip step if NaN loss or aborted forward pass
@@ -213,9 +214,29 @@ class Trainer:
                 self.config.logger.write(f"{loss_msg}, {self.make_metrics_summary(result, type='log')}", output_to_console=False)
                 if self.config.collect_grads: 
                     self.show_grad_heatmap(grad_data)
-                #save the model - DISABLE FOR DEBUGGING
-                #checkpoint = f'model_{step + 1}'
-                #self.model_manager.save_top_k_checkpoints(model, log_folder, checkpoint, save_top_k)
+
+                #save the model if the metrics meet the criteria
+                if self.config.model_save and step > self.config.model_min_save_steps:
+                    span_f1, rel_f1, eval_loss = result['span_metrics']['f1'], result['rel_metrics']['f1'], result['eval loss']
+                    model_save_score_current = 0
+                    #loss_influence_reducer = 0.1    #use lower numbers to reduce the influence of eval loss
+                    if eval_loss > 0:
+                        avg_f1 = (span_f1 + rel_f1) / 2
+                        #model_save_score_current = avg_f1 / eval_loss ** loss_influence_reducer
+                        model_save_score_current = avg_f1
+
+                    if model_save_score_current > model_save_score:
+                        model_early_stop_cnt = 0
+                        model_save_score = model_save_score_current    
+                        self.model_manager.save_pretrained(model, model_local_folder, self.config.model_name)
+                        print(f"Model saved — step={step}, save_score={model_save_score_current:.4f}")
+                    else:
+                        #increment the early stopping counter and exit the train loop if it passes the thd
+                        model_early_stop_cnt += 1
+                        self.config.logger.write(f"Model not saved — step={step}, save_score={model_save_score_current:.4f} < {model_save_score:.4f}")
+                        if model_early_stop_cnt >= self.config.model_early_stopping: 
+                            print("Early Stoppong Triggered")
+                            break
 
             '''
             ###############################################################
@@ -236,20 +257,24 @@ class Trainer:
         ###########################################
         '''
         pbar_train.close()
+        #load the best model
+        model_local_path = str(Path(f'{model_local_folder}/{self.config.model_name}.pt'))
+        self.model_manager.load_pretrained(model_local_path)
         #run the final eval and test loop
         result_val = self.eval_loop(model, val_loader, device)
         result_test = self.eval_loop(model, test_loader, device)
         #write summary to log
         self.config.logger.write(self.make_metrics_summary(result_val, msg='final_val '))
         self.config.logger.write(self.make_metrics_summary(result_test, msg='final_test '))
-        #save the model
-        #checkpoint = f'model_{step + 1}'
-        #self.model_manager.save_top_k_checkpoints(model, log_folder, checkpoint, save_top_k)
+        #copy the best model to drive
+        model_drive_folder = str(Path(f'{self.config.app_path}/{self.config.model_folder}'))
+        self.model_manager.copy_model_to_drive(model_local_folder, model_drive_folder, self.config.model_name)
 
         return dict(
             result_val = result_val,
             result_test = result_test
         )
+
 
 
     def make_metrics_summary(self, result, msg='', type='format'):
@@ -370,23 +395,27 @@ class Trainer:
 
 
 
-    def show_visual_results(self, x, evaluator):
+    def show_visual_results(self, evaluator):
         #here get the eval obs that you want to display from evaluator.all_preds['spans'] and evaluator.all_labels['spans']
         #the raw word tokenized tokens are in x['tokens']
         msg = '\n#######################\nVisual Results\n#####START###############\n'
         #catch cases where the eval_idx is too long for the available preds/labels and pass
+        def numpy_int_to_int(data):
+            return [tuple(int(item) for item in obs) for obs in data]
+
         try:
             for offset in range(self.config.eval_batch_size):
-                #get tokens
-                show_tokens = [(i, w) for i, w in enumerate(x['tokens'][offset])]
                 #get preds and labels
                 eval_idx = self.config.eval_step_display*self.config.eval_batch_size + offset
-                show_span_preds = evaluator.all_preds['spans'][eval_idx]
-                show_span_preds = [tuple(int(item) for item in tup) for tup in show_span_preds]
+                #tokens
+                show_tokens = evaluator.all_labels['tokens'][eval_idx]
+                #spans
+                show_span_preds = numpy_int_to_int(evaluator.all_preds['spans'][eval_idx])
                 show_span_labels = evaluator.all_labels['spans'][eval_idx]
-                show_rel_preds = evaluator.all_preds['rels'][eval_idx]
-                show_rel_preds = [tuple(int(item) for item in tup) for tup in show_rel_preds]
+                #rels
+                show_rel_preds = numpy_int_to_int(evaluator.all_preds['rels'][eval_idx])
                 show_rel_labels = evaluator.all_labels['rels'][eval_idx]
+
                 #sort
                 show_span_preds = sorted(show_span_preds, key=lambda x: (x[0], x[1]))
                 show_span_labels = sorted(show_span_labels, key=lambda x: (x[0], x[1]))
@@ -445,10 +474,9 @@ class Trainer:
                 #get preds => the predicted positive cases only
                 #NOTE: predicted neg cases are not included here as they are not required
                 #NOTE: the rel_preds are the full rels with the span start,end,type info
-                preds = predictor.predict(result, return_and_reset_results=True)
-
+                preds_and_labels = predictor.predict(x, result, return_and_reset_results=True)
                 #prepare and add the batch of preds and labels to the evaluator
-                evaluator.prep_and_add_batch(x['spans'], x['relations'], preds)
+                evaluator.prep_and_add_batch(preds_and_labels)
 
                 #write description to log and stdout
                 description = f"eval step: {eval_step} | loss: {result['loss'].item():.2f} | lost rel cnt: {result['lost_rel_counts'].sum().item()} |"
@@ -462,18 +490,6 @@ class Trainer:
                     #self.config.logger.write(f' Eval step {eval_step}, clearing tensors')
                     clear_gpu_tensors([v for k,v in result.items() if k != 'loss'], gc_collect=True, clear_cache=True)   #slows it down if true
                 
-                #show actual output to the user for reference
-                if eval_step == self.config.eval_step_display:
-                    visual_results = self.show_visual_results(x, evaluator)
-
-                #TEMP
-                #TEMP
-                #TEMP
-                #if eval_step > 6:
-                #    break
-                #TEMP
-                #TEMP
-                #TEMP
                 eval_loss.append(result['loss'].detach().cpu().item())
 
             pbar_eval.close()
@@ -481,7 +497,7 @@ class Trainer:
         #run the evaluator on whole dataset results (stored in the evaluator object) and return a dict with the metrics and preds
         result = evaluator.evaluate()
         #add the visual results and the eval mean loss
-        result['visual results'] = visual_results
+        result['visual results'] = self.show_visual_results(evaluator)
         result['eval loss'] = sum(eval_loss) / len(eval_loss) if len(eval_loss) > 0 else -1
         return result
     ##############################################################
@@ -525,12 +541,9 @@ class Trainer:
                 if result is None:
                     self.config.logger.write(f"Warning: aborted forward pass at {pred_step}. Skipping...", level='warning')
                     continue  # Skip step if NaN loss or aborted forward pass
-                if torch.isnan(result['loss']).any():
-                    self.config.logger.write(f"Warning: NaN loss detected at step {pred_step}. Skipping...", level='warning')
-                    continue
 
                 #make the predictions for the batch and add to the predictor object    
-                predictor.predict(result)
+                predictor.predict(x, result)
 
                 #clear tensors to free up GPU memory
                 pred_step += 1
@@ -538,8 +551,10 @@ class Trainer:
                     #self.config.logger.write(f' Eval step {eval_step}, clearing tensors')
                     clear_gpu_tensors([v for k,v in result.items() if k != 'loss'], gc_collect=True, clear_cache=True)   #slows it down if true
 
-        #return the final predict results from the predictor object
-        return predictor.all_preds_out
+        #convert preds from dict of list to list of dicts
+        return predictor.gather_preds_and_convert_preds_to_list_of_dicts()
+        
+
     ##############################################################
     ##############################################################
     ##############################################################
@@ -569,23 +584,26 @@ class Trainer:
         #this also updates the main_configs with some key parameters
         data_preparation = DataPreparation(self.main_configs)             #needs to modify the main_configs
         dataset = data_preparation.load_and_prep_data()
+        #update the self.configs from the updated main configs
+        self.config = self.main_configs.as_namespace
         
         #make the data loaders
         #needs to be done here as the previous funtcion updated the main_configs
         data_processor = DataProcessor(self.config) 
         loaders = data_processor.create_dataloaders(dataset)
 
+        #temp - for debugging
         #check the loaders here
-        testing = True
+        testing = False
         if testing: self.check_loaders(loaders)
+        #temp - for debugging
+
+        #get the model
+        self.model_manager = ModelManager(self.main_configs) 
+        model = self.model_manager.get_model()
 
         #send config to log
         self.config.logger.write('Configs Snapshot:\n' + self.main_configs.dump_as_json_str, 'info', output_to_console=True)
-
-        #get the model
-        self.model_manager = ModelManager(self.config) 
-        model = self.model_manager.get_model()
-
 
         #kick off the train_loop or predict_loop
         if self.config.run_type == 'train': 
@@ -594,6 +612,7 @@ class Trainer:
 
         elif self.config.run_type == 'predict': 
             result = self.predict_loop(model, loaders)
+            save_to_json(result, 'preds/pred_results.json')
             #you may want to reformat the preds here to a format that is importable by my js tool for viewing
             #i.e. the standard spans/relations format, where the rels just have the head/tail index in the spans list etc...
 

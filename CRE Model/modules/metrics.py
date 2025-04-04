@@ -81,19 +81,24 @@ class Metrics_custom:
         #Apply relaxed span matching for spans >10 words
         #keep the loose matched preds for later reference        
         matched_preds = set()  # Store already matched predictions to avoid double counting
+        #go through all false positives, i.e. labels with no pred
         for label in list(FN):  
             l_start, l_end, l_type, batch_id = label 
             span_width = l_end - l_start
+            #go through all the preds and look for a loose match
             for pred in [x for x in FP if x[-1] == batch_id]:
                 p_start, p_end, p_type, p_batch_id = pred
                 #set up the params to check
                 d_start = abs(l_start - p_start)
                 d_end = abs(l_end - p_end)
                 tol = tolerance if tolerance >= 1 else tolerance*span_width
-                type_condition = True if make_binary else (l_type == p_type)
+                #get the logical conditions
+                type_match_condition = True if make_binary else (l_type == p_type)
+                loose_boundary_match_condition = span_width >= width_limit and d_start <= tol and d_end <= tol
+                exact_boundary_match_condition = d_start == 0 and d_end == 0
                 #do the matching adjustment
-                if span_width >= width_limit and d_start <= tol and d_end <= tol and type_condition:
-                    print('got a loose span match')
+                if (loose_boundary_match_condition or exact_boundary_match_condition) and type_match_condition:
+                    print(f'SPAN: loose_boundary_match: {loose_boundary_match_condition}, exact_boundary_match: {exact_boundary_match_condition}, type_match: {type_match_condition}')
                     # Match found, adjust sets
                     TP.add(label)
                     FN.remove(label)
@@ -109,7 +114,8 @@ class Metrics_custom:
         #Apply relaxed rel matching for spans >10 words
         #keep the loose matched preds for later reference        
         matched_preds = set()  # Store already matched predictions to avoid double counting
-        for label in list(FN):  
+        #go through all false positives, i.e. labels wiht no pred
+        for label in list(FN):
             if len(label) == 8:
                 l_h_start, l_h_end, l_h_type, l_t_start, l_t_end, l_t_type, l_r_type, batch_id = label
             else:
@@ -117,6 +123,7 @@ class Metrics_custom:
             
             h_span_width = l_h_end - l_h_start
             t_span_width = l_t_end - l_t_start
+            #go through all the preds and look for a loose match
             for pred in [x for x in FP if x[-1] == batch_id]:
                 if len(pred) == 8:
                     p_h_start, p_h_end, p_h_type, p_t_start, p_t_end, p_t_type, p_r_type, p_batch_id = pred
@@ -130,15 +137,16 @@ class Metrics_custom:
                 d_t_end = abs(l_t_end - p_t_end)
                 tol_h = tolerance if tolerance >= 1 else tolerance*h_span_width
                 tol_t = tolerance if tolerance >= 1 else tolerance*t_span_width
-                type_condition = True if make_binary else (l_r_type == p_r_type)
+                #make the logical conditions to test for
+                type_match_condition = True if make_binary else (l_r_type == p_r_type)
                 if rel_type_matching == 'strict':
-                    type_condition = True if make_binary else (l_h_type == p_h_type and l_t_type == p_t_type and l_r_type == p_r_type)
-            
+                    type_match_condition = True if make_binary else (l_h_type == p_h_type and l_t_type == p_t_type and l_r_type == p_r_type)
+                loose_boundary_match_condition = h_span_width >= width_limit and d_h_start <= tol_h and d_h_end <= tol_h and \
+                                                 t_span_width >= width_limit and d_t_start <= tol_t and d_t_end <= tol_t
+                exact_boundary_match_condition = d_h_start == 0 and d_h_end == 0 and d_t_start == 0 and d_t_end == 0
                 #do the matching adjustment
-                if h_span_width >= width_limit and d_h_start <= tol_h and d_h_end <= tol_h and \
-                   t_span_width >= width_limit and d_t_start <= tol_t and d_t_end <= tol_t and \
-                   type_condition:
-                    print('got a loose rel match')
+                if (loose_boundary_match_condition or exact_boundary_match_condition) and type_match_condition:
+                    print(f'REL: loose_boundary_match: {loose_boundary_match_condition}, exact_boundary_match: {exact_boundary_match_condition}, type_match: {type_match_condition}')
                     # Match found, adjust sets
                     TP.add(label)
                     FN.remove(label)

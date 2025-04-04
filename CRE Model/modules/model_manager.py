@@ -9,7 +9,7 @@ import torch
 import os, re
 from pathlib import Path
 from types import SimpleNamespace
-import copy
+import copy, shutil
 
 
 ###############################################
@@ -25,52 +25,45 @@ class ModelManager:
     '''
     Description
     '''
-    def __init__(self, config):
-        self.config = config
+    def __init__(self, main_configs):
+        self.main_configs = main_configs
+        self.config = main_configs.as_namespace
 
+    def copy_model_to_drive(self, local, drive, name):
+        """
+        Copies a saved model (.pt) from a local Colab path to Google Drive.
 
-    def save_pretrained(self, model, save_directory: str):
+        Args:
+            local (str or Path): location of the local model (e.g., '/content')
+            drive (str or Path): Destination folder in Google Drive (e.g., '/content/drive/MyDrive/models')
+            name (str): Base filename (without .pt extension)
+        """
+        Path(drive).mkdir(parents=True, exist_ok=True)
+        local_path = str(Path(f'{local}/{name}.pt'))
+        dest_path = str(Path(f'{drive}/{name}.pt'))
+        shutil.copy(local_path, dest_path)
+
+        self.config.logger.write(f"Model copied to Google Drive at: {dest_path}")
+
+        
+    def save_pretrained(self, model, save_folder, name):
         """Save the model parameters and config to the specified directory"""
-        save_directory = Path(save_directory)
-        save_directory.mkdir(parents=True, exist_ok=True)
-        torch.save(model.state_dict(), save_directory / "pytorch_model.bin")
-        #Optionally save the configuration file
-        #save_to_json(save_directory / 'config.json')
+        Path(save_folder).mkdir(parents=True, exist_ok=True)
+
+        model_filename = name  + ".pt"
+        model_path = str(Path(f'{save_folder}/{model_filename}'))
+        #torch.save(model.state_dict(), model_path)
+        torch.save(model, model_path)
+        self.config.logger.write(f"Model saved to {model_path}")
 
 
-    def load_pretrained(self, model, model_path):
+    def load_pretrained(self, model_path):
         """Load model weights from the specified path"""
-        state_dict = torch.load(model_path)
-        model.load_state_dict(state_dict)
+        #state_dict = torch.load(model_path)
+        #model.load_state_dict(state_dict)
+        model = torch.load(model_path, weights_only=False)
         self.config.logger.write(f"Model loaded from {model_path}")
-
-
-    def save_top_k_checkpoints(self, model, save_path, checkpoint, top_k = 1):
-        """
-        Save the most recent top_k models, I have top_k set to 1 by default, so it just saves the most recent model
-
-        Parameters:
-            model (Model): The model to save.
-            save_path (str): The directory path to save the checkpoints.
-            top_k (int): The number of top checkpoints to keep. Defaults to 1.
-        """
-        self.config.logger.write('Saving Checkpoints...')
-
-        # Save the current model and tokenizer
-        self.save_pretrained(model, os.path.join(save_path, str(checkpoint)))
-        # List all files in the directory
-        files = os.listdir(save_path)
-        # Filter files to keep only the model checkpoints
-        checkpoint_folders = [file for file in files if re.search(r'model_\d+', file)]
-        # Sort checkpoint files by modification time (latest first)
-        checkpoint_folders.sort(key=lambda x: os.path.getmtime(os.path.join(save_path, x)), reverse=True)
-        # Keep only the top-k checkpoints
-        for checkpoint_folder in checkpoint_folders[top_k:]:
-            checkpoint_folder = os.path.join(save_path, checkpoint_folder)
-            checkpoint_files = [os.path.join(checkpoint_folder, f) for f in os.listdir(checkpoint_folder)]
-            for file in checkpoint_files:
-                os.remove(file)
-            os.rmdir(os.path.join(checkpoint_folder))
+        return model
 
 
     def get_model(self, device=None):
@@ -83,58 +76,84 @@ class ModelManager:
         if device is None:
             device = self.config.device
         
-        #make the model
-        if self.config.model_module_name == 'normal':
+        #make a new model only if we are in train mode and we specifcally say do not load
+        if not self.config.model_load and self.config.run_type == 'train':
             model = Model(self.config).to(device)
-        
-        #elif self.config.model_module_name == 'token_tagger_span_marker':
-        #    model = model_token_tagger_span_marker(self.config).to(device)
-        
-        #elif self.config.model_module_name == 'spert':
-        #    model = model_spert(self.config).to(device)
-        
-        else:
-            raise Exception("mode name not supported")
-        
-        current_config_dict = copy.deepcopy(vars(model.config))
+            
+        #load the pretrained model if required (predict => always load a new model. train => only if we ask for it)
+        elif ((self.config.run_type == 'train' and self.config.model_load) or (self.config.run_type == 'predict')) and (self.config.model_name and self.config.model_name.strip().lower() not in ["none", ""]):
+            #get the safe params to overwrite to the loaded model namespace
+            safe_params = [
+                            'run_type', 
+                            'predict_split',
+                            'random_seed',
+                            'eval_step_display',
+                            'log_step_data',
+                            'model_folder',
+                            'model_name',
+                            'model_save',
+                            'model_load',
+                            'model_min_save_steps',
+                            'mode_early_stopping',
+                            'log_folder',
+                            'print_log',
+                            'data_path',
+                            'data_format',
+                            'num_steps',
+                            'train_batch_size',
+                            'accumulation_steps',
+                            'eval_batch_size',
+                            'eval_every',
+                            'opt_type',
+                            'opt_weight_decay',
+                            'lr_encoder_span',
+                            'lr_encoder_rel',
+                            'lr_encoder_marker',
+                            'lr_others',
+                            'warmup_ratio',
+                            'scheduler_type',
+                            'loss_reduction',
+                            'clear_tensor_steps',
+                            'grad_clip',
+                            'collect_grads',
+                            'span_loss_mf',
+                            'rel_loss_mf',
+                            'span_force_pos: always',
+                            'force_pos_step_limit',
+                            'rel_force_pos',
+                            'span_neg_sampling_limit',
+                            'span_neg_sampling',
+                            'rel_neg_sampling_limit',
+                            'rel_neg_sampling'
+                        ]
+            #get teh safe param values, read from teh main_configs
+            safe_update_dict = {k: v for k, v in self.main_configs.to_dict.items() if k in safe_params}
+            #load the pre-trained model and read the non-safe params from it to update the current config namespace
+            model_path = str(Path(f'{self.config.app_path}/{self.config.model_folder}/{self.config.model_name}.pt'))
+            try:
+                model = self.load_pretrained(model_path).to(device)
+                #remember self.config is not connected to model.config as the model init creates a copy of it
+            
+            except Exception as e:
+                raise RuntimeError(f'Error loading the model: {e}') from e
+            
+            #update the loaded model config namespace with the safe params
+            try:
+                for key, value in safe_update_dict.items():
+                    setattr(model.config, key, value)
+            except Exception as e:
+                raise RuntimeError(f'Error applying external safe params to loaded model config: {e}') from e
 
-        #load the pretrained weights if required
-        if self.config.model_path and self.config.model_path is not None and self.config.model_path.strip() not in ["none", ""]:
-            raise Exception("loading the pretrained model his not supported yet")
-            #this loads a pretrained model
-            model = self.load_pretrained(model, self.config.model_path).to(device)
+            #Reflect non-safe params from model.config to self.config and main_configs
+            loaded_config_dict = vars(model.config)  # or model.config.__dict__ if needed
+            non_safe_update_dict = {k: v for k, v in loaded_config_dict.items() if k not in safe_params}
+            try:
+                self.main_configs.update(non_safe_update_dict)
+                self.config = self.main_configs.as_namespace
+            except Exception as e:
+                raise RuntimeError(f'Error updating external config with non-safe params from the loaded model: {e}') from e
 
-            #only keep these params in teh loaded model params, all others should come from main_configs
-            loaded_config_dict = vars(model.config)
-            #keep the loaded values of these parameters only, all other prams use the main_configs settings
-            keep_params = ['model_name', 
-                           'name', 
-                           'max_span_width', 
-                           'hidden_size', 
-                           'dropout', 
-                           'subtoken_pooling', 
-                           'span_mode',
-                           'fine_tune', 
-                           'max_types', 
-                           'max_seq_len', 
-                           'num_heads', 
-                           'num_transformer_layers', 
-                           'ffn_ratio']
-
-            #Update the main_configs with the keep params
-            update_dict = {param: loaded_config_dict[param] for param in keep_params if param in loaded_config_dict}
-            self.config.update(update_dict)
-
-            #revert all model params to the original except the keep params
-            for param in keep_params:
-                if param in loaded_config_dict:
-                    current_config_dict[param] = loaded_config_dict[param]
-            #Write the updated config back to the model
-            model.config = SimpleNamespace(**current_config_dict)        
-
-        #return the model
         return model
-
 
 ##########################################################
 ##########################################################

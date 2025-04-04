@@ -69,9 +69,10 @@ if __name__ == "__main__":
         config_dict = load_config(config_path)
         #make the config object
         main_configs = Config(config_dict)
-        main_configs.update({'app_path': app_path, 
-                             'device': device, 
-                             'torch_precision': torch.float16 if config_dict['num_precision'] == 'half' else torch.float32})
+        main_configs.update({'app_path':        app_path, 
+                             'device':          device, 
+                             'torch_precision': torch.float16 if config_dict['num_precision'] == 'half' else torch.float32,
+                             'num_limit':       1e4 if config_dict['num_precision'] == 'half' else 1e10})
     except Exception as e:
         raise Exception(f"Failed to load and parse the configuration: {e}")
 

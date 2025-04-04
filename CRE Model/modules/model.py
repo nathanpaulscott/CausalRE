@@ -17,7 +17,7 @@ import copy
 from .layers_transformer_encoder_hf import TransformerEncoderHF
 from .layers_token_tagging import TokenTagger
 from .layers_filtering import FilteringLayerBinaryDouble, FilteringLayerBinarySingle
-from .layers_other import LstmSeq2SeqEncoder, TransformerEncoderTorch, GraphEmbedder, OutputLayer
+from .layers_other import LstmSeq2SeqEncoder, TransformerEncoderTorch, GraphEmbedder, GraphTransformerModel, OutputLayer
 from .loss_functions import classification_loss, cosine_similarity_loss
 from .span_marker import SpanMarker
 from .rel_marker import RelMarker
@@ -39,9 +39,6 @@ class Model(nn.Module):
         super().__init__()
         #create a locally mutable version of the config namespace
         self.config = SimpleNamespace(**config.get_data_copy())
-        #set the num_limit
-        #self.num_limit = 6.5e4 if self.config.num_precision == 'half' else 1e10 #3.4e38
-        self.num_limit = 1e4 if self.config.num_precision == 'half' else 1e10
         
         #make the modified transformer encoder with subtoken pooling functionality
         if self.config.bert_shared_unmarked_span_rel:
@@ -65,13 +62,14 @@ class Model(nn.Module):
             self.rnn = LstmSeq2SeqEncoder(input_size      = self.config.hidden_size,
                                           hidden_size     = self.config.hidden_size // 2,
                                           num_layers      = self.config.lstm_layers,
-                                          bidirectional   = True)
+                                          bidirectional   = True,
+                                          skip            = self.config.lstm_skip_con)
 
         #define the token tagger
         self.token_tag_layer = TokenTagger(tagging_mode   = self.config.tagging_mode,
                                            #rest are in kwargs
                                            input_size     = self.config.hidden_size,
-                                           num_limit      = self.num_limit, 
+                                           num_limit      = self.config.num_limit, 
                                            max_span_width = self.config.max_span_width,
                                            dropout        = self.config.dropout,
                                            predict_thd    = self.config.predict_thd)
@@ -90,9 +88,9 @@ class Model(nn.Module):
             hidden_size           = self.config.hidden_size,
             layer_type            = self.config.projection_layer_type,
             ffn_ratio             = self.config.ffn_ratio, 
-            width_embeddings      = self.width_embeddings,    #in word widths
+            width_embeddings      = self.width_embeddings if self.config.use_width_embedding else None,    #in word widths
             dropout               = self.config.dropout,
-            cls_flag              = self.config.backbone_model_source == 'HF'    #whether we will have a cls token rep
+            cls_flag              = self.config.use_cls_embedding and self.config.backbone_model_source == 'HF'    #whether we will have a cls token rep
         )
 
         #set the FilteringLayer
@@ -102,7 +100,7 @@ class Model(nn.Module):
 
         #filtering layer for spans
         self.span_filter_head = FilteringLayer(self.config.hidden_size, 
-                                               num_limit = self.num_limit,
+                                               num_limit = self.config.num_limit,
                                                dropout   = self.config.dropout if self.config.filter_dropout else None) 
 
         #define the relation processor to process the raw x['relations'] data once we have our initial span_ids
@@ -124,16 +122,17 @@ class Model(nn.Module):
 
         #filtering layer for relations
         self.rel_filter_head = FilteringLayer(self.config.hidden_size, 
-                                              num_limit = self.num_limit,
+                                              num_limit = self.config.num_limit,
                                               dropout   = self.config.dropout if self.config.filter_dropout else None) 
 
         # graph embedder
         self.graph_embedder = GraphEmbedder(self.config.hidden_size)
         
-        # transformer layer
-        self.trans_layer = TransformerEncoderTorch(self.config.hidden_size,
+        #graph transformer layer
+        self.graph_trans_layer = GraphTransformerModel(self.config.hidden_size,
                                                    num_heads  = self.config.num_heads,
-                                                   num_layers = self.config.num_transformer_layers)
+                                                   num_layers = self.config.num_transformer_layers,
+                                                   skip       = self.config.graph_skip_con)
 
         #used to calc the graph filter scores and graph loss
         GraphFilteringLayer = FilteringLayerBinaryDouble
@@ -141,9 +140,9 @@ class Model(nn.Module):
             GraphFilteringLayer = FilteringLayerBinarySingle
         
         self.graph_filter_head = GraphFilteringLayer(self.config.hidden_size, 
-                                                     num_limit = self.num_limit,
+                                                     num_limit = self.config.num_limit,
                                                      dropout   = self.config.dropout if self.config.filter_dropout else None) 
-        
+
         #final output heads
         '''
         NOTE: 
@@ -229,7 +228,7 @@ class Model(nn.Module):
         batch_max_desired_spans = desired_spans_count.max().item()  # Max across the batch to ensure we consider the highest valid count
         '''
         #temp
-        batch_max_desired_spans = self.num_limit
+        batch_max_desired_spans = self.config.num_limit
 
         #Calculate the maximum number of spans that can be included based on validity
         #S = self.batch_max_seq_len
@@ -271,7 +270,7 @@ class Model(nn.Module):
         batch_max_desired_rels = desired_rels_count.max().item()  # Get the maximum valid relations count across the batch
         '''
         #temp
-        batch_max_desired_rels = self.num_limit
+        batch_max_desired_rels = self.config.num_limit
 
         #determine the max number of available rels
         num_rels_available = rel_scores.shape[1]
@@ -681,7 +680,7 @@ class Model(nn.Module):
         - x['span_labels'] => None
         '''
         #determine if we have labels and thus need to calc loss
-        has_labels = self.config.run_type == 'train'
+        run_type_is_train = self.config.run_type == 'train'
                  
         #Run the transformer encoder and lstm encoder layers
         result = self.transformer_and_lstm_encoder(x, self.transformer_encoder_span)
@@ -722,7 +721,7 @@ class Model(nn.Module):
             label_span_ids, label_span_masks, label_span_labels, label_span_reps = self.make_span_label_data(token_reps       = token_reps,
                                                                                                             cls_reps         = cls_reps, 
                                                                                                             span_annotations = span_annotations, 
-                                                                                                            neg_limit        = -self.num_limit, 
+                                                                                                            neg_limit        = -self.config.num_limit, 
                                                                                                             alpha            = self.config.span_win_alpha)
             #get rel label data
             label_rel_ids, label_rel_masks, label_rel_labels, label_rel_reps = self.make_rel_label_data(token_reps      = token_reps,
@@ -730,7 +729,7 @@ class Model(nn.Module):
                                                                                                         label_span_reps = label_span_reps,
                                                                                                         label_span_ids  = label_span_ids,
                                                                                                         rel_annotations = rel_annotations, 
-                                                                                                        neg_limit       = -self.num_limit,
+                                                                                                        neg_limit       = -self.config.num_limit,
                                                                                                         cls_reps        = None)    #not used at moment
 
 
@@ -773,7 +772,7 @@ class Model(nn.Module):
                                        span_filter_map   = span_filter_map,   #span filter_map will not be None as it was updated by the token tagger
                                        span_ids          = span_ids,
                                        span_masks        = span_masks,
-                                       span_labels       = span_labels if has_labels else None)
+                                       span_labels       = span_labels if run_type_is_train else None)
             #read in results
             if result is None: return None   #abort run as top_k_spans was 0
             span_ids         = result['span_ids']
@@ -802,7 +801,7 @@ class Model(nn.Module):
                                         span_masks  = span_masks, 
                                         cls_reps    = cls_reps,
                                         span_widths = span_ids[:,:,1] - span_ids[:,:,0],
-                                        neg_limit   = -self.num_limit,
+                                        neg_limit   = -self.config.num_limit,
                                         alpha       = self.config.span_win_alpha)
 
         #BINARY FILTER HEAD AND FILTERING
@@ -810,7 +809,7 @@ class Model(nn.Module):
             #use the binary filter head on the span reps to make the filter score and filter loss
             filter_score_span, filter_loss_span = self.span_filter_head(span_reps, 
                                                                         span_masks, 
-                                                                        self.binarize_labels(span_labels) if has_labels else None, 
+                                                                        self.binarize_labels(span_labels) if run_type_is_train else None, 
                                                                         force_pos_cases = self.set_force_pos('span', step),
                                                                         reduction       = self.config.loss_reduction,
                                                                         loss_only       = False)           
@@ -821,7 +820,7 @@ class Model(nn.Module):
                                        span_filter_map   = span_filter_map,    #will be None if no token tagger
                                        span_ids          = span_ids,
                                        span_masks        = span_masks,
-                                       span_labels       = span_labels if has_labels else None)
+                                       span_labels       = span_labels if run_type_is_train else None)
             #read in results
             if result is None: return None   #abort run as top_k_spans was 0
             span_ids         = result['span_ids']
@@ -841,7 +840,7 @@ class Model(nn.Module):
                 #raise Exception('xxxxxxxxxxxxxx')
                 filter_loss_span = (filter_loss_span + cosine_similarity_loss(pred_reps  = span_reps, 
                                                           gold_reps  = label_span_reps,
-                                                          neg_limit  = -self.num_limit,
+                                                          neg_limit  = -self.config.num_limit,
                                                           pred_labels = None, #do binary similarity    #span_labels,
                                                           gold_labels = None, #do binary similarity    #label_span_labels,
                                                           pred_masks = span_masks,
@@ -857,16 +856,14 @@ class Model(nn.Module):
             #make enriched span_reps
             span_reps = self.span_marker(tokens, span_ids, span_masks)
 
-
-
         ###############################################################
         # RELATIONS ###################################################
         ###############################################################
         #get the rel labels from x['relations'] with dim 1 in same order as span_id dim 1 expanded to top_k_spans**2 (this is why we need to limit top_k_spans to as low as possible)
         #NOTE: the rel_masks have the diagonal set to 0, i.e self relations masked out
-        #this returns rel_labels of shape (batch, top_k_spans**2) int for unilabel or (batch, top_k_spans**2, num span types) bool for multilabel => None if not has_labels
+        #this returns rel_labels of shape (batch, top_k_spans**2) int for unilabel or (batch, top_k_spans**2, num span types) bool for multilabel => None if not run_type_is_train
         #as well as rel_masks, rel_ids of shape (batch, top_k_spans**2), (batch, top_k_spans**2, 2) respectively
-        #if has_labels, it also returns the lost_rel_cnts tensor of shape (batch) which is one int per batch obs indicating the number fo rels that had annotations but did not make it to get rel_ids as they were filtered out byt the span filtering
+        #if run_type_is_train, it also returns the lost_rel_cnts tensor of shape (batch) which is one int per batch obs indicating the number fo rels that had annotations but did not make it to get rel_ids as they were filtered out byt the span filtering
         #we will add a lost rel penalty loss for this
         rel_ids, rel_masks, rel_labels, lost_rel_counts, lost_rel_penalty = self.rel_processor.get_rel_tensors(span_masks,            #the span mask for each selected span  (batch, top_k_spans)
                                                                                                                rel_annotations,       #the raw relation annotations data.  NOTE: will be None for no labels
@@ -898,7 +895,7 @@ class Model(nn.Module):
                                             span_masks  = span_masks, 
                                             cls_reps    = cls_reps,
                                             span_widths = span_ids[:,:,1] - span_ids[:,:,0],
-                                            neg_limit   = -self.num_limit,
+                                            neg_limit   = -self.config.num_limit,
                                             alpha       = self.config.span_win_alpha)
 
         #output shape (batch, num_spans**2, hidden)   
@@ -914,7 +911,7 @@ class Model(nn.Module):
                                       span_ids        = span_ids,      #top_k_span aligned span_ids
                                       rel_ids         = rel_ids,       #aligned to span_reps/ids
                                       rel_masks       = rel_masks,
-                                      neg_limit       = -self.num_limit,
+                                      neg_limit       = -self.config.num_limit,
                                       cls_reps        = None) #cls_reps)   
 
         #Compute filtering scores for relations and sort them in descending order
@@ -930,7 +927,7 @@ class Model(nn.Module):
         #output will be shapes:  (batch, top_k_spans**2), scalar
         filter_score_rel, filter_loss_rel = self.rel_filter_head(rel_reps, 
                                                                  rel_masks, 
-                                                                 self.binarize_labels(rel_labels) if has_labels else None, 
+                                                                 self.binarize_labels(rel_labels) if run_type_is_train else None, 
                                                                  force_pos_cases = self.set_force_pos('rel', step),
                                                                  reduction       = self.config.loss_reduction,
                                                                  loss_only       = False)           
@@ -945,7 +942,7 @@ class Model(nn.Module):
         rel_reps   = rel_reps[self.batch_ids, rel_idx_to_keep]    #(batch, top_k_rels, hidden)  float
         rel_masks  = rel_masks[self.batch_ids, rel_idx_to_keep]      #(batch, top_k_rels)  bool
         rel_ids    = rel_ids[self.batch_ids, rel_idx_to_keep]     #(batch, top_k_rels, 2) int
-        rel_labels = rel_labels[self.batch_ids, rel_idx_to_keep] if has_labels else None     #(batch, top_k_rels) int for unilabel or (batch, top_k_rels, num rel types) int for multilabel 
+        rel_labels = rel_labels[self.batch_ids, rel_idx_to_keep] if run_type_is_train else None     #(batch, top_k_rels) int for unilabel or (batch, top_k_rels, num rel types) int for multilabel 
 
         #cosine loss override
         #we override the filter_loss_rel with a cosine loss
@@ -954,7 +951,7 @@ class Model(nn.Module):
             #raise Exception('xxxxxxxxxxxxxx')
             filter_loss_rel = (filter_loss_rel + cosine_similarity_loss(pred_reps  = rel_reps, 
                                                      gold_reps  = label_rel_reps,
-                                                     neg_limit  = -self.num_limit,
+                                                     neg_limit  = -self.config.num_limit,
                                                      pred_labels = None,   #do binary similarity    #rel_labels,
                                                      gold_labels = None,   #do binary similarity    #label_rel_labels,
                                                      pred_masks = rel_masks,
@@ -986,11 +983,11 @@ class Model(nn.Module):
             #so shape will be (batch, top_k_spans + top_k_rels, hidden)
             graph_reps = torch.cat((node_reps, edge_reps), dim=1)   #shape (batch, top_k_spans + top_k_rels, hidden)   float
             #store the node and edge cnts for splitting later
-            node_cnt, edge_cnt = node_reps.shape[1], edge_reps.shape[1]
+            node_cnt, edge_cnt = node_reps.shape[1], edge_reps.shape[1]    #top_k_spans and top_k_rels
             #merge masks
             graph_masks = torch.cat((span_masks, rel_masks), dim=1)   #(batch, top_k_spans + top_k_rels)   bool
             #binarize and merge labels as this is just used for graph pruning
-            binary_graph_labels = torch.cat((self.binarize_labels(span_labels), self.binarize_labels(rel_labels)), dim=1) if has_labels else None   #(batch, top_k_spans + top_k_rels) int (0,1) for unilabel/multilabel as they have been binarized
+            binary_graph_labels = torch.cat((self.binarize_labels(span_labels), self.binarize_labels(rel_labels)), dim=1) if run_type_is_train else None   #(batch, top_k_spans + top_k_rels) int (0,1) for unilabel/multilabel as they have been binarized
 
             ###################################################
             #Apply transformer layer and keep_head
@@ -998,12 +995,12 @@ class Model(nn.Module):
             ###################################################
             #this is a using the torch built in mha transformer encoder, mask is the key padding mask
             #shape out will be same as input reps (batch, top_k_spans + top_k_rels, hidden)
-            graph_reps = self.trans_layer(graph_reps, graph_masks)
+            graph_reps = self.graph_trans_layer(graph_reps, graph_masks)
             #run graph reps through a binary classification head
-            #output will be shapes:  None, scalar (None if has_labels is False)
+            #output will be shapes:  None, scalar (None if run_type_is_train is False)
             _, filter_loss_graph = self.graph_filter_head(graph_reps, 
                                                           graph_masks,
-                                                          binary_graph_labels,    #will be None if has_labels is False
+                                                          binary_graph_labels,    #will be None if run_type_is_train is False
                                                           force_pos_cases = False,   #should never be True as filter scores are not used for the Graph filter, only the loss 
                                                           reduction       = self.config.loss_reduction,
                                                           loss_only       = True)           
@@ -1031,7 +1028,7 @@ class Model(nn.Module):
         #########################################################
         #do loss if we have labels
         #########################################################
-        if has_labels:
+        if run_type_is_train:
             #Compute losses for spans and rels final classifier heads using the span/rel type reps
             #NOTE: uses CELoss for unilabels and BCELoss for multilabels
             pred_loss_span, pred_loss_rel = self.calc_pred_losses(logits_span,
@@ -1051,7 +1048,7 @@ class Model(nn.Module):
                 #'''
                 pred_loss_span = (pred_loss_span + cosine_similarity_loss(pred_reps   = node_reps, 
                                                         gold_reps   = label_span_reps,
-                                                        neg_limit   = -self.num_limit,
+                                                        neg_limit   = -self.config.num_limit,
                                                         pred_labels = span_labels,
                                                         gold_labels = label_span_labels,
                                                         pred_masks  = span_masks,
@@ -1059,7 +1056,7 @@ class Model(nn.Module):
                 #use the label_rel_reps/masks/labels created earlier
                 pred_loss_rel = (pred_loss_rel + cosine_similarity_loss(pred_reps   = edge_reps, 
                                                        gold_reps   = label_rel_reps,
-                                                       neg_limit   = -self.num_limit,
+                                                       neg_limit   = -self.config.num_limit,
                                                        pred_labels = rel_labels,
                                                        gold_labels = label_rel_labels,
                                                        pred_masks  = rel_masks,
@@ -1081,11 +1078,20 @@ class Model(nn.Module):
 
             #get the total loss
             total_loss = sum([tagger_loss, filter_loss_span, filter_loss_rel, lost_rel_loss, filter_loss_graph, self.config.span_loss_mf*pred_loss_span, self.config.rel_loss_mf*pred_loss_rel])
-
+            '''
+            loss_breakdown = dict(tagger      = tagger_loss.detach().cpu().item(),
+                                  filter_span = filter_loss_span.detach().cpu().item(),
+                                  filter_rel  = filter_loss_rel.detach().cpu().item(),
+                                  lost_rel    = lost_rel_loss.detach().cpu().item(),
+                                  graph       = filter_loss_graph.detach().cpu().item(),
+                                  pred_span   = pred_loss_span.detach().cpu().item(),
+                                  pred_rel    = pred_loss_rel.detach().cpu().item())
+            '''
         #print(f' tl: {tagger_loss}, fls: {filter_loss_span}, flr: {filter_loss_rel}, lrl: {lost_rel_loss}, flg: {filter_loss_graph if self.config.use_graph else "-"}, cls: {pred_loss_span}, clr: {pred_loss_rel}')
 
         output = dict(
             loss                 = total_loss,
+            #loss_breakdown       = loss_breakdown,
             ######################################
             logits_span          = logits_span,
             span_masks           = span_masks,

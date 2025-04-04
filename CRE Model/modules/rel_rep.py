@@ -3,10 +3,11 @@ from torch import nn
 import torch.nn.init as init
 from abc import ABC, abstractmethod
 
-from .layers_other import ProjectionLayer
+from .layers_other import ProjectionLayer, MHAttentionTorch
 #for testing
 #from layers_other import ProjectionLayer
 #from utils import set_all_seeds
+
 
 
 
@@ -94,6 +95,125 @@ class RelRepNoContext(nn.Module):
 #CONTEXT ALGOS##############################################################
 ############################################################################
 
+
+#cross attention pooler for relation context
+class RelationContextAttentionPoolerCross(nn.Module):
+    def __init__(self, hidden_dim, num_heads=4, dropout=0.1):
+        super().__init__()
+        self.query_proj = nn.Linear(hidden_dim * 2, hidden_dim)
+        self.context_cross_attn = MHAttentionTorch(hidden_dim, num_heads, dropout)
+
+    def forward(self, head, tail, token_reps, context_masks=None):
+        """
+        head: [batch, num_rels, hidden]
+        tail: [batch, num_rels, hidden]
+        token_reps: [batch, seq_len, hidden]
+        context_masks: [batch, num_rels, seq_len] (bool) - True = valid token, False = pad
+        """
+        batch, num_rels, hidden = head.shape
+        _, seq_len, _ = token_reps.shape
+        #init the context reps in flattened shape
+        context_reps = torch.zeros(batch * num_rels, hidden, dtype=head.dtype, device=head.device)
+
+        # Prepare queries from head and tail
+        query = self.query_proj(torch.cat([head, tail], dim=-1))  # [batch, num_rels, hidden]
+        query = query.reshape(-1, 1, hidden)  # [batch * num_rels, 1, hidden]
+        # Prepare keys and values from context tokens
+        key_value = token_reps.unsqueeze(1).repeat(1, num_rels, 1, 1)  # [batch, num_rels, seq_len, hidden]
+        key_value = key_value.reshape(batch * num_rels, seq_len, hidden)  # [batch * num_rels, seq_len, hidden]
+
+        #Run hte attention depending on the context masks
+        if context_masks is not None:
+            key_padding_mask = ~context_masks.reshape(batch * num_rels, seq_len)  # [batch * num_rels, seq_len]
+            # Directly apply no context handling or set to a predefined vector
+            valid_context_indices = ~key_padding_mask.all(dim=1)
+            #only run the attention if there are some unmasked tokens
+            if valid_context_indices.any():
+                valid_query = query[valid_context_indices]
+                valid_key_value = key_value[valid_context_indices]
+                valid_key_padding_mask = key_padding_mask[valid_context_indices]
+                valid_context_reps = self.context_cross_attn(query            = valid_query,
+                                                             key              = valid_key_value,
+                                                             value            = valid_key_value,
+                                                             key_padding_mask = valid_key_padding_mask)
+                valid_context_reps = valid_context_reps.squeeze(1)
+                context_reps[valid_context_indices] = valid_context_reps
+
+        else:
+            # Apply attention without a mask
+            context_reps = self.context_cross_attn(query            = query,
+                                                   key              = key_value,
+                                                   value            = key_value,
+                                                   key_padding_mask = None)   # [batch * num_rels, 1, hidden]
+            context_reps = context_reps.squeeze(1)
+
+        # Return the final context representations reshaped to [batch, num_rels, hidden]
+        return context_reps.reshape(batch, num_rels, hidden)
+
+
+
+
+#self attention pooler for relation context
+class RelationContextAttentionPoolerSelf(nn.Module):
+    def __init__(self, hidden_dim, num_heads=4, dropout=0.1):
+        super().__init__()
+        #self.query_proj = nn.Linear(hidden_dim * 2, hidden_dim)
+        self.context_self_attn = MHAttentionTorch(hidden_dim, num_heads, dropout)
+        self.cls_embedding = nn.Parameter(torch.randn(hidden_dim)*0.1)
+    
+
+    def forward(self, token_reps, context_masks=None):
+        """
+        token_reps: [batch, seq_len, hidden]
+        context_masks: [batch, num_rels, seq_len] (bool) - True = valid token, False = pad
+        """
+        batch, seq_len, hidden = token_reps.shape
+        _, num_rels, _ = context_masks.shape
+        #init the context reps in flattened shape
+        context_reps = torch.zeros(batch * num_rels, hidden, dtype=token_reps.dtype, device=token_reps.device)
+
+        # Add the learnable CLS embedding to the beginning of each sequence in the batch
+        cls_tokens = self.cls_embedding.unsqueeze(0).unsqueeze(0).repeat(batch, 1, 1)
+        token_reps_mod = torch.cat([cls_tokens, token_reps], dim=1)  # [batch, seq_len + 1, hidden]
+
+        # Prepare keys and values from context tokens
+        qkv = token_reps_mod.unsqueeze(1).repeat(1, num_rels, 1, 1)  # [batch, num_rels, seq_len + 1, hidden]
+        qkv = qkv.reshape(batch * num_rels, seq_len + 1, hidden)  # [batch * num_rels, seq_len + 1, hidden]
+
+        #Run hte attention depending on the context masks
+        if context_masks is not None:
+            # Adjust context masks to account for the CLS token
+            cls_mask = torch.ones(batch, num_rels, 1, dtype=torch.bool, device=token_reps.device)
+            context_masks_mod = torch.cat([cls_mask, context_masks], dim=-1)  # [batch, num_rels, seq_len + 1]
+            key_padding_mask = ~context_masks_mod.reshape(batch * num_rels, seq_len + 1)  # [batch * num_rels, seq_len + 1]
+            # Directly apply no context handling or set to a predefined vector
+            valid_context_indices = ~key_padding_mask.all(dim=1)
+            #only run the attention if there are some unmasked tokens
+            if valid_context_indices.any():
+                valid_qkv = qkv[valid_context_indices]
+                valid_key_padding_mask = key_padding_mask[valid_context_indices]
+                valid_context_reps = self.context_self_attn(query            = valid_qkv,
+                                                            key              = valid_qkv,
+                                                            value            = valid_qkv,
+                                                            key_padding_mask = valid_key_padding_mask)   # [batch * num_rels, seq_len + 1, hidden]
+                valid_context_reps = valid_context_reps[:, 0, :]    # [batch * num_rels, 1, hidden]
+                valid_context_reps = valid_context_reps.squeeze(1)   # [batch * num_rels, hidden]
+                context_reps[valid_context_indices] = valid_context_reps
+
+        else:
+            # Apply attention without a mask
+            context_reps = self.context_self_attn(query            = qkv,
+                                                  key              = qkv,
+                                                  value            = qkv,
+                                                  key_padding_mask = None)   # [batch * num_rels, seq_len + 1, hidden]
+            context_reps = context_reps[:, 0, :]    # [batch * num_rels, 1, hidden]
+            context_reps = context_reps.squeeze(1)   # [batch * num_rels, hidden]
+
+        # Return the final context representations reshaped to [batch, num_rels, hidden]
+        return context_reps.reshape(batch, num_rels, hidden)
+
+
+
 #use a base class for context cases as they are all very similar except for the differences in the context mask calcs
 
 class RelRepContextBase(nn.Module, ABC):
@@ -103,14 +223,22 @@ class RelRepContextBase(nn.Module, ABC):
     def __init__(self, hidden_size, ffn_ratio, dropout, no_context_rep, context_pooling, layer_type, **kwargs):
         super().__init__()
         self.hidden_size = hidden_size
+        internal_size = hidden_size * 3
 
         self.no_context_rep = no_context_rep
         if no_context_rep == 'emb':
             self.no_context_embedding = nn.Parameter(torch.randn(hidden_size) * 0.01)
 
         self.context_pooling = context_pooling
-
-        self.out_layer = ProjectionLayer(input_dim  = hidden_size * 3,
+        if context_pooling == 'selfattn':
+            self.context_attention_pooler = RelationContextAttentionPoolerSelf(hidden_size, num_heads=4, dropout=dropout)
+        elif context_pooling == 'crossattn':
+            self.context_attention_pooler = RelationContextAttentionPoolerCross(hidden_size, num_heads=4, dropout=dropout)
+            internal_size = hidden_size
+        elif context_pooling != 'max':
+            raise Exception('given value for context pooling is invalid...')
+        
+        self.out_layer = ProjectionLayer(input_dim  = internal_size,
                                          ffn_ratio  = ffn_ratio, 
                                          output_dim = hidden_size, 
                                          dropout    = dropout,
@@ -139,7 +267,7 @@ class RelRepContextBase(nn.Module, ABC):
         head_reps = torch.gather(span_reps, 1, head_ids.unsqueeze(-1).expand(-1, -1, hidden))
         tail_reps = torch.gather(span_reps, 1, tail_ids.unsqueeze(-1).expand(-1, -1, hidden))
 
-        return head_reps, tail_reps    #(batch, num_relations, hidden), (batch, num_relations, hidden)
+        return head_reps, tail_reps    #(batch, num_rels, hidden), (batch, num_rels, hidden)
 
 
     @abstractmethod
@@ -209,15 +337,15 @@ class RelRepContextBase(nn.Module, ABC):
                 raise Exception('rel_no_context_rep value is invalid')
 
 
-    def make_context_reps(self, token_reps, cls_reps, rel_ids, neg_limit, context_masks):
-        batch, num_rels, _ = rel_ids.shape
-        _, seq_len, hidden = token_reps.shape
-
-        if cls_reps is not None:
-            return cls_reps.unsqueeze(1).expand(-1, num_rels, -1)
-
+    def make_context_reps(self, token_reps, head_reps, tail_reps, neg_limit, context_masks):
         # Calculate context representations
-        context_reps, _ = token_reps.unsqueeze(1).masked_fill(~context_masks.unsqueeze(-1), neg_limit).max(dim=2)
+        if self.context_pooling == 'selfattn':      #use attention pooling via a pooler token
+            context_reps = self.context_attention_pooler(token_reps, context_masks)
+        elif self.context_pooling == 'crossattn':   #use attention pooling w.r.t the head + tail reps
+            context_reps = self.context_attention_pooler(head_reps, tail_reps, token_reps, context_masks)
+        else:    #use maxpooling of context tokens
+            context_reps, _ = token_reps.unsqueeze(1).masked_fill(~context_masks.unsqueeze(-1), neg_limit).max(dim=2)
+
         # Handle no-context cases
         self.no_context_handler(context_reps, neg_limit)
 
@@ -232,11 +360,17 @@ class RelRepContextBase(nn.Module, ABC):
         head_reps, tail_reps = self.make_head_tail_reps_for_rel_ids(span_reps, rel_ids)    #(b, num_rels, hidden), (b, num_rels, hidden)
         #Generate the context mask (subclass-specific)
         context_masks = self.make_context_masks(token_masks, span_ids, rel_ids, rel_masks)
-        context_reps = self.make_context_reps(token_reps, cls_reps, rel_ids, neg_limit, context_masks)
-        #concat everything
-        rel_reps = torch.cat([head_reps, tail_reps, context_reps], dim=-1)  # (batch, num_rels, 3 * hidden)
+        context_reps = self.make_context_reps(token_reps, head_reps, tail_reps, neg_limit, context_masks)
+
+        if self.context_pooling != 'crossattn':
+            #concat everything
+            rel_reps = torch.cat([head_reps, tail_reps, context_reps], dim=-1)  # (batch, num_rels, 3 * hidden)
+        else:   #if cross attn just use the context reps alone
+            rel_reps = context_reps
+
         #Apply output layer and reshape.
         return self.out_layer(rel_reps)     # (batch, num_rels, hidden)
+    
 
 
 ############################################################################
@@ -348,6 +482,13 @@ class RelRepBetweenWindowContext(RelRepContextBase):
         between_masks = (seq_indices >= min_start) & (seq_indices < max_end)
 
         return head_window_masks | tail_window_masks | between_masks
+
+
+
+
+
+
+
 
 
 

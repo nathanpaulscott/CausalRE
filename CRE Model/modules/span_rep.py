@@ -5,7 +5,7 @@ import torch.nn.functional as F
 from torch import nn
 import torch.nn.init as init
 
-from .layers_other import PositionalEncoding, ProjectionLayer
+from .layers_other import PositionalEncoding, ProjectionLayer, MHAttentionTorch
 
 #################################################################
 #################################################################
@@ -110,6 +110,7 @@ class First_n_Last(nn.Module):
                                       span_masks, 
                                       mode='start_end',
                                       neg_limit = neg_limit)
+        
         span_reps = self.out_project(span_reps)
         return span_reps   #shape (batch, num_spans, hidden)
 
@@ -143,8 +144,11 @@ class Spert(nn.Module):
         super().__init__()
         #kwargs has remaining: ['use_span_pos_encoding']
         self.max_span_width = max_span_width
+        internal_hidden_size = hidden_size
+
         self.width_embeddings = width_embeddings
-        internal_hidden_size = hidden_size + width_embeddings.embedding_dim
+        if width_embeddings is not None:
+            internal_hidden_size += width_embeddings.embedding_dim
         self.cls_flag = cls_flag
         if self.cls_flag:
             internal_hidden_size += hidden_size
@@ -168,10 +172,13 @@ class Spert(nn.Module):
                                               span_masks, 
                                               mode='maxpool',
                                               neg_limit = neg_limit)
+        
         # Get width embeddings
-        width_emb = self.width_embeddings(span_widths)
-        # Combine components
-        span_reps = torch.cat([span_maxpool_reps, width_emb], dim=-1)
+        if self.width_embeddings is not None:
+            width_emb = self.width_embeddings(span_widths)
+            # Combine components
+            span_reps = torch.cat([span_maxpool_reps, width_emb], dim=-1)
+        
         #add cls reps if required
         if self.cls_flag and cls_reps is not None:
             #Expand cls_reps
@@ -214,8 +221,11 @@ class Nathan(nn.Module):
         '''
         super().__init__()
         self.max_span_width = max_span_width
+        internal_hidden_size = 3*hidden_size
+
         self.width_embeddings = width_embeddings
-        internal_hidden_size = 3*hidden_size + width_embeddings.embedding_dim
+        if width_embeddings is not None:
+            internal_hidden_size += width_embeddings.embedding_dim
         self.cls_flag = cls_flag
         if self.cls_flag:
             internal_hidden_size += hidden_size
@@ -247,10 +257,12 @@ class Nathan(nn.Module):
                                       mode = 'start_inner_maxpool_end', 
                                       neg_limit = neg_limit,
                                       alpha = alpha)
-        # Get width embeddings
-        width_emb = self.width_embeddings(span_widths)
-        #Combine Components
-        span_reps = torch.cat([span_reps, width_emb], dim=-1)
+
+        if self.width_embeddings is not None:
+            # Get width embeddings
+            width_emb = self.width_embeddings(span_widths)
+            #Combine Components
+            span_reps = torch.cat([span_reps, width_emb], dim=-1)
 
         if self.cls_flag and cls_reps is not None:
             #Expand cls_reps
@@ -263,19 +275,75 @@ class Nathan(nn.Module):
 
 
 
+
+
+#self attention pooler for spans
+class SpanAttentionPoolerSelf(nn.Module):
+    def __init__(self, hidden_dim, num_heads=4, dropout=0.1):
+        super().__init__()
+        #self.query_proj = nn.Linear(hidden_dim * 2, hidden_dim)
+        self.context_self_attn = MHAttentionTorch(hidden_dim, num_heads, dropout)
+        self.cls_embedding = nn.Parameter(torch.randn(hidden_dim)*0.1)
+    
+
+    def forward(self, token_reps, span_content_masks=None):
+        """
+        token_reps: [batch, seq_len, hidden]
+        span_content_masks: [batch, num_spans, seq_len] (bool) - True = valid token, False = pad => these show which tokens are in each span
+        """
+        batch, seq_len, hidden = token_reps.shape
+        _, num_spans, _ = span_content_masks.shape
+        #init the context reps in flattened shape
+        span_reps = torch.zeros(batch * num_spans, hidden, dtype=token_reps.dtype, device=token_reps.device)
+
+        # Add the learnable CLS embedding to the beginning of each sequence in the batch
+        cls_tokens = self.cls_embedding.unsqueeze(0).unsqueeze(0).repeat(batch, 1, 1)
+        token_reps_mod = torch.cat([cls_tokens, token_reps], dim=1)  # [batch, seq_len + 1, hidden]
+
+        # Prepare keys and values from context tokens
+        qkv = token_reps_mod.unsqueeze(1).repeat(1, num_spans, 1, 1)  # [batch, num_spans, seq_len + 1, hidden]
+        qkv = qkv.reshape(batch * num_spans, seq_len + 1, hidden)  # [batch * num_spans, seq_len + 1, hidden]
+
+        #Run hte attention depending on the context masks
+        if span_content_masks is not None:
+            # Adjust context masks to account for the CLS token
+            cls_mask = torch.ones(batch, num_spans, 1, dtype=torch.bool, device=token_reps.device)
+            span_content_masks_mod = torch.cat([cls_mask, span_content_masks], dim=-1)  # [batch, num_spans, seq_len + 1]
+            key_padding_mask = ~span_content_masks_mod.reshape(batch * num_spans, seq_len + 1)  # [batch * num_spans, seq_len + 1]
+            # Directly apply no context handling or set to a predefined vector
+            valid_indices = ~key_padding_mask.all(dim=1)
+            #only run the attention if there are some unmasked tokens
+            if valid_indices.any():
+                valid_qkv = qkv[valid_indices]
+                valid_key_padding_mask = key_padding_mask[valid_indices]
+                valid_span_reps = self.context_self_attn(query            = valid_qkv,
+                                                         key              = valid_qkv,
+                                                         value            = valid_qkv,
+                                                         key_padding_mask = valid_key_padding_mask)   # [batch * num_spans, seq_len + 1, hidden]
+                valid_span_reps = valid_span_reps[:, 0, :]    # [batch * num_spans, 1, hidden]
+                valid_span_reps = valid_span_reps.squeeze(1)   # [batch * num_spans, hidden]
+                span_reps[valid_indices] = valid_span_reps
+
+        else:
+            # Apply attention without a mask
+            span_reps = self.context_self_attn(query            = qkv,
+                                               key              = qkv,
+                                               value            = qkv,
+                                               key_padding_mask = None)   # [batch * num_spans, seq_len + 1, hidden]
+            span_reps = span_reps[:, 0, :]    # [batch * num_spans, 1, hidden]
+            span_reps = span_reps.squeeze(1)   # [batch * num_spans, hidden]
+
+        # Return the final context representations reshaped to [batch, num_spans, hidden]
+        return span_reps.reshape(batch, num_spans, hidden)
+
+
+
+
 class Attn(nn.Module):
     '''
     NOTE: span_ids with start, end = 0,0 are processed normally, but the reps will be ignored later by the span_masks
     '''    
-    def __init__(self, 
-                 max_span_width, 
-                 hidden_size, 
-                 width_embeddings, 
-                 cls_flag,
-                 dropout,
-                 layer_type,
-                 ffn_ratio,
-                 **kwargs):
+    def __init__(self, max_span_width, hidden_size, width_embeddings, cls_flag, dropout, layer_type, ffn_ratio, **kwargs):
         '''
         hidden size is the model hidden size
         max_span_width is the max span width in word tokens from the model configs
@@ -284,99 +352,17 @@ class Attn(nn.Module):
         '''
         super().__init__()
         self.max_span_width = max_span_width
+        internal_hidden_size = hidden_size
+
         self.width_embeddings = width_embeddings
-        internal_hidden_size = hidden_size + width_embeddings.embedding_dim
+        if width_embeddings is not None:
+            internal_hidden_size += width_embeddings.embedding_dim
         self.cls_flag = cls_flag
         if self.cls_flag:
             internal_hidden_size += hidden_size
         self.out_project = ProjectionLayer(internal_hidden_size, hidden_size, dropout, layer_type, ffn_ratio)    
-        self.attention_layer = nn.Linear(hidden_size, 1)
-        self.init_weights()
 
-    def init_weights(self):
-        torch.manual_seed(42)
-        init.xavier_uniform_(self.attention_layer.weight)
-        if self.attention_layer.bias is not None:
-            init.constant_(self.attention_layer.bias, 0)
-
-    def attn_pooler(self, token_reps, span_starts, span_ends, span_masks, neg_limit):
-        """
-        Performs attention-based pooling on token representations within specified spans, considering only valid tokens.
-
-        This method aggregates token representations within each span into a single vector using a learned attention mechanism. 
-        It ensures that only valid tokens (as indicated by span_masks and within span boundaries) contribute to the final span representation.
-
-        Parameters:
-            token_reps (Tensor): The token representations with shape [batch, 1, seq_len, hidden_dim].
-                This tensor should contain the embeddings of all tokens across all sequences in the batch.
-            span_starts (Tensor): The starting indices of spans with shape [batch, num_spans].
-                Indicates the start of each span to be pooled.
-            span_ends (Tensor): The ending indices of spans with shape [batch, num_spans], inclusive.
-                Indicates the end of each span to be pooled.
-            span_masks (Tensor): A boolean tensor with shape [batch, num_spans] that indicates whether each span is valid.
-                This mask helps in ignoring spans that should not be processed due to padding or other factors.
-            neg_limit (float): A large negative value used during softmax to mask out invalid tokens effectively.
-                This value should be significantly negative to ensure these entries do not affect the softmax output.
-
-        Returns:
-            Tensor: The aggregated span representations with shape [batch, num_spans, hidden_dim].
-                Each span's representation is a weighted sum of its token embeddings, where the weights are determined by an attention mechanism.
-
-        Notes:
-            - The method handles variable span widths by dynamically adjusting the masks and processing only the valid portions of each span.
-            - It supports batches with variable numbers of spans and different levels of validity across the spans.
-        """        
-        # Assuming token_reps shape is [batch, 1, seq_len, hidden]
-        batch_size, _, seq_len, hidden_dim = token_reps.shape
-        span_widths = span_ends - span_starts + 1
-        max_span_width = (span_widths).max()
-        token_within_span_masks = torch.arange(max_span_width, device=token_reps.device).unsqueeze(0).unsqueeze(0) < (span_widths).unsqueeze(-1)
-        # Ensure that token_within_span_masks are further restricted by span_masks
-        valid_token_masks = token_within_span_masks & span_masks.unsqueeze(-1)
-        # Gather inputs for all spans: shape [batch_size, num_spans, max_span_width, hidden_dim]
-        span_reps = torch.zeros(batch_size, span_starts.size(1), max_span_width, hidden_dim, device=token_reps.device)
-        for b in range(batch_size):
-            for i in range(span_starts.size(1)):
-                span_width = span_widths[b, i]
-                span_reps[b, i, :span_width] = token_reps[b, 0, span_starts[b, i]:span_ends[b, i] + 1]
-
-        # Apply the attention layer and compute weights
-        flat_span_reps = span_reps.view(-1, max_span_width, hidden_dim)  # Flatten batch and num_spans
-        attention_scores = self.attention_layer(flat_span_reps).squeeze(-1)  # Shape [batch_size*num_spans, max_span_width]
-        attention_weights = F.softmax(attention_scores.masked_fill(~valid_token_masks.view(-1, max_span_width), neg_limit), dim=1)
-        # Compute the weighted sum
-        attended_spans = (attention_weights.unsqueeze(-1) * flat_span_reps).sum(dim=1)  # Shape [batch_size*num_spans, hidden_dim]
-        return attended_spans.view(batch_size, -1, hidden_dim)  # Reshape back to [batch_size, num_spans, hidden_dim]
-    
-
-
-    def attn_pooler_v(self, token_reps, span_starts, span_ends, span_masks, neg_limit):
-        batch_size, _, seq_len, hidden_dim = token_reps.shape
-        num_spans = span_starts.size(1)
-        # Expand range to [batch_size, num_spans, max_span_width]
-        max_span_width = (span_ends - span_starts + 1).max()
-        range_tensor = torch.arange(max_span_width, device=token_reps.device).expand(batch_size, num_spans, max_span_width)
-        # Create span indices [batch_size, num_spans, max_span_width]
-        span_indices = span_starts.unsqueeze(-1) + range_tensor
-        # Mask for valid span indices
-        valid_indices = (span_indices < span_ends.unsqueeze(-1) + 1) & (span_indices < seq_len)
-        valid_indices &= span_masks.unsqueeze(-1)
-        # Flatten everything to align with flattened token_reps for gathering
-        span_indices_flat = span_indices.masked_fill(~valid_indices, 0)  # Replace invalid indices with 0
-        token_reps_expanded = token_reps.expand(batch_size, num_spans, seq_len, hidden_dim)
-        # Gather tokens based on span indices
-        gathered_tokens = torch.gather(token_reps_expanded, 2, span_indices_flat.unsqueeze(-1).expand(-1, -1, -1, hidden_dim))
-        # Apply mask to invalidate out-of-bound tokens
-        gathered_tokens *= valid_indices.unsqueeze(-1).type_as(gathered_tokens)
-        # Flatten the batch and num_spans dimensions together for attention application
-        gathered_tokens_flat = gathered_tokens.view(-1, max_span_width, hidden_dim)
-        # Apply attention layer
-        attention_scores = self.attention_layer(gathered_tokens_flat).squeeze(-1)
-        attention_weights = F.softmax(attention_scores.masked_fill(~valid_indices.view(-1, max_span_width), neg_limit), dim=1)
-        # Compute weighted sums
-        attended_spans = (attention_weights.unsqueeze(-1) * gathered_tokens_flat).sum(dim=1)
-        
-        return attended_spans.view(batch_size, num_spans, hidden_dim)
+        self.attention_layer = SpanAttentionPoolerSelf(hidden_size, num_heads=4, dropout=dropout)
 
 
     def forward(self, token_reps, span_ids, span_masks, cls_reps=None, span_widths=None, neg_limit=None, alpha=None, **kwargs):
@@ -386,30 +372,28 @@ class Attn(nn.Module):
         span_masks is of shape   (batch, num_spans)          where num_spans = w_seq_len*max_span_width
         cls_reps: (batch, hidden)
         span_widths => the span word token widths used for width embeddings
-
-        NOTE: for span_ids as end are python list style (actual + 1), end is always > start.
-        edge cases:
-        - span of width 0   => invalid span with start/end = 0, give all 0s for span rep
-        - span of width 1   => internal dim = start_rep*3 + width_emb + [cls_rep]
-        - span of width 2   => internal dim = start_rep*2 + end_rep  + width_emb + [cls_rep]
-        - span of width > 2 => internal dim = start_rep + maxpool_inner_rep + end_rep  + width_emb + [cls_rep]
         '''
-        num_spans = span_ids.shape[1]
-        #extract the span_reps as start + inner_maxpool + end
-        token_reps, span_starts, span_ends = extract_span_reps(token_reps, 
-                                                               span_ids, 
-                                                               span_masks, 
-                                                               mode = 'self-attention',
-                                                               neg_limit = neg_limit,
-                                                               alpha = alpha)
+        batch, seq_len, hidden = token_reps.shape
+        _, num_spans, _ = span_ids.shape
         
-        #span_reps = self.attn_pooler(token_reps, span_starts, span_ends, span_masks, neg_limit)
-        span_reps = self.attn_pooler_v(token_reps, span_starts, span_ends, span_masks, neg_limit)
+        # Get span start and end indices   (batch, num_spans)
+        span_starts = span_ids[:, :, 0]
+        span_ends = span_ids[:, :, 1] - 1
+        # Generate span_content_masks
+        # Create a range tensor of shape [1, 1, seq_len]
+        seq_range = torch.arange(seq_len, device=token_reps.device).reshape(1, 1, -1)
+        # Compare range with span_starts and span_ends
+        span_content_masks = (seq_range >= span_starts.unsqueeze(-1)) & (seq_range <= span_ends.unsqueeze(-1))
+        # Apply span_masks to ensure only valid spans are considered
+        span_content_masks &= span_masks.unsqueeze(-1)
+        # Forward pass through the attention pooler
+        span_reps = self.attention_layer(token_reps, span_content_masks)
 
         # Get width embeddings
-        width_emb = self.width_embeddings(span_widths)
-        #Combine Components
-        span_reps = torch.cat([span_reps, width_emb], dim=-1)
+        if self.width_embeddings is not None:
+            width_emb = self.width_embeddings(span_widths)
+            #Combine Components
+            span_reps = torch.cat([span_reps, width_emb], dim=-1)
         
         if self.cls_flag and cls_reps is not None:
             #Expand cls_reps
@@ -417,6 +401,7 @@ class Attn(nn.Module):
             span_reps = torch.cat([span_reps, cls_expanded], dim=-1)
 
         span_reps = self.out_project(span_reps)
+
         return span_reps
 
 

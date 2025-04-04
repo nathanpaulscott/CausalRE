@@ -21,7 +21,7 @@ class Validator:
             raise Exception('You must specify subtoken pooling, no subtoken pooling is not supported currently')
         if self.config.token_tagger and self.config.span_filtering_type == 'bfhs':
             raise Exception('if you use the token tagger you should select filter type as tths or both')
-        if not self.config.token_tagger and self.config.span_filtering_type == 'ttfs':
+        if not self.config.token_tagger and self.config.span_filtering_type == 'tths':
             raise Exception('if you dont use the token tagger you cant select filter type as tths')
         if self.config.span_win_alpha > 1:
             raise Exception('span win alpha needs to be 1 or less')
@@ -40,7 +40,7 @@ class Validator:
         span_keys = ['start', 'end', 'type']
         rel_keys = ['head', 'tail', 'type']
         if self.config.run_type == 'predict':
-            splits = ['predict']
+            splits = [self.config.predict_split]
             keys = ['tokens']
         try:
             if raw_data is None or 'data' not in raw_data: raise Exception

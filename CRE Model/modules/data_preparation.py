@@ -183,6 +183,9 @@ class DataPreparation:
         try:
             dataset = {}
             if self.config.run_type == 'train':
+                #set the has_labels flag to True in the main configs
+                self.main_configs.update({'has_labels': True})
+
                 dataset = {}
                 splits = ['train', 'val', 'test']
                 for split in splits:
@@ -198,9 +201,24 @@ class DataPreparation:
             elif self.config.run_type == 'predict':
                 dataset = {}
                 data = []
-                for raw_obs in raw_data['data']['predict']:
-                    data.append(dict(tokens = raw_obs['tokens']))
-                dataset['predict'] = data
+                for raw_obs in raw_data['data'][self.config.predict_split]:
+                    #extract the valid spans and rels (ensuring to update the head/tail span idx to the valid idx)
+                    if 'spans' in raw_obs and 'relations' in raw_obs:
+                        #set the has_labels flag to True in the main configs
+                        self.main_configs.update({'has_labels': True})
+
+                        valid_spans, valid_rels = self.extract_valid_spans_rels_obs(raw_obs['spans'], raw_obs['relations']) 
+                        data.append(dict(tokens    = raw_obs['tokens'], 
+                                         spans     = valid_spans, 
+                                         relations = valid_rels))
+                    
+                    else:    #no labels
+                        #set the has_labels flag to False in the main configs
+                        self.main_configs.update({'has_labels': False})
+                        
+                        data.append(dict(tokens = raw_obs['tokens']))
+
+                dataset[self.config.predict_split] = data
             
             else: 
                 raise Exception("invalid run_type, must be 'train' or 'predict'")

@@ -38,20 +38,15 @@ got to here, fix this and use for the filter output heads
 
 class MHAttentionTorch(nn.Module):
     '''
-    Just a single layer MHA block usig the torch implementation, this is from my spert code, have not integrated it
-    I think you can align this code with the current project and reuse it in various places, like the attention pooling for spans/rels etc..
-    I think you can align this code with the current project and reuse it in various places, like the attention pooling for spans/rels etc..
-    I think you can align this code with the current project and reuse it in various places, like the attention pooling for spans/rels etc..
-    I think you can align this code with the current project and reuse it in various places, like the attention pooling for spans/rels etc..
-    I think you can align this code with the current project and reuse it in various places, like the attention pooling for spans/rels etc..
+    Just a single layer MHA block using the torch implementation
     '''
     def __init__(self, embed_dim, num_heads, dropout=0.1):
         super().__init__()
-        self.multihead_attention = nn.MultiheadAttention(embed_dim, num_heads, batch_first=True, dropout=dropout, )
+        self.multihead_attention = nn.MultiheadAttention(embed_dim, num_heads, batch_first=True, dropout=dropout)
         self.layer_norm = nn.LayerNorm(embed_dim)
         self.dropout = nn.Dropout(dropout)
 
-    def forward(self, query, key, value, attn_mask=None, key_padding_mask=None):
+    def forward(self, query, key, value, key_padding_mask=None):
         '''
         regarding the attention masks
         attn_mask is for the query, you ONLY need this for causal masking, DO NOT use for pad masking
@@ -62,13 +57,14 @@ class MHAttentionTorch(nn.Module):
         attn_output, _ = self.multihead_attention(
             query, key, value,
             need_weights=False,
-            key_padding_mask=key_padding_mask,
-            #attn_mask=attn_mask
+            key_padding_mask=key_padding_mask
         )
+        #layer norm
+        attn_output = self.layer_norm(attn_output)
         #dropout
         attn_output = self.dropout(attn_output)
-        #Add & Norm
-        output = self.layer_norm(query + attn_output)
+        #Add
+        output = query + attn_output
         return output
 
 
@@ -123,38 +119,31 @@ class GraphTransformerModel(nn.Module):
 
     Not used currently
     '''
-    def __init__(self, d_model, num_heads, num_layers, ffn_mul=4, dropout=0.1):
+    def __init__(self, d_model, num_heads, num_layers, ffn_mul=4, dropout=0.1, skip=True):
         super().__init__()
         self.transformer = TransformerEncoderTorch(d_model, num_heads, num_layers, ffn_mul, dropout)
-
-    def forward(self, node_reps, edge_reps, node_masks, edge_masks):
-        # Input node_reps shape: (batch_size, top_k_spans, d_model)
-        # Input edge_reps shape: (batch_size, top_k_rels, d_model)
-        # Input node_masks shape: (batch_size, top_k_spans)
-        # Input edge_masks shape: (batch_size, top_k_rels)
-
-        batch_size, top_k_spans, d_model = node_reps.shape
-        _, top_k_rels, _ = edge_reps.shape
-
-        # Concatenate node and edge representations to form graph_reps
-        graph_reps = torch.cat((node_reps, edge_reps), dim=1)  # Shape: (batch_size, top_k_spans + top_k_rels, d_model)
-
-        # Combine node and edge masks
-        graph_masks = torch.cat((node_masks, edge_masks), dim=1)  # Shape: (batch_size, top_k_spans + top_k_rels)
-
+        self.skip = skip
+        self.last_norm = nn.LayerNorm(d_model)
+        self.last_dropout = nn.Dropout(dropout)
+    
+    def forward(self, graph_reps, graph_masks):
         # Pass through the transformer encoder
         enriched_graph_reps = self.transformer(graph_reps, graph_masks)
 
-        # Split back into enriched node and edge representations
-        enriched_node_reps = enriched_graph_reps[:, :top_k_spans, :]  # Shape: (batch_size, top_k_spans, d_model)
-        enriched_edge_reps = enriched_graph_reps[:, top_k_spans:, :]  # Shape: (batch_size, top_k_rels, d_model)
+        #apply final dropout and layernorm
+        enriched_graph_reps = self.last_norm(enriched_graph_reps)
+        enriched_graph_reps = self.last_dropout(enriched_graph_reps)
 
-        return enriched_node_reps, enriched_edge_reps
+        #add skip connection
+        if self.skip and graph_reps.shape == enriched_graph_reps.shape:
+            enriched_graph_reps = graph_reps + enriched_graph_reps  # Shape: (batch_size, top_k_spans + top_k_rels, d_model)
+
+        return enriched_graph_reps
 
 
 
 class LstmSeq2SeqEncoder(nn.Module):
-    def __init__(self, input_size, hidden_size, num_layers=1, dropout=0., bidirectional=False):
+    def __init__(self, input_size, hidden_size, num_layers=1, dropout=0., bidirectional=False, skip=True):
         super().__init__()
 
         self.lstm = nn.LSTM(input_size      = input_size,
@@ -163,6 +152,9 @@ class LstmSeq2SeqEncoder(nn.Module):
                             dropout         = dropout,
                             bidirectional   = bidirectional,
                             batch_first     = True)
+        self.skip = skip
+        self.last_norm = nn.LayerNorm(input_size)
+        self.last_dropout = nn.Dropout(dropout)
 
     def forward(self, x, mask, hidden=None):
         # Packing the input sequence
@@ -172,6 +164,15 @@ class LstmSeq2SeqEncoder(nn.Module):
         packed_output, hidden = self.lstm(packed_x, hidden)
         # Unpacking the output sequence
         output, _ = pad_packed_sequence(packed_output, batch_first=True)
+
+        #apply final dropout and layernorm
+        output = self.last_norm(output)
+        output = self.last_dropout(output)
+
+        #add the skip connection
+        if self.skip and output.shape == x.shape:
+            output = output + x
+
         return output
 
 

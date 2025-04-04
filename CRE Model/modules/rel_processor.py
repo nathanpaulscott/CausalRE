@@ -153,7 +153,7 @@ class RelationProcessor():
 
         #return if we have no labels
         if not self.has_labels:
-            return rel_ids, rel_masks, None, None
+            return rel_ids, rel_masks, None, None, None
 
         #get rel_labels if we have labels
         rel_labels, lost_rel_counts, lost_rel_penalty = self.get_rel_labels(rel_annotations, orig_map, span_filter_map, span_masks) 

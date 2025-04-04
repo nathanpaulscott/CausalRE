@@ -19,7 +19,7 @@ class EvaluatorBase:
         self.config = config
         self.metrics = metrics_class(config)
         self.all_preds = {'spans': [], 'rels': [], 'rels_mod': []}
-        self.all_labels = {'spans': [], 'rels': [], 'rels_mod': []}
+        self.all_labels = {'tokens': [], 'spans': [], 'rels': [], 'rels_mod': []}
 
     def prepare_labels(self, span_labels_raw, rel_labels_raw):
             '''
@@ -61,7 +61,7 @@ class EvaluatorBase:
 
 
 
-    def evaluate(self, return_preds=False):
+    def evaluate(self, return_preds=False, return_labels=False):
         #readi in the matching params
         loose_matching, tol, wid, bin = self.config.matching_loose, self.config.matching_tolerance, self.config.matching_width_limit, self.config.matching_make_binary
         
@@ -71,10 +71,11 @@ class EvaluatorBase:
         
         #Flatten and prepare the data before computing metrics
         flat_span_preds     = self.flatten_and_prepare(self.all_preds['spans'])
-        flat_span_labels    = self.flatten_and_prepare(self.all_labels['spans'])
         flat_rel_preds      = self.flatten_and_prepare(self.all_preds['rels'])
-        flat_rel_labels     = self.flatten_and_prepare(self.all_labels['rels'])
         flat_rel_mod_preds  = self.flatten_and_prepare(self.all_preds['rels_mod'])
+
+        flat_span_labels    = self.flatten_and_prepare(self.all_labels['spans'])
+        flat_rel_labels     = self.flatten_and_prepare(self.all_labels['rels'])
         flat_rel_mod_labels = self.flatten_and_prepare(self.all_labels['rels_mod'])
         
         #Compute metrics
@@ -91,7 +92,8 @@ class EvaluatorBase:
             rel_mod_metrics_l = self.metrics.run_metrics(flat_rel_mod_labels, flat_rel_mod_preds, loose_matching=loose_matching, tolerance=tol, span_limit=wid, make_binary=bin, type='rel_mod')
 
 
-        return dict(preds                 = self.all_preds if return_preds else None,
+        return dict(labels                = self.all_labels if return_labels else None,
+                    preds                 = self.all_preds if return_preds else None,
                     span_metrics          = span_metrics,
                     rel_metrics           = rel_metrics,
                     rel_mod_metrics       = rel_mod_metrics,
@@ -111,23 +113,27 @@ class Evaluator_custom(EvaluatorBase):
     def __init__(self, config, metrics_class):
         super().__init__(config, metrics_class)
 
-    def prep_and_add_batch(self, span_labels_raw, rel_labels_raw, preds):
+    def prep_and_add_batch(self, preds_and_labels):
         '''
         This takes in the formatted preds (positive cases only as list of list of tuples each for spans and rels) and the raw labels
         It preps them and adds to the output
         NOTE: no need to align for this method
         '''
+        #add the preds to the output dicts
+        self.all_preds['spans'].extend(preds_and_labels['span_preds'])
+        self.all_preds['rels'].extend(preds_and_labels['rel_preds'])
+        self.all_preds['rels_mod'].extend(preds_and_labels['rel_mod_preds'])
+
+        #convert the raw labels to the same format as the preds
         #get the labels => the actual positive cases
         #NOTE: the rel_labels are the full rels with the span start,end,type info
-        span_labels, rel_labels, rel_labels_mod = self.prepare_labels(span_labels_raw, rel_labels_raw)
-        
-        #add to the output dicts
-        self.all_preds['spans'].extend(preds['spans'])
+        span_labels, rel_labels, rel_labels_mod = self.prepare_labels(preds_and_labels['span_labels'], preds_and_labels['rel_labels'])
+        #add the labels to the output dicts
         self.all_labels['spans'].extend(span_labels)
-        self.all_preds['rels'].extend(preds['rels'])
         self.all_labels['rels'].extend(rel_labels)
-        self.all_preds['rels_mod'].extend(preds['rels_mod'])
         self.all_labels['rels_mod'].extend(rel_labels_mod)
+
+        self.all_labels['tokens'].extend(preds_and_labels['tokens'])
 
 
     def flatten_and_prepare(self, data):
