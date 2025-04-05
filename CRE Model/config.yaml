@@ -15,11 +15,12 @@ log_step_data: False
 #####################################################################
 model_folder: "models"                  #location of the models folder
 #model_name: "model"                      #pretrained model name => Use "none" to not load a model
-#model_name: "model-BE-ttfs-nathan-max_temp_tf" #"model"                      #pretrained model name => Use "none" to not load a model
-#model_name: "model-BE-ttfs-nathan-max_tf" #"model"                      #pretrained model name => Use "none" to not load a model
-#model_name: "model-BECO-ttfs-nathan-max_tf" #"model"                      #pretrained model name => Use "none" to not load a model
-model_name: "model-BECO-ttfs-nathan-max_temp_tf" #"model"                      #pretrained model name => Use "none" to not load a model
-#model_name: "model-BE-ttfs-attn-max" #"model"                      #pretrained model name => Use "none" to not load a model
+#model_name: "model-bfhs-nathan-max_temp_tf" #"model"                      #pretrained model name => Use "none" to not load a model
+model_name: "model-BE-tths-nathan-max_temp_tf" #"model"                      #pretrained model name => Use "none" to not load a model
+#model_name: "model-BE-tths-nathan-max_tf" #"model"                      #pretrained model name => Use "none" to not load a model
+#model_name: "model-BECO-tths-nathan-max_temp_tf" #"model"                      #pretrained model name => Use "none" to not load a model
+#model_name: "model-BE-tths-attn-max_temp_tf" #"model"                      #pretrained model name => Use "none" to not load a model
+#####model_name: "model-BE-tths-attn-selfattn_temp_tf"     #needs to run at batch of 1 and clear tensors 1   #"model"                      #pretrained model name => Use "none" to not load a model
 model_save: True
 model_load: False
 model_min_save_steps: 2000
@@ -103,7 +104,7 @@ lstm_skip_con: True
 
 #token tagger configs
 token_tagger: True                     #true/false => true to use the token tagger for span preds, tagger loss and filter scores, false to bypass.
-tagging_mode: BECO                        #BE/BECO => BE is Begin-End, multiclass, BECO = Begin-End-Combine-Other => I do see better perf on rels with BECO
+tagging_mode: BE                        #BE/BECO => BE is Begin-End, multiclass, BECO = Begin-End-Combine-Other => I do see better perf on rels with BECO
 
 ###############
 #span rep config

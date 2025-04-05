@@ -57,11 +57,11 @@ class ModelManager:
         self.config.logger.write(f"Model saved to {model_path}")
 
 
-    def load_pretrained(self, model_path):
+    def load_pretrained(self, model_path, device):
         """Load model weights from the specified path"""
         #state_dict = torch.load(model_path)
         #model.load_state_dict(state_dict)
-        model = torch.load(model_path, weights_only=False)
+        model = torch.load(model_path, weights_only=False, map_location=device)
         self.config.logger.write(f"Model loaded from {model_path}")
         return model
 
@@ -124,14 +124,29 @@ class ModelManager:
                             'span_neg_sampling_limit',
                             'span_neg_sampling',
                             'rel_neg_sampling_limit',
-                            'rel_neg_sampling'
+                            'rel_neg_sampling',
+                            ############################
+                            #params added during startup
+                            ############################
+                            'app_path',
+                            'device',
+                            'span_types',
+                            'rel_types,',
+                            'num_span_types',
+                            'num_rel_types',
+                            's_to_id',
+                            'id_to_s',
+                            'r_to_id',
+                            'id_to_r',
+                            'all_span_ids',
+                            'has_labels'
                         ]
             #get teh safe param values, read from teh main_configs
             safe_update_dict = {k: v for k, v in self.main_configs.to_dict.items() if k in safe_params}
             #load the pre-trained model and read the non-safe params from it to update the current config namespace
             model_path = str(Path(f'{self.config.app_path}/{self.config.model_folder}/{self.config.model_name}.pt'))
             try:
-                model = self.load_pretrained(model_path).to(device)
+                model = self.load_pretrained(model_path, device)
                 #remember self.config is not connected to model.config as the model init creates a copy of it
             
             except Exception as e:

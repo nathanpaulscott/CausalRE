@@ -52,6 +52,7 @@ if __name__ == "__main__":
     We have a 3rd mode model.eval(), and no grad with no labels which is used for the prediction class, see comments below
     '''
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
     #device = 'cpu'
 
     #for debugging only

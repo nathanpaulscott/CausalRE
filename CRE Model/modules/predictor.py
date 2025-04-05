@@ -64,31 +64,47 @@ class Predictor:
         '''
         converts data to a list of dicts format
         '''
+        keys = ['tokens', 'span_labels', 'span_preds', 'rel_labels', 'rel_preds']
         output = []
         output_raw = self.data
         num_obs = len(output_raw['tokens'])
         for i in range(num_obs):
             obs = dict(counts = {})
-            for k in [x for x in output_raw.keys() if x != 'rel_mod_preds']:
+            for k in keys:
+                if k not in output_raw:
+                    continue
                 raw_obs = output_raw[k][i]
                 if k == 'span_preds':
-                    obs[k] = [dict(start=x[0], 
-                                   end=x[1], 
-                                   type=self.config.id_to_s[x[2]]) for x in raw_obs]
-                elif k == 'rel_preds':
-                    obs[k] = [dict(head=(x[0], x[1], self.config.id_to_s[x[2]]), 
-                                   tail=(x[3], x[4], self.config.id_to_s[x[5]]), 
-                                   type=self.config.id_to_r[x[6]]) for x in raw_obs]
+                    obs[k] = [dict(start = x[0], 
+                                   end   = x[1], 
+                                   type  = self.config.id_to_s[x[2]],
+                                   text  = ' '.join(obs['tokens'][x[0]:x[1]])) 
+                              for x in raw_obs]
+
                 elif k == 'span_labels':
-                    obs[k] = [dict(start=x[0], 
-                                   end=x[1], 
-                                   type=x[2]) for x in raw_obs]
+                    obs[k] = [dict(start = x[0], 
+                                   end   = x[1], 
+                                   type  = x[2],
+                                   text  = ' '.join(obs['tokens'][x[0]:x[1]])) 
+                              for x in raw_obs]
+
+                elif k == 'rel_preds':
+                    obs[k] = [dict(head = dict(start = x[0], end = x[1], type = self.config.id_to_s.get(x[2], 'unknown')), 
+                                   tail = dict(start = x[3], end = x[4], type = self.config.id_to_s.get(x[5], 'unknown')), 
+                                   type = self.config.id_to_r.get(x[6], 'unknown')) 
+                             for x in raw_obs]
+
                 elif k == 'rel_labels':
-                    obs[k] = [dict(head=[v for v in obs['span_labels'][x[0]].values()], 
-                                   tail=[v for v in obs['span_labels'][x[1]].values()], 
-                                   type=x[2]) for x in raw_obs]
-                else:
+                    obs[k] = [dict(head = obs['span_labels'][x[0]], 
+                                   tail = obs['span_labels'][x[1]], 
+                                   type = x[2]) 
+                              for x in raw_obs]
+                elif k == 'tokens':
                     obs[k] = raw_obs
+                    temp_list = [f'{i}: {v}' for i,v in zip(range(len(raw_obs)), raw_obs)]
+                    obs['tokens_ind'] = ', '.join(temp_list)
+                else:
+                    pass
 
                 obs['counts'][k] = len(obs[k])
             

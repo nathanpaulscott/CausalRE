@@ -35,14 +35,13 @@ class Trainer:
         self.config = self.main_configs.as_namespace
 
 
-    def load_loader(self, data_loader, device, infinite=True):
+    def load_loader(self, data_loader, infinite=True):
         """
         Generator function to endlessly yield batches from the data loader, optionally moving them to a specified device,
         restarting from the beginning once all batches have been yielded.
 
         Args:
             data_loader (DataLoader): The DataLoader from which to fetch data.
-            device (str or torch.device): The device to which tensors in the batches should be moved.
             infinite (bool): If True, yields batches indefinitely. If False, yields batches once through the data loader.
 
         Yields:
@@ -51,7 +50,7 @@ class Trainer:
         while True:
             for batch in data_loader:
                 # Move each tensor in the batch to the specified device
-                batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
+                batch = {k: v.to(self.config.device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
                 yield batch
             if not infinite:
                 break
@@ -113,15 +112,13 @@ class Trainer:
         This is the training and eval loop
         '''
         self.config.logger.write('Starting the Train Loop')
-        config = self.config
 
         #read some params from config
-        device = config.device
-        acc_steps = config.accumulation_steps
-        num_steps = config.num_steps
-        warmup_ratio = config.warmup_ratio
+        acc_steps = self.config.accumulation_steps
+        num_steps = self.config.num_steps
+        warmup_ratio = self.config.warmup_ratio
         num_warmup_steps = int(num_steps * warmup_ratio) if warmup_ratio < 1 else int(warmup_ratio)
-        eval_every = config.eval_every
+        eval_every = self.config.eval_every
         #Initialize structure to store gradient data
         grad_stats = dict(
             high_thd   = 1.0,  # Define thresholds for high gradients
@@ -134,8 +131,8 @@ class Trainer:
         grad_data = {name: [] for name, _ in model.named_parameters()}
 
         #get the optimiser and scheduler
-        optimizer = Optimizer(config, model).return_object
-        scheduler = Scheduler(config, optimizer, num_warmup_steps, num_steps).return_object
+        optimizer = Optimizer(self.config, model).return_object
+        scheduler = Scheduler(self.config, optimizer, num_warmup_steps, num_steps).return_object
         scaler = torch.amp.GradScaler('cuda')
 
         #get the loaders
@@ -159,7 +156,7 @@ class Trainer:
         '''
         ###############################################################
         #make an infinitely iterable from train loader
-        iter_loader_inf = self.load_loader(train_loader, device, infinite=True)
+        iter_loader_inf = self.load_loader(train_loader, infinite=True)
         optimizer.zero_grad()    # Zero out gradients for next accumulation
         pbar_train = tqdm(range(num_steps), position=0, leave=True)
         train_loss = []
@@ -200,7 +197,7 @@ class Trainer:
             #runs eval and saves the model          
             if (step + 1) % eval_every == 0:
                 #run the eval loop
-                result = self.eval_loop(model, val_loader, device, step=step)
+                result = self.eval_loop(model, val_loader, step=step)
                 #get the train loss mean
                 train_loss_mean = sum(train_loss) / len(train_loss) if len(train_loss) > 0 else -1
                 loss_msg = f"step: {step}, train loss mean: {round(train_loss_mean,4)}, eval loss mean: {round(result['eval loss'],4)}"
@@ -217,13 +214,10 @@ class Trainer:
 
                 #save the model if the metrics meet the criteria
                 if self.config.model_save and step > self.config.model_min_save_steps:
-                    span_f1, rel_f1, eval_loss = result['span_metrics']['f1'], result['rel_metrics']['f1'], result['eval loss']
+                    eval_loss = result['eval loss']
                     model_save_score_current = 0
-                    #loss_influence_reducer = 0.1    #use lower numbers to reduce the influence of eval loss
                     if eval_loss > 0:
-                        avg_f1 = (span_f1 + rel_f1) / 2
-                        #model_save_score_current = avg_f1 / eval_loss ** loss_influence_reducer
-                        model_save_score_current = avg_f1
+                        model_save_score_current = self.make_model_save_score(result)
 
                     if model_save_score_current > model_save_score:
                         model_early_stop_cnt = 0
@@ -259,10 +253,10 @@ class Trainer:
         pbar_train.close()
         #load the best model
         model_local_path = str(Path(f'{model_local_folder}/{self.config.model_name}.pt'))
-        self.model_manager.load_pretrained(model_local_path)
+        model = self.model_manager.load_pretrained(model_local_path, self.config.device)
         #run the final eval and test loop
-        result_val = self.eval_loop(model, val_loader, device)
-        result_test = self.eval_loop(model, test_loader, device)
+        result_val = self.eval_loop(model, val_loader)
+        result_test = self.eval_loop(model, test_loader)
         #write summary to log
         self.config.logger.write(self.make_metrics_summary(result_val, msg='final_val '))
         self.config.logger.write(self.make_metrics_summary(result_test, msg='final_test '))
@@ -274,6 +268,28 @@ class Trainer:
             result_val = result_val,
             result_test = result_test
         )
+
+
+    def make_model_save_score(self, result):
+        '''
+        makes the f1 based score for saving the model, favours balanced precision and recall over unbalanced ones
+        #the balance calc is reduced in severity by quad root so that balance requirements do not dominate
+        '''
+        #do spans
+        p = result['span_metrics']['precision']
+        r = result['span_metrics']['recall']
+        f1 = result['span_metrics']['f1']
+        balance = (min(p,r) / max(p,r))**(1/4)
+        span_score = f1 * balance
+
+        #do rels
+        p = result['rel_metrics']['precision']
+        r = result['rel_metrics']['recall']
+        f1 = result['rel_metrics']['f1']
+        balance = (min(p,r) / max(p,r))**(1/4)
+        rel_score = f1 * balance
+        
+        return (span_score + rel_score) / 2
 
 
 
@@ -438,17 +454,15 @@ class Trainer:
 
 
 
-    def eval_loop(self, model, data_loader, device, step=None):
+    def eval_loop(self, model, data_loader, step=None):
         '''
         The run_type param here will be 'train' so we have labels and calculate loss
         the only difference is that the loss is disconnected from the graph as the model is run in .eval mode
         '''
-        config = self.config
-
         #make the predictor and evaluators
-        predictor = Predictor(config)
-        evaluator = make_evaluator(config)
-        eval_loader = self.load_loader(data_loader, device, infinite=False)
+        predictor = Predictor(self.config)
+        evaluator = make_evaluator(self.config)
+        eval_loader = self.load_loader(data_loader, infinite=False)
         total_eval_steps = len(data_loader)
         visual_results = ''
         eval_loss = []
@@ -516,15 +530,13 @@ class Trainer:
         The loss returned from the model will be None
         '''
         self.config.logger.write('Starting the Predict Loop')
-        config = self.config
 
         #read some params from config
-        device = config.device
         data_loader = loaders['predict']
         #make the predictor and evaluators
-        predictor = Predictor(config)
-        evaluator = make_evaluator(config)
-        pred_loader = self.load_loader(data_loader, device, infinite=False)
+        predictor = Predictor(self.config)
+        evaluator = make_evaluator(self.config)
+        pred_loader = self.load_loader(data_loader, infinite=False)
         total_pred_steps = len(data_loader)
         model.eval()
         with torch.no_grad():
@@ -612,7 +624,7 @@ class Trainer:
 
         elif self.config.run_type == 'predict': 
             result = self.predict_loop(model, loaders)
-            save_to_json(result, 'preds/pred_results.json')
+            save_to_json(result, f'preds/pred_results_{self.config.model_name}.json')
             #you may want to reformat the preds here to a format that is importable by my js tool for viewing
             #i.e. the standard spans/relations format, where the rels just have the head/tail index in the spans list etc...
 
