@@ -75,12 +75,12 @@ class Validator:
                     fail = []
                     start, end = span['start'], span['end']
                     span_widths.append(span['end'] - span['start'])
-                    if start >= self.config.max_seq_len: 
-                        fail.append('starts after max_seq_len limit')
+                    if end > min(len(obs['tokens']), self.config.max_seq_len): 
+                        fail.append('ends after max_seq_len limit')
                     if end - start > self.config.max_span_width: 
                         fail.append('span width more than max_span_width limit')
                     if len(fail) > 0:
-                        missed_spans[f'{split}_obs{i_obs}_span{i_span}_{start}_{end}'] = fail
+                        missed_spans[f'{split}, obs:{i_obs}, span:{i_span}, start:{start}, end:{end}'] = fail
         missed_cnt = len(missed_spans.keys())
         
         #report stats on the span widths and seq_lens
@@ -92,10 +92,9 @@ class Validator:
 
         if missed_cnt > 0:
             msg = f'WARNING!! Can not import {round(100*missed_cnt/span_cnt,2)}% of the annotated spans ({missed_cnt} spans) due to max_seq_len and max_span_lenght limits.\nThese spans and associated relations will be ignored, you should assess whether this is a significant issue or not.'
-            msg += '\n-------------------------------'
             self.config.logger.write(msg, 'warning')
             if self.config.dump_missed_spans_on_import:
-                msg = ''
+                msg = 'Missed Spans'
                 for item in missed_spans:
                     msg += '\n' + json.dumps(item)
                 self.config.logger.write(msg, 'info')

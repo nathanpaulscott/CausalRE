@@ -2,7 +2,7 @@ import torch
 
 from .utils import load_from_json, save_to_json
 from .validator import Validator
-
+from pathlib import Path
 
 
 
@@ -138,7 +138,7 @@ class DataPreparation:
 
 
 
-    def extract_valid_spans_rels_obs(self, raw_spans, raw_rels):
+    def extract_valid_spans_rels_obs(self, tokens, raw_spans, raw_rels):
         '''
         Operates on the raw_spans and raw_rels annotations for one obs
         It filters out the invalid spans, not meeting the requirement to be within 
@@ -147,28 +147,37 @@ class DataPreparation:
         to update the head/tail span idx in rels
         NOTE: the output spans and rels are lists of tuples
         '''
+        seq_len_obs = min(len(tokens), self.config.max_seq_len)
+
         #convert the id format to list idx format for head/tail
         #I will take this out when I have fixed the js code
         if self.config.data_format == 'id':
             raw_spans, raw_rels = self.convert_id_to_idx_format(raw_spans, raw_rels)
 
         #determine the valid span idx which do not violate the imposed limits from config.max_seq_len and config.max_span_width
-        valid_spans = [
-            i for i,span in enumerate(raw_spans) 
-            if span['end'] - span['start'] <= self.config.max_span_width and 
-            span['start'] < self.config.max_seq_len
-        ]
+        valid_spans = []
+        for i, span in enumerate(raw_spans):
+            if span['end'] - span['start'] <= self.config.max_span_width and span['end'] <= seq_len_obs:
+                valid_spans.append(i)
+            else:
+                pass
+                #print(f"got an invalid span, removing; start:{span['start']}, end: {span['end']}")
+                
         #make the reverse mapping from valid span idx to raw span idx
-        raw2valid = {raw_idx:valid_idx for valid_idx, raw_idx in enumerate(valid_spans)}
+        raw2valid = {r:v for v,r in enumerate(valid_spans)}
 
         #convert spans and rels annotations to list of tuples from list of dicts and apply the valid span/rel filter
         #NOTE: this will adjust the the rel head/tail idx as the source spans list has changed!!
-        spans = [(span['start'], span['end'], span['type']) 
-                 for i, span in enumerate(raw_spans) if i in valid_spans]
+        spans = []
+        for i, span in enumerate(raw_spans):
+            if i in valid_spans:
+                spans.append((span['start'], span['end'], span['type']))
         
-        rels = [(raw2valid[rel['head']], raw2valid[rel['tail']], rel['type']) 
-                for rel in raw_rels if rel['head'] in raw2valid and rel['tail'] in raw2valid]
-
+        rels = []
+        for i, rel in enumerate(raw_rels):
+            if rel['head'] in raw2valid and rel['tail'] in raw2valid:
+                rels.append((raw2valid[rel['head']], raw2valid[rel['tail']], rel['type']))
+        
         return spans, rels
 
 
@@ -192,7 +201,7 @@ class DataPreparation:
                     data = []
                     for raw_obs in raw_data['data'][split]:
                         #extract the valid spans and rels (ensuring to update the head/tail span idx to the valid idx)
-                        valid_spans, valid_rels = self.extract_valid_spans_rels_obs(raw_obs['spans'], raw_obs['relations']) 
+                        valid_spans, valid_rels = self.extract_valid_spans_rels_obs(raw_obs['tokens'], raw_obs['spans'], raw_obs['relations']) 
                         data.append(dict(tokens    = raw_obs['tokens'], 
                                          spans     = valid_spans, 
                                          relations = valid_rels))
@@ -207,7 +216,7 @@ class DataPreparation:
                         #set the has_labels flag to True in the main configs
                         self.main_configs.update({'has_labels': True})
 
-                        valid_spans, valid_rels = self.extract_valid_spans_rels_obs(raw_obs['spans'], raw_obs['relations']) 
+                        valid_spans, valid_rels = self.extract_valid_spans_rels_obs(raw_obs['tokens'], raw_obs['spans'], raw_obs['relations']) 
                         data.append(dict(tokens    = raw_obs['tokens'], 
                                          spans     = valid_spans, 
                                          relations = valid_rels))
@@ -279,7 +288,7 @@ class DataPreparation:
         """
         config = self.config
         #make the absolute data path
-        data_path = str(config.app_path / config.data_path)
+        data_path = str(Path(config.app_path) / Path(config.data_path))
         #Load the JSON file into a Python object
         result = load_from_json(data_path)
         

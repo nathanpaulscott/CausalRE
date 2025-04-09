@@ -3,6 +3,8 @@ import json, random, os, gc, time, types, logging
 import numpy as np
 from pathlib import Path
 from datetime import datetime
+import shutil
+import stat
 
 
 
@@ -13,6 +15,88 @@ def get_time():
     current_time = datetime.now()
     formatted_time = current_time.strftime("%Y-%m-%d_%H-%M-%S")
     return formatted_time
+
+
+
+def join_paths(path1, path2):
+    return str(Path(path1) / Path(path2))
+
+
+def get_filename_no_extension(path):
+    # Get the base name (e.g., "file.txt" from "/path/to/file.txt")
+    base_name = os.path.basename(path)
+    # Split the base name into the filename and extension and return just the filename
+    file_name_without_extension = os.path.splitext(base_name)[0]
+    return file_name_without_extension
+
+
+def get_filename(path):
+    # Get the base name (e.g., "file.txt" from "/path/to/file.txt")
+    base_name = os.path.basename(path)
+    return base_name
+
+
+
+
+def copy_file(source_path, destination_path):
+    # Copy the file from source to destination
+    shutil.copy(source_path, destination_path)
+
+
+
+
+def move_file(source_path, destination_path):
+    # Move the file from source to destination
+    shutil.move(source_path, destination_path)
+
+
+
+def change_permissions(func, path, exc_info):
+    """
+    Error handler for shutil.rmtree that changes permissions of a file
+    or directory and retries the operation.
+    """
+    # Try to change the permissions of the file or directory to be writable
+    os.chmod(path, stat.S_IWRITE)
+    # Retry the operation that caused the error
+    func(path)
+
+
+def remove_directory(path):
+    """
+    Remove a directory and handle any permission errors by making files writable.
+    """
+    if os.path.exists(path):
+        shutil.rmtree(path, onerror=change_permissions)
+
+
+def ensure_clean_directory(path):
+    # Check if the directory exists
+    if os.path.exists(path):
+        # If the directory exists, remove it along with all its contents
+        remove_directory(path)
+    # Whether it was removed or never existed, create the directory anew
+    os.makedirs(path)
+
+
+
+
+def confirm_action(prompt):
+    """
+    Ask the user for confirmation. Returns True if the user confirms, False otherwise.
+    """
+    # Loop until a valid response is received
+    while True:
+        user_input = input(prompt + " (y/n): ").strip().lower()
+        if user_input in ['yes', 'y']:
+            return True
+        elif user_input in ['no', 'n']:
+            return False
+        else:
+            print("Please respond with 'y' or 'n'")
+
+
+
 
 
 class measure_time():

@@ -467,8 +467,9 @@ class BETagger(BaseTagger):
         token_probs = torch.sigmoid(token_logits)  # Convert logits to probabilities    (batch, num_tokens, 2)    float
         token_preds = token_probs > self.predict_thd  # Threshold predictions    (batch, num_tokens, 2) bool
         #apply the token mask to set masked out tokens to 0,0
+
         token_preds = token_preds * token_masks.unsqueeze(-1)
-        
+
         #results will contain: out_span_ids, out_span_masks, out_span_labels, out_span_scores
         result = self.extract_span_ids(token_preds, token_logits, span_ids, span_masks, span_labels, force_pos_cases)
 

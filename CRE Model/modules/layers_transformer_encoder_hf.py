@@ -326,15 +326,22 @@ class TransformerEncoderHF(torch.nn.Module):
         '''
         #run the tokenizer
         ##############################
-        result = self.tokenizer(
-            text =                  tokens,
-            is_split_into_words =   True,   #indicates that text is already word tokenized
-            padding =               True,   #will pad to the longest seq in the batch => dynamic padding as we are operating per batch here, this is one advantage of integrating the tokenizer with the model
-            truncation =            True,   #will truncate to the max allowable subtoken len for the model => no need to specify 'max_length'
-            add_special_tokens=     True,   #not needed as default is True
-            return_offsets_mapping= True,
-            return_tensors =        'pt'
-        )
+        try:
+            result = self.tokenizer(
+                text =                  tokens,
+                is_split_into_words =   True,   #indicates that text is already word tokenized
+                padding =               True,   #will pad to the longest seq in the batch => dynamic padding as we are operating per batch here, this is one advantage of integrating the tokenizer with the model
+                truncation =            True,   #will truncate to the max allowable subtoken len for the model => no need to specify 'max_length'
+                add_special_tokens=     True,   #not needed as default is True
+                return_offsets_mapping= True,
+                return_tensors =        'pt'
+            )
+        except Exception as e:
+            print('\nThese tokens caused issues with your tokenizer, check the inputs...')
+            print(tokens)
+            print(e)
+            print('Exiting.....')
+            exit()
         #get the input_ids and attention mask
         input_ids = result['input_ids'].to(self.config.device)     #these have the CLS and SEP tokens in them
         masks = result['attention_mask'].to(self.config.device)    #these have the CLS and SEP tokens in them, comes out of the tokenizer as torch.int64/long
@@ -370,7 +377,7 @@ class TransformerEncoderHF(torch.nn.Module):
         if hasattr(self, 'projection'):
             embeddings = self.projection(embeddings)
         ##############################
-        
+
         return dict(embeddings = embeddings, 
                     masks      = masks, 
                     cls_reps   = cls_reps,

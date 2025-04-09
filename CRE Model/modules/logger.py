@@ -1,8 +1,9 @@
 import logging, os
-from datetime import datetime
+from .utils import join_paths
+
 
 class Logger:
-    def __init__(self, log_folder, enable_console_output=False):
+    def __init__(self, config, enable_console_output=False):
         """
         Initializes the logger with a file handler.
         Args:
@@ -14,18 +15,28 @@ class Logger:
         self.logger.setLevel(logging.INFO)
 
         # Ensure the directory exists, create if it does not
-        os.makedirs(log_folder, exist_ok=True)
+        os.makedirs(config.log_folder, exist_ok=True)
 
         # Combine directory path and filename with datetime stamp
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        log_file_path = os.path.join(log_folder, f"log_{timestamp}.log")
+        self.log_file_path = join_paths(config.log_folder, config.log_file_name)
 
         # Create file handler
-        file_handler = logging.FileHandler(log_file_path, mode='w')
+        file_handler = logging.FileHandler(self.log_file_path, mode='w')
         file_handler.setLevel(logging.INFO)
         file_format = logging.Formatter('%(asctime)s - %(levelname)s - %(name)s - %(message)s')
         file_handler.setFormatter(file_format)
         self.logger.addHandler(file_handler)
+        self.logger.propagate = False
+
+
+    def close(self):
+        # Close all handlers associated with the logger
+        print('closing logger handlers')
+        handlers = self.logger.handlers[:]
+        for handler in handlers:
+            handler.close()
+            self.logger.removeHandler(handler)
+
 
     def write(self, message, level='info', output_to_console=True):
         """

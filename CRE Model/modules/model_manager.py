@@ -14,7 +14,7 @@ import copy, shutil
 
 ###############################################
 #custom imports
-from .utils import load_from_json, save_to_json
+from .utils import load_from_json, save_to_json, join_paths
 from .model import Model
 #from .model_spert import Model as model_spert
 #from .model_span_marker import Model as model_span_marker
@@ -29,6 +29,8 @@ class ModelManager:
         self.main_configs = main_configs
         self.config = main_configs.as_namespace
 
+
+
     def copy_model_to_drive(self, local, drive, name):
         """
         Copies a saved model (.pt) from a local Colab path to Google Drive.
@@ -36,11 +38,11 @@ class ModelManager:
         Args:
             local (str or Path): location of the local model (e.g., '/content')
             drive (str or Path): Destination folder in Google Drive (e.g., '/content/drive/MyDrive/models')
-            name (str): Base filename (without .pt extension)
+            name (str): filename
         """
         Path(drive).mkdir(parents=True, exist_ok=True)
-        local_path = str(Path(f'{local}/{name}.pt'))
-        dest_path = str(Path(f'{drive}/{name}.pt'))
+        local_path = join_paths(local, name)
+        dest_path = join_paths(drive, name)
         shutil.copy(local_path, dest_path)
 
         self.config.logger.write(f"Model copied to Google Drive at: {dest_path}")
@@ -50,8 +52,7 @@ class ModelManager:
         """Save the model parameters and config to the specified directory"""
         Path(save_folder).mkdir(parents=True, exist_ok=True)
 
-        model_filename = name  + ".pt"
-        model_path = str(Path(f'{save_folder}/{model_filename}'))
+        model_path = join_paths(save_folder, name)
         #torch.save(model.state_dict(), model_path)
         torch.save(model, model_path)
         self.config.logger.write(f"Model saved to {model_path}")
@@ -72,7 +73,6 @@ class ModelManager:
         loads the model if one is given or it creates a new one
         '''
         self.config.logger.write('Making the model')
-
         if device is None:
             device = self.config.device
         
@@ -81,7 +81,8 @@ class ModelManager:
             model = Model(self.config).to(device)
             
         #load the pretrained model if required (predict => always load a new model. train => only if we ask for it)
-        elif ((self.config.run_type == 'train' and self.config.model_load) or (self.config.run_type == 'predict')) and (self.config.model_name and self.config.model_name.strip().lower() not in ["none", ""]):
+        elif ((self.config.run_type == 'train' and self.config.model_load) or (self.config.run_type == 'predict')) and \
+             (self.config.model_name and self.config.model_name.strip().lower() not in ["none", ""]):
             #get the safe params to overwrite to the loaded model namespace
             safe_params = [
                             'run_type', 
@@ -144,8 +145,10 @@ class ModelManager:
             #get teh safe param values, read from teh main_configs
             safe_update_dict = {k: v for k, v in self.main_configs.to_dict.items() if k in safe_params}
             #load the pre-trained model and read the non-safe params from it to update the current config namespace
-            model_path = str(Path(f'{self.config.app_path}/{self.config.model_folder}/{self.config.model_name}.pt'))
+            model_path = join_paths(self.config.model_folder, self.config.model_file_name)
             try:
+                if not os.path.exists(model_path):
+                    return None
                 model = self.load_pretrained(model_path, device)
                 #remember self.config is not connected to model.config as the model init creates a copy of it
             

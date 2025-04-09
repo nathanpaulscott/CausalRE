@@ -117,10 +117,16 @@ class DataProcessor(object):
                 raise ValueError(f'Error. The annotated span type: "{label}" is not in the given span schema, exiting...')
             label_int = self.config.s_to_id[label]
             span_ids_idx = orig_map[i]
+
+            if span_ids_idx == -1:   #sometimes it will be -1 if that span did not get mapped as the seq was truncated, so we do not want to use that span
+                print('got an unmapped span label')
+                continue
             # Check if the annotated data has multiple labels for the unilabel case
             if span_labels[span_ids_idx] != 0:
                 #raise ValueError(f'Error. There are multiple labels for span ID {span_ids_idx} and span_labels is set to unilabel, exiting...')
                 self.config.logger.write(f'Error. There are multiple labels for span ID {span_ids_idx} and span_labels is set to unilabel', 'warning')
+                continue
+
             span_labels[span_ids_idx] = label_int
 
         return span_labels
@@ -180,6 +186,17 @@ class DataProcessor(object):
                 span_tuple = (span[0], span[1])
                 orig_map[i] = span_to_ids_map.get(span_tuple, -1)
 
+                '''
+                if span_tuple not in span_to_ids_map:
+                    print(f'\nthe problem one: {span_tuple}')
+                    print('the whole obs:')
+                    for span in obs['spans']:
+                        print(span)
+                    print(obs['tokens'])
+                    print(len(obs['tokens']))
+                    exit()
+                '''
+
             #make the span_labels data which aligns the annotated spans data to the span_ids
             #NOTE: labels will be all negative for the 'predict' case
             #make the unilabel span_labels, when converted to tensor will be shape (num_possible_spans)
@@ -187,6 +204,11 @@ class DataProcessor(object):
             span_labels = torch.tensor(span_labels, dtype=torch.long)    #shape => (num_possible_spans) for unilabel
             span_ids = torch.tensor(span_ids, dtype=torch.long)          #shape => (num_possible_spans)
             span_masks = self.generate_span_mask_for_obs(span_ids, seq_len, self.config.max_span_width)
+
+
+
+            #need to edit the obs['spans'] and obs['rels'] to take out the invalid spans from both
+
 
         #Return a dictionary with the preprocessed observations
         return dict(

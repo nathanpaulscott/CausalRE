@@ -163,7 +163,7 @@ class LstmSeq2SeqEncoder(nn.Module):
         # Passing packed sequence through LSTM
         packed_output, hidden = self.lstm(packed_x, hidden)
         # Unpacking the output sequence
-        output, _ = pad_packed_sequence(packed_output, batch_first=True)
+        output, _ = pad_packed_sequence(packed_output, batch_first=True, total_length=x.shape[1])
 
         #apply final dropout and layernorm
         output = self.last_norm(output)

@@ -1,28 +1,30 @@
 #####################################################################
 #Run Config
 #####################################################################
-run_type: predict                         #train/predict.  
+run_type: train                         #train/predict.  
 predict_split: val                       #the name of the split to use for predictions/inference
+predict_folder: preds
 #NOTE:
 #For train you need 3 labeled splits in the data json file (train/val/test) each split needs the tokens key along with the spans and relations keys for the labels. 
 #'predict' is unlabelled inference, you need one unlabelled split in the data json file (split is 'predict' and only keys are 'tokens').
 random_seed: 42
 #display
 eval_step_display: 1                     #display the preds for the first batch obs in eval batch idx
-log_step_data: False
+log_step_data: False                    #show the training step data in the logs (not really needed, just log the eval points)
 #####################################################################
 #Directory Paths
 #####################################################################
 model_folder: "models"                  #location of the models folder
-#model_name: "model"                      #pretrained model name => Use "none" to not load a model
-#model_name: "model-bfhs-nathan-max_temp_tf" #"model"                      #pretrained model name => Use "none" to not load a model
-model_name: "model-BE-tths-nathan-max_temp_tf" #"model"                      #pretrained model name => Use "none" to not load a model
-#model_name: "model-BE-tths-nathan-max_tf" #"model"                      #pretrained model name => Use "none" to not load a model
-#model_name: "model-BECO-tths-nathan-max_temp_tf" #"model"                      #pretrained model name => Use "none" to not load a model
-#model_name: "model-BE-tths-attn-max_temp_tf" #"model"                      #pretrained model name => Use "none" to not load a model
-#####model_name: "model-BE-tths-attn-selfattn_temp_tf"     #needs to run at batch of 1 and clear tensors 1   #"model"                      #pretrained model name => Use "none" to not load a model
-model_save: True
-model_load: False
+#model_name: "baseline"                      #pretrained model name => Use "none" to not load a model
+model_name: "semeval-BE-tths-nathan-max_temp_tf"                      #pretrained model name => Use "none" to not load a model
+#model_name: "bfhs-nathan-max_temp_tf" #"model"                      #pretrained model name => Use "none" to not load a model
+#model_name: "BE-tths-nathan-max_temp_tf" #"model"                      #pretrained model name => Use "none" to not load a model
+#model_name: "BE-tths-nathan-max_tf" #"model"                      #pretrained model name => Use "none" to not load a model
+#model_name: "BECO-tths-nathan-max_temp_tf" #"model"                      #pretrained model name => Use "none" to not load a model
+#model_name: "BE-tths-attn-max_temp_tf" #"model"                      #pretrained model name => Use "none" to not load a model
+#####model_name: "BE-tths-attn-selfattn_temp_tf"     #needs to run at batch of 1 and clear tensors 1   #"model"                      #pretrained model name => Use "none" to not load a model
+model_save: False
+model_load: True
 model_min_save_steps: 2000
 model_early_stopping: 5                 #if the score doesn't increase for this many eval runs, then exit train loop
 #--------------------------------------------------------------------------------
@@ -55,8 +57,11 @@ print_log: True                         #print the log to screen as it is writte
 #data_path: "data/new causal processed mar25/maven/maven - data - short - triggers.json"      #the dataset file, max seq len = 99, max span width = 4
 #data_format: idx                         #id/idx.  'id' is when the spans and rels have a unique id and the head and tail of the rel reference the span id.  idx is the spert format where there is no id and the rel head/tail reference the span list idx
 #---------------------------------------
-data_path: "data/unicausal/model_data_altlex_for_annotated_to 320 add maven_for_model.json"      #the dataset file  => span width max is 116, seq len 135
+data_path: "data/unicausal/mixed_693_for_model.json"      #the dataset file  => span width max is 116, seq len 135
 data_format: idx                         #id/idx.  'id' is when the spans and rels have a unique id and the head and tail of the rel reference the span id.  idx is the spert format where there is no id and the rel head/tail reference the span list idx
+#---------------------------------------
+#data_path: "data/unicausal/mixed_triggers_81_for_model.json"
+#data_format: idx                         
 #---------------------------------------
 
 #####################################################################
@@ -92,13 +97,13 @@ freeze_encoder: False                   #whether to allow fine tuning of the tra
 bert_shared_unmarked_span_rel: True     #whether to use a separate bert for spans and rels or share it
 hidden_size: 768                        #hidden size of the bert based encoder
 dropout: 0.1                            #standard model dropout
-max_seq_len: 140  #130                      #word token limit, this will generally affect the model speed, so keep it as low as possible.  I have this in just a  a protection fro very long sequences coming in
-max_span_width: 50   #60                      #max span width in word tokens (10-12 for NER, 40+ for long span event detection)
+max_seq_len: 200  #130                      #word token limit, this will generally affect the model speed, so keep it as low as possible.  I have this in just a  a protection fro very long sequences coming in
+max_span_width: 80   #60                      #max span width in word tokens (10-12 for NER, 40+ for long span event detection)
 dump_missed_spans_on_import: True       #ture/false: true => dumps the annotated spans to the log file that could not be used due to the max_seq_len and max_span_width limits
 num_precision: full                     #full/half => the num precision to use for the model => full => 32bit, half=>16bit
-projection_layer_type: ffn           #simple/ffn (ffn uses too much memory). for the span_rep and rel_rep generation output layers.  'simple' to just use a simple projection layer for the output or a 'ffn' for a more complex ffn layer.  Not implemented yet, just use 'ffn'
+projection_layer_type: ffn   #ffn           #simple/ffn (ffn uses too much memory). for the span_rep and rel_rep generation output layers.  'simple' to just use a simple projection layer for the output or a 'ffn' for a more complex ffn layer.  Not implemented yet, just use 'ffn'
 ffn_ratio: 4                            #FFN hidden expansion factor if projection layer is ffn
-use_lstm: True                          #whether to use an lstm layer after hte transformer encoder, this was in graphER, not sure if is of any benefit
+use_lstm: False   #True                          #whether to use an lstm layer after hte transformer encoder, this was in graphER, not sure if is of any benefit
 lstm_layers: 2
 lstm_skip_con: True
 
@@ -140,7 +145,7 @@ filter_head_type: single                #single/double => whether to use a singl
 ##############
 #lost rel handling
 ##############
-lost_rel_alpha: 0.5                       #0 to inf, global adjustment of the lost rel penalty to get the lost rel loss => higher penalises the model more for missing spans causing lost rels (in non-teacher forced mode)
+lost_rel_alpha: 1                       #0 to inf, global adjustment of the lost rel penalty to get the lost rel loss => higher penalises the model more for missing spans causing lost rels (in non-teacher forced mode)
 
 ###############
 #rel rep config
@@ -148,7 +153,7 @@ lost_rel_alpha: 0.5                       #0 to inf, global adjustment of the lo
 rel_mode: between_window_context              #no_context/between_context/window_context/between_window_context => add context reps in (no context, from tokens between spans, from tokens in windows before/after each span)  => only beteween works well
 rel_no_context_rep: emb                #zero/emb => whether to replace the context reps in the case of no valid context tokens, to all zero (zero) or a learned no context embedding (emb)
 rel_context_pooling: max               #max/selfattn/crossattn => how to pool the valid context tokens to get one context rep.  max => max pool them, crossattn => use attention pooling w.r.t the concatenated and reprojected head and tail spans as the query, no head and tail concat after this, selfattn just use a pooler token to pool the context tokens then concat with head and tail reps
-rel_window_size: 10                    #tokens or subtoken window size for the window algo
+rel_window_size: 25                    #tokens or subtoken window size for the window algo
 #rel marking config
 use_rel_marker: False                   #the top_k_rels will be marked and run through bert again to get enriched rel_reps => slow but good
 rel_marker_window: 1000                  #none = no window (only unmask span, marker and cls/sep tokens), attention mask window around the marked relations spans
@@ -162,7 +167,7 @@ graph_id_method: add                    #whether to add or prefix the node and e
 ###############
 #graph transformer config
 ###############
-use_graph: True                         #True/False, if False, the whole graph and graph transformer is bypassed
+use_graph: False                         #True/False, if False, the whole graph and graph transformer is bypassed
 use_graph_reps: True                    #True => use the node/edge reps output from the graph transformer, these will be enriched embeddings but also include the node/edge identifiers mixed in
                                         #False => use the pre-graph transformer span/rel reps, as output, only use the filtering scores and loss from the graph transformer
 num_heads: 4                            #used by the graph transformer layer 
@@ -178,9 +183,9 @@ graph_filter_head_type: single          #single/double => whether to use a singl
 #Training Parameters
 #####################################################################
 num_steps: 20000                        #how many batches to run through the system, the total batches in the dataset is going to be much smaller, so it just repeats the batches
-train_batch_size: 2  #4                  #num obs per train batch
+train_batch_size: 4  #4                  #num obs per train batch
 accumulation_steps: 1 #1                #accumulate losses for this many batches, so effective batch size is accumulation_steps*train_batch_size
-eval_batch_size: 4 #6                  #num obs per val/test batch
+eval_batch_size: 6 #6                  #num obs per val/test batch
 eval_every: 500                         #eval every 'eval_every' batches
 opt_type: 2                             #1/2 => 1 use the same lr and wd for all params, 2 => use specific lr/wds 
 opt_weight_decay:  0.01                 #adamw optimiser weight decay

@@ -19,8 +19,8 @@ from .evaluator import make_evaluator
 from .predictor import Predictor
 from .model_manager import ModelManager, Optimizer, Scheduler
 from .data_preparation import DataPreparation
-from .utils import clear_gpu_tensors, set_all_seeds, save_to_json
-
+from .utils import clear_gpu_tensors, set_all_seeds, save_to_json, join_paths
+from .process_preds import process_preds
 
 
 
@@ -161,7 +161,6 @@ class Trainer:
         pbar_train = tqdm(range(num_steps), position=0, leave=True)
         train_loss = []
         model_save_score = -self.config.num_limit
-        model_local_folder = "/content"
         model_early_stop_cnt = 0
         for step in pbar_train:
             loss, lost_rel_cnt = self.train_step(model, scaler, iter_loader_inf, step)
@@ -221,8 +220,8 @@ class Trainer:
 
                     if model_save_score_current > model_save_score:
                         model_early_stop_cnt = 0
-                        model_save_score = model_save_score_current    
-                        self.model_manager.save_pretrained(model, model_local_folder, self.config.model_name)
+                        model_save_score = model_save_score_current
+                        self.model_manager.save_pretrained(model, self.config.model_colab_folder, self.config.model_file_name)
                         print(f"Model saved — step={step}, save_score={model_save_score_current:.4f}")
                     else:
                         #increment the early stopping counter and exit the train loop if it passes the thd
@@ -252,8 +251,10 @@ class Trainer:
         '''
         pbar_train.close()
         #load the best model
-        model_local_path = str(Path(f'{model_local_folder}/{self.config.model_name}.pt'))
-        model = self.model_manager.load_pretrained(model_local_path, self.config.device)
+        if not os.path.exists(self.config.model_colab_path):
+            return None
+
+        model = self.model_manager.load_pretrained(self.config.model_colab_path, self.config.device)
         #run the final eval and test loop
         result_val = self.eval_loop(model, val_loader)
         result_test = self.eval_loop(model, test_loader)
@@ -261,8 +262,7 @@ class Trainer:
         self.config.logger.write(self.make_metrics_summary(result_val, msg='final_val '))
         self.config.logger.write(self.make_metrics_summary(result_test, msg='final_test '))
         #copy the best model to drive
-        model_drive_folder = str(Path(f'{self.config.app_path}/{self.config.model_folder}'))
-        self.model_manager.copy_model_to_drive(model_local_folder, model_drive_folder, self.config.model_name)
+        self.model_manager.copy_model_to_drive(self.config.model_colab_folder, self.config.model_full_folder, self.config.model_file_name)
 
         return dict(
             result_val = result_val,
@@ -279,14 +279,14 @@ class Trainer:
         p = result['span_metrics']['precision']
         r = result['span_metrics']['recall']
         f1 = result['span_metrics']['f1']
-        balance = (min(p,r) / max(p,r))**(1/4)
+        balance = (min(p,r) / max(p,r))**(1/4) if max(p,r) > 0 else 0
         span_score = f1 * balance
 
         #do rels
         p = result['rel_metrics']['precision']
         r = result['rel_metrics']['recall']
         f1 = result['rel_metrics']['f1']
-        balance = (min(p,r) / max(p,r))**(1/4)
+        balance = (min(p,r) / max(p,r))**(1/4) if max(p,r) > 0 else 0
         rel_score = f1 * balance
         
         return (span_score + rel_score) / 2
@@ -613,6 +613,9 @@ class Trainer:
         #get the model
         self.model_manager = ModelManager(self.main_configs) 
         model = self.model_manager.get_model()
+        if model is None:
+            print(f'no model was found to load with {self.config.model_file_name}')
+            return None
 
         #send config to log
         self.config.logger.write('Configs Snapshot:\n' + self.main_configs.dump_as_json_str, 'info', output_to_console=True)
@@ -624,9 +627,10 @@ class Trainer:
 
         elif self.config.run_type == 'predict': 
             result = self.predict_loop(model, loaders)
-            save_to_json(result, f'preds/pred_results_{self.config.model_name}.json')
-            #you may want to reformat the preds here to a format that is importable by my js tool for viewing
-            #i.e. the standard spans/relations format, where the rels just have the head/tail index in the spans list etc...
+            pred_result_file = join_paths(self.config.predict_folder, f'pred_{self.config.model_name}.json')
+            pred_analysis_file = join_paths(self.config.predict_folder, f'pred_analysis_{self.config.model_name}.txt')
+            save_to_json(result, pred_result_file)
+            process_preds(pred_result_file, pred_analysis_file)
 
         else:
             raise Exception("Error - run_type must be either 'train' or 'predict'")
