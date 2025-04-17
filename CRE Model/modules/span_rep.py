@@ -28,13 +28,7 @@ class First_n_Last_graphER(nn.Module):
     
     NOTE: span_ids with start, end = 0,0 are processed nromally, but the reps will be ignored later by the span_masks
    '''
-    def __init__(self, 
-                 max_span_width, 
-                 hidden_size, 
-                 layer_type,
-                 ffn_ratio,
-                 dropout, 
-                 **kwargs):
+    def __init__(self, max_span_width, hidden_size, layer_type, ffn_ratio, dropout, **kwargs):
         super().__init__()
         #overwrite the passed values to copy graphER
         ffn_ratio = 1.5
@@ -132,15 +126,7 @@ class Spert(nn.Module):
 
     NOTE: span_ids with start, end = 0,0 are processed nromally, but the reps will be ignored later by the span_masks
     '''    
-    def __init__(self, 
-                 max_span_width, 
-                 hidden_size, 
-                 width_embeddings, 
-                 cls_flag,
-                 dropout,
-                 layer_type,
-                 ffn_ratio,
-                 **kwargs):
+    def __init__(self, max_span_width, hidden_size, width_embeddings, cls_flag, dropout, layer_type, ffn_ratio, **kwargs):
         super().__init__()
         #kwargs has remaining: ['use_span_pos_encoding']
         self.max_span_width = max_span_width
@@ -204,15 +190,7 @@ class Nathan(nn.Module):
 
     NOTE: span_ids with start, end = 0,0 are processed normally, but the reps will be ignored later by the span_masks
     '''    
-    def __init__(self, 
-                 max_span_width, 
-                 hidden_size, 
-                 width_embeddings, 
-                 cls_flag,
-                 dropout,
-                 layer_type,
-                 ffn_ratio,
-                 **kwargs):
+    def __init__(self, max_span_width, hidden_size, width_embeddings, cls_flag, dropout, layer_type, ffn_ratio, **kwargs):
         '''
         hidden size is the model hidden size
         max_span_width is the max span width in word tokens from the model configs

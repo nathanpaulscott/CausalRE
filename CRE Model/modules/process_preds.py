@@ -83,14 +83,15 @@ def get_obs_info(obs):
     mean_rel_width_balance = sum(mean_rel_width_balance) / len(mean_rel_width_balance) if len(mean_rel_width_balance) > 0 else -1
 
     return dict(
-        seq_len   = seq_len,
-        n_spans   = num_spans,
-        n_rels    = num_rels,
-        span_w    = mean_span_width,
-        rel_w     = mean_rel_width,
-        rel_bal   = mean_rel_width_balance
+        seq_len     = seq_len,
+        n_spans     = num_spans,
+        n_rels      = num_rels,
+        n_spnsp = len(obs.get('span_preds', [])),
+        n_rlsp  = len(obs.get('rel_preds', [])),
+        span_w      = mean_span_width,
+        rel_w       = mean_rel_width,
+        rel_bal     = mean_rel_width_balance
     )
-
 
 
 
@@ -181,7 +182,7 @@ def output_matches_to_file_and_console(result, path, console=False):
             # Print and write column titles and counts
             header = f"\n{k} Matches: {len(result[k])}\n"
             # Update header to include extra keys right after rates
-            extra_keys = ['seq_len', 'n_spans', 'n_rels', 'span_w', 'rel_w', 'rel_bal']
+            extra_keys = ['seq_len', 'n_spans', 'n_spnsp', 'n_rels', 'n_rlsp', 'span_w', 'rel_w', 'rel_bal']
             header += f"{'Id':<6}{'Span    | Rel     | Comb':<27} | " + ' | '.join(f"{key:>7}" for key in extra_keys) + f" | {'Sequence'}\n"
 
             if console:
@@ -222,7 +223,7 @@ def process_preds(infile, outfile):
 if __name__ == "__main__":
     ##################################################
     folder = r'D:\A.Nathan\1a.UWA24-Hons\Honours Project\0a.Code\0a.Nathan Model\preds'
-    infile_name = 'pred_results_model-BE-tths-nathan-max_temp_tf.json'
+    infile_name = 'pred_best.json'
     #infile_name = 'pred_results_model-BECO-tths-nathan-max_temp_tf.json'
     #infile_name = 'pred_results_model-bfhs-nathan-max_temp_tf.json'
     ##################################################

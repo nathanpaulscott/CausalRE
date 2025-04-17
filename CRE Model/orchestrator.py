@@ -40,13 +40,18 @@ class Orchestrator():
         config_dict['model_folder']   = experiment['folder']       #new model will be saved here  
         for param in experiment['params']:
             config_dict[param] = experiment['params'][param]
+
+        #fix the dataset if it is to use a seed specific one (i.e. if it has a .json extension, just use that)
+        if config_dict['data_path'][-5:] != ".json":
+            config_dict['data_path'] = f"{config_dict['data_path']}{seed}.json"       
+        
         #do the train/predict specific params
         if train:
             #train case
             config_dict['run_type']   = 'train'
             config_dict['log_name']   = f"log_{experiment_name_w_seed}_train"    
             config_dict['model_load'] = False
-            config_dict['model_save'] = True if first_seed else False
+            config_dict['model_save'] = True,   #True if first_seed else False
             config_file = f'config_{experiment_name}_train.yaml'
             config_path = join_paths(experiment['folder'], config_file)
         else:
@@ -147,9 +152,25 @@ if __name__ == "__main__":
     #Instantiate the class with the path to the application
     base_config_path = "config.yaml"
     experiments_folder = 'experiments'
-    experiments_file = 'experiments.json'
     train_flag = True
     predict_flag = True
+
+    #experiments_file = 'experiments-rel pooling.json'
+    #experiments_file = 'experiments-rel pooling-spanattn-relcrossattn.json'
+    #experiments_file = 'experiments-teacher forcing.json'
+    #experiments_file = 'experiments-graph-lstm_temp.json'
+    #experiments_file = 'experiments-separate-bert.json'
+    #experiments_file = 'experiments-baseline.json'
+    #experiments_file = 'experiments-marking.json'  #doesn't work
+    #experiments_file = 'experiments-topk.json'
+    #experiments_file = 'experiments-rel context.json'
+    #experiments_file = 'experiments-backbones.json'
+    #experiments_file = 'experiments-spanbert-rel calc.json'
+    #experiments_file = 'experiments-spanbert_rel_calc_temp_tf.json'
+    #experiments_file = 'experiments-spanbert_orig_config.json'
+    #experiments_file = 'experiments-spanbert-semeval-conll04.json'
+    experiments_file = 'experiments-bert-conll04.json'
+    
     orchestrator = Orchestrator(experiments_folder, experiments_file, base_config_path, train=True, predict=True)
 
     #kick off the experiments

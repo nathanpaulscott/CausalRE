@@ -39,7 +39,7 @@ class Model(nn.Module):
         super().__init__()
         #create a locally mutable version of the config namespace
         self.config = SimpleNamespace(**config.get_data_copy())
-        
+
         #make the modified transformer encoder with subtoken pooling functionality
         if self.config.bert_shared_unmarked_span_rel:
             self.transformer_encoder_span = TransformerEncoderHF(self.config)
@@ -92,6 +92,20 @@ class Model(nn.Module):
             dropout               = self.config.dropout,
             cls_flag              = self.config.use_cls_embedding and self.config.backbone_model_source == 'HF'    #whether we will have a cls token rep
         )
+
+
+        self.span_rep_layer_for_rels = SpanRepLayer(
+            span_mode                = self.config.span_mode,
+            max_span_width            = self.config.max_span_width,    #in word widths
+            #rest are in kwargs
+            hidden_size               = self.config.hidden_size,
+            layer_type                = self.config.projection_layer_type,
+            ffn_ratio                 = self.config.ffn_ratio, 
+            width_embeddings          = None,     #self.width_embeddings if self.config.use_width_embedding else None,    #in word widths
+            dropout                   = self.config.dropout,
+            cls_flag                  = False
+        )
+
 
         #set the FilteringLayer
         FilteringLayer = FilteringLayerBinaryDouble
@@ -898,6 +912,20 @@ class Model(nn.Module):
                                             neg_limit   = -self.config.num_limit,
                                             alpha       = self.config.span_win_alpha)
 
+        #make the special span reps for use in making the rel reps
+        if self.config.modified_span_reps_for_rel_reps:
+            #remake the special span_reps for use in building the rel reps
+            span_reps_rel = self.span_rep_layer_for_rels(token_reps, 
+                                                         span_ids    = span_ids, 
+                                                         span_masks  = span_masks, 
+                                                         cls_reps    = None,
+                                                         span_widths = None, #span_ids[:,:,1] - span_ids[:,:,0],
+                                                         neg_limit   = -self.config.num_limit,
+                                                         alpha       = self.config.span_win_alpha)
+        else:
+            span_reps_rel = span_reps
+
+
         #output shape (batch, num_spans**2, hidden)   
         #NOTE: if we used neg sampling on the rels and pruned the tensors, then the dim length will be much shorter than top_k_spans**2
         #NOTE: this is a temporary if statement, I have not updated the context based rel rep code yet
@@ -907,7 +935,7 @@ class Model(nn.Module):
         #else:
         rel_reps = self.rel_rep_layer(token_reps      = token_reps, 
                                       token_masks     = token_masks,
-                                      span_reps       = span_reps,     #top_k_span aligned span_reps 
+                                      span_reps       = span_reps_rel,     #top_k_span aligned span_reps 
                                       span_ids        = span_ids,      #top_k_span aligned span_ids
                                       rel_ids         = rel_ids,       #aligned to span_reps/ids
                                       rel_masks       = rel_masks,

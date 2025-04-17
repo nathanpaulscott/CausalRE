@@ -194,7 +194,7 @@ class Trainer:
                 train_loss.append(loss.detach().cpu().item())
 
             #runs eval and saves the model          
-            if (step + 1) % eval_every == 0:
+            if step > self.config.model_min_eval_steps and (step + 1) % eval_every == 0:
                 #run the eval loop
                 result = self.eval_loop(model, val_loader, step=step)
                 #get the train loss mean
@@ -203,7 +203,8 @@ class Trainer:
                 #reset the train loss list
                 train_loss = []
                 #show the metrics on screen
-                print(result['visual results'])
+                if 'visual_results' in result:
+                    print(result['visual results'])
                 print(self.make_metrics_summary(result, msg='interim_val ', type='format'))
                 print(loss_msg)
                 #write the data to the log
@@ -511,7 +512,8 @@ class Trainer:
         #run the evaluator on whole dataset results (stored in the evaluator object) and return a dict with the metrics and preds
         result = evaluator.evaluate()
         #add the visual results and the eval mean loss
-        result['visual results'] = self.show_visual_results(evaluator)
+        if self.config.eval_step_display:
+            result['visual results'] = self.show_visual_results(evaluator)
         result['eval loss'] = sum(eval_loss) / len(eval_loss) if len(eval_loss) > 0 else -1
         return result
     ##############################################################
@@ -634,7 +636,7 @@ class Trainer:
 
         else:
             raise Exception("Error - run_type must be either 'train' or 'predict'")
-
+        
 
 
 

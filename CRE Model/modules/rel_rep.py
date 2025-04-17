@@ -231,10 +231,13 @@ class RelRepContextBase(nn.Module, ABC):
 
         self.context_pooling = context_pooling
         if context_pooling == 'selfattn':
-            self.context_attention_pooler = RelationContextAttentionPoolerSelf(hidden_size, num_heads=4, dropout=dropout)
-        elif context_pooling == 'crossattn':
-            self.context_attention_pooler = RelationContextAttentionPoolerCross(hidden_size, num_heads=4, dropout=dropout)
-            internal_size = hidden_size
+            self.context_attention_pooler = RelationContextAttentionPoolerSelf(hidden_size, num_heads=8, dropout=dropout)
+        
+        elif context_pooling in ['crossattn', 'crossattn_pure']:
+            self.context_attention_pooler = RelationContextAttentionPoolerCross(hidden_size, num_heads=8, dropout=dropout)
+            if context_pooling == 'crossattn_pure':
+                internal_size = hidden_size
+        
         elif context_pooling != 'max':
             raise Exception('given value for context pooling is invalid...')
         
@@ -341,7 +344,7 @@ class RelRepContextBase(nn.Module, ABC):
         # Calculate context representations
         if self.context_pooling == 'selfattn':      #use attention pooling via a pooler token
             context_reps = self.context_attention_pooler(token_reps, context_masks)
-        elif self.context_pooling == 'crossattn':   #use attention pooling w.r.t the head + tail reps
+        elif self.context_pooling in ['crossattn', 'crossattn_pure']:   #use attention pooling w.r.t the head + tail reps
             context_reps = self.context_attention_pooler(head_reps, tail_reps, token_reps, context_masks)
         else:    #use maxpooling of context tokens
             context_reps, _ = token_reps.unsqueeze(1).masked_fill(~context_masks.unsqueeze(-1), neg_limit).max(dim=2)
@@ -362,11 +365,11 @@ class RelRepContextBase(nn.Module, ABC):
         context_masks = self.make_context_masks(token_masks, span_ids, rel_ids, rel_masks)
         context_reps = self.make_context_reps(token_reps, head_reps, tail_reps, neg_limit, context_masks)
 
-        if self.context_pooling != 'crossattn':
+        if self.context_pooling == 'crossattn_pure':   #if cross attn just use the context reps alone
+            rel_reps = context_reps
+        else:
             #concat everything
             rel_reps = torch.cat([head_reps, tail_reps, context_reps], dim=-1)  # (batch, num_rels, 3 * hidden)
-        else:   #if cross attn just use the context reps alone
-            rel_reps = context_reps
 
         #Apply output layer and reshape.
         return self.out_layer(rel_reps)     # (batch, num_rels, hidden)
