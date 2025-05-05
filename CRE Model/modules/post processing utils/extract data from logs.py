@@ -111,64 +111,79 @@ def aggregate_log_metrics(df, root_dir):
 
 
 
-# Assuming functions to collect and aggregate log metrics are defined elsewhere
-path = "D:\\A.Nathan\\1a.UWA24-Hons\\Honours Project\\0a.Code\\0a.Nathan Model\\experiments"
-raw_df = collect_raw_log_metrics(path)
-agg_df = aggregate_log_metrics(raw_df, path)
+def plot_stuff(agg_df):
+    show_loose = True
+    scale = 2   # 2sd is ~90% coverage
 
-show_loose = True
-scale = 2   # 2sd is ~90% coverage
+    # Prepare DataFrame
+    df = agg_df.copy()
+    df['score'] = df['Span_F1_mean'] * df['Rel_F1_mean']
+    df = df.sort_values(by='score', ascending=False)
+    df['rank'] = range(1, len(df) + 1)  # Assign rank
 
-# Prepare DataFrame
-df = agg_df.copy()
-df['score'] = df['Span_F1_mean'] * df['Rel_F1_mean']
-df = df.sort_values(by='score', ascending=False)
-df['rank'] = range(1, len(df) + 1)  # Assign rank
+    # Sorting by std products
+    df['sort_metric'] = df['Rel_F1_std'] * df['Span_F1_std']
+    df.sort_values('sort_metric', ascending=False, inplace=True)
 
-# Sorting by std products
-df['sort_metric'] = df['Rel_F1_std'] * df['Span_F1_std']
-df.sort_values('sort_metric', ascending=False, inplace=True)
+    # Set color and marker
+    color_list = ['darkred', 'red', 'pink', 'orange', 'yellow', 'lightgreen', 'green', 'lightblue', 'darkblue', 'purple', 'black']
+    colors = color_list * ((len(df) // len(color_list)) + 1)
+    marker_list = ['o', 's', 'D', '^']
 
-# Set color and marker
-color_list = ['darkred', 'red', 'pink', 'orange', 'yellow', 'lightgreen', 'green', 'lightblue', 'darkblue', 'purple', 'black']
-colors = color_list * ((len(df) // len(color_list)) + 1)
-marker_list = ['o', 's', 'D', '^']
+    fig, ax = plt.subplots(figsize=(10, 10))
 
-fig, ax = plt.subplots(figsize=(10, 10))
+    # Plotting
+    for i, row in df.iterrows():
+        color = colors[i % len(colors)]
+        marker = marker_list[i % len(marker_list)]
+        label = f"{row['rank']}. {row['base_name']}"
 
-# Plotting
-for i, row in df.iterrows():
-    color = colors[i % len(colors)]
-    marker = marker_list[i % len(marker_list)]
-    label = f"{row['rank']}. {row['base_name']}"
+        # Main ellipse
+        ellipse = mpatches.Ellipse((row['Rel_F1_mean'], row['Span_F1_mean']),
+                                width=row['Rel_F1_std'] * scale,
+                                height=row['Span_F1_std'] * scale,
+                                alpha=0.5, facecolor='none', edgecolor=color,
+                                linewidth=0.5, linestyle='--')
+        ax.add_patch(ellipse)
 
-    # Main ellipse
-    ellipse = mpatches.Ellipse((row['Rel_F1_mean'], row['Span_F1_mean']),
-                               width=row['Rel_F1_std'] * scale,
-                               height=row['Span_F1_std'] * scale,
-                               alpha=0.5, facecolor='none', edgecolor=color,
-                               linewidth=0.5, linestyle='--')
-    ax.add_patch(ellipse)
+        # Scatter points
+        ax.scatter(row['Rel_F1_mean'], row['Span_F1_mean'], color=color, s=150, 
+                zorder=100-i, label=label, alpha=0.5, edgecolors='black', marker=marker)
 
-    # Scatter points
-    ax.scatter(row['Rel_F1_mean'], row['Span_F1_mean'], color=color, s=150, 
-               zorder=100-i, label=label, alpha=0.5, edgecolors='black', marker=marker)
+    # Set axis
+    ax.set_xlim(0, 100)
+    ax.set_ylim(0, 100)
+    ax.set_xticks(np.arange(0, 101, 10))
+    ax.set_yticks(np.arange(0, 101, 10))
+    ax.grid(True)
+    ax.set_xlabel("Rel F1 Mean (%)")
+    ax.set_ylabel("Span F1 Mean (%)")
+    ax.set_title("Span vs Rel F1 with SD Ellipses")
 
-# Set axis
-ax.set_xlim(0, 100)
-ax.set_ylim(0, 100)
-ax.set_xticks(np.arange(0, 101, 10))
-ax.set_yticks(np.arange(0, 101, 10))
-ax.grid(True)
-ax.set_xlabel("Rel F1 Mean (%)")
-ax.set_ylabel("Span F1 Mean (%)")
-ax.set_title("Span vs Rel F1 with SD Ellipses")
+    # Sorted legend
+    handles, labels = ax.get_legend_handles_labels()
+    # Sort handles and labels based on the extracted rank from labels
+    sorted_handles_labels = sorted(zip(handles, labels), key=lambda x: int(x[1].split('.')[0]))
+    sorted_handles, sorted_labels = zip(*sorted_handles_labels)  # Unzip sorted pairs
+    ax.legend(sorted_handles, sorted_labels, title="Model (Ranked)")
 
-# Sorted legend
-handles, labels = ax.get_legend_handles_labels()
-# Sort handles and labels based on the extracted rank from labels
-sorted_handles_labels = sorted(zip(handles, labels), key=lambda x: int(x[1].split('.')[0]))
-sorted_handles, sorted_labels = zip(*sorted_handles_labels)  # Unzip sorted pairs
-ax.legend(sorted_handles, sorted_labels, title="Model (Ranked)")
+    plt.show()
 
-plt.show()
+
+
+
+
+def main():
+    # Assuming functions to collect and aggregate log metrics are defined elsewhere
+    path = "D:\\A.Nathan\\1a.UWA24-Hons\\Honours Project\\0a.Code\\0a.Nathan Model\\experiments"
+    raw_df = collect_raw_log_metrics(path)
+    agg_df = aggregate_log_metrics(raw_df, path)
+
+    agg_df.to_csv(f'{path}\\experiments_processed.csv', index=False)
+
+    plot_stuff(agg_df)
+
+
+
+if __name__ == "__main__":
+    main()

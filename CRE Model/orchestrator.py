@@ -169,7 +169,9 @@ if __name__ == "__main__":
     #experiments_file = 'experiments-spanbert_rel_calc_temp_tf.json'
     #experiments_file = 'experiments-spanbert_orig_config.json'
     #experiments_file = 'experiments-spanbert-semeval-conll04.json'
-    experiments_file = 'experiments-bert-conll04.json'
+    #experiments_file = 'experiments-bert-conll04.json'
+    experiments_file = 'experiments-best.json'
+
     
     orchestrator = Orchestrator(experiments_folder, experiments_file, base_config_path, train=True, predict=True)
 

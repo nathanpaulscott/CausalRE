@@ -33,7 +33,7 @@ class EvaluatorBase:
             span_labels = [[] for x in range(batch)] 
             rel_labels  = [[] for x in range(batch)]
             rel_labels_mod  = [[] for x in range(batch)]
-            #fill the span and rel labels
+            #fill the span and rel labels objects
             for batch_idx in range(batch):
                 #fill the span_labels
                 for start, end, span_type in span_labels_raw[batch_idx]:
@@ -62,35 +62,34 @@ class EvaluatorBase:
 
 
     def evaluate(self, return_preds=False, return_labels=False):
-        #readi in the matching params
-        loose_matching, tol, wid, bin = self.config.matching_loose, self.config.matching_tolerance, self.config.matching_width_limit, self.config.matching_make_binary
-        
-        #self.config.logger.write(str(self.all_preds['spans']))
-        #self.config.logger.write(str(self.all_labels['spans']))
-
-        
+        #read in the matching params
+        loose_matching = self.config.matching_loose
+        tol = self.config.matching_tolerance
+        wid = self.config.matching_width_limit
+        bin = self.config.matching_make_binary
+                
         #Flatten and prepare the data before computing metrics
+        #do the preds
         flat_span_preds     = self.flatten_and_prepare(self.all_preds['spans'])
         flat_rel_preds      = self.flatten_and_prepare(self.all_preds['rels'])
         flat_rel_mod_preds  = self.flatten_and_prepare(self.all_preds['rels_mod'])
-
+        #do the labels
         flat_span_labels    = self.flatten_and_prepare(self.all_labels['spans'])
         flat_rel_labels     = self.flatten_and_prepare(self.all_labels['rels'])
         flat_rel_mod_labels = self.flatten_and_prepare(self.all_labels['rels_mod'])
         
         #Compute metrics
+        #do the strict metrics
         span_metrics    = self.metrics.run_metrics(flat_span_labels, flat_span_preds)
         rel_metrics     = self.metrics.run_metrics(flat_rel_labels, flat_rel_preds)
         rel_mod_metrics = self.metrics.run_metrics(flat_rel_mod_labels, flat_rel_mod_preds)
 
-        span_metrics_l    = None
-        rel_metrics_l     = None
-        rel_mod_metrics_l = None
+        #do the loose metrics
+        span_metrics_l, rel_metrics_l, rel_mod_metrics_l = None, None, None
         if loose_matching:
             span_metrics_l    = self.metrics.run_metrics(flat_span_labels, flat_span_preds, loose_matching=loose_matching, tolerance=tol, span_limit=wid, make_binary=bin, type='span')
             rel_metrics_l     = self.metrics.run_metrics(flat_rel_labels, flat_rel_preds, loose_matching=loose_matching, tolerance=tol, span_limit=wid, make_binary=bin, type='rel')
             rel_mod_metrics_l = self.metrics.run_metrics(flat_rel_mod_labels, flat_rel_mod_preds, loose_matching=loose_matching, tolerance=tol, span_limit=wid, make_binary=bin, type='rel_mod')
-
 
         return dict(labels                = self.all_labels if return_labels else None,
                     preds                 = self.all_preds if return_preds else None,

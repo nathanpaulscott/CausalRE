@@ -74,17 +74,23 @@ class Trainer:
 
         #abort if no results were returned
         if result is None:
-            self.config.logger.write(f"Warning: forward pass aborted (top_k_spans = 0) at step {step}. Skipping...", level='warning')
-            return None, None
+            self.config.logger.write(f"Warning: forward pass aborted at step {step}. Skipping...", level='warning')
+            return None, None, None, None
+        elif result == 1:
+            self.config.logger.write(f"Warning: forward pass aborted (top_k_spans was 0) at step {step}. Skipping...", level='warning')
+            return None, None, None, None
+        elif result == 2:
+            self.config.logger.write(f"Warning: forward pass aborted (top_k_rels was 0) at step {step}. Skipping...", level='warning')
+            return None, None, None, None
+        elif torch.isnan(result['loss']).any():
+            self.config.logger.write(f"Warning: NaN loss detected at step {step}. Skipping...", level='warning')
+            return None, None, None, None
         
         #get the loss
         loss = result['loss']
+        #check if we got NaN loss
         if self.config.loss_reduction == 'mean':
             loss = loss / self.config.accumulation_steps
-        #check if we got NaN loss
-        if torch.isnan(loss).any():
-            self.config.logger.write(f"Warning: NaN loss detected at step {step}. Skipping...", level='warning')
-            return None, None
 
         #Accumulate gradients
         if self.config.num_precision == 'half':
@@ -93,18 +99,21 @@ class Trainer:
             loss.backward()
                 
         #Clip gradients => NOTE: this needs adjustment for use with mixed precision
+        raw_norm = None
         if self.config.grad_clip:
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=self.config.grad_clip)
+            raw_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=self.config.grad_clip)
         
         #get lost rel count sum for info
         lost_rel_cnt = result['lost_rel_counts'].sum().item()
+        #get teh loss_breakdown
+        loss_breakdown = result['loss_breakdown']
 
         #clear tensors to free up GPU memory
         if (step + 1) % self.config.clear_tensor_steps == 0:
             #self.config.logger.write(' Clearing tensors')
             clear_gpu_tensors([v for k,v in result.items() if k != 'loss'], gc_collect=True, clear_cache=True)   #slows it down if true
 
-        return loss, lost_rel_cnt
+        return loss, lost_rel_cnt, loss_breakdown, raw_norm
 
 
     def train_loop(self, model, loaders):
@@ -160,10 +169,11 @@ class Trainer:
         optimizer.zero_grad()    # Zero out gradients for next accumulation
         pbar_train = tqdm(range(num_steps), position=0, leave=True)
         train_loss = []
+        train_loss_breakdown = []
         model_save_score = -self.config.num_limit
         model_early_stop_cnt = 0
         for step in pbar_train:
-            loss, lost_rel_cnt = self.train_step(model, scaler, iter_loader_inf, step)
+            loss, lost_rel_cnt, loss_breakdown, raw_norm = self.train_step(model, scaler, iter_loader_inf, step)
             if loss is None: continue  # Skip step if NaN loss or aborted forward pass
 
             if (step + 1) % acc_steps == 0 or step == num_steps - 1:
@@ -177,6 +187,7 @@ class Trainer:
                 #Collect gradients for debugging
                 if self.config.collect_grads: 
                     self.collect_grads(model, grad_data, grad_stats)
+                    grad_stats['raw_total_norm'] = raw_norm
 
                 #step the lr scheduler and zero grads
                 scheduler.step()      
@@ -185,13 +196,14 @@ class Trainer:
                 #write description to log and stdout
                 description = f"train step: {step} | epoch: {step // len(train_loader)} | loss: {loss.item():.2f} | lost rel cnt: {lost_rel_cnt} |"
                 if self.config.collect_grads: 
-                    description += f" | TotNorm: {grad_stats['total_norm']:.4f} | TotNorm.SD: {grad_stats['total_norm_sd']:.4f} | HighGrads: {grad_stats['high_cnt']} | LowGrads: {grad_stats['low_cnt']}"
+                    description += f" | RawTotNorm: {grad_stats['raw_total_norm']:.4f} | TotNorm: {grad_stats['total_norm']:.4f} | TotNorm.SD: {grad_stats['total_norm_sd']:.4f} | HighGrads: {grad_stats['high_cnt']} | LowGrads: {grad_stats['low_cnt']}"
                 if self.config.log_step_data:
                     self.config.logger.write(description, 'info', output_to_console=False)   
                 pbar_train.set_description(description)
                 
                 #save the loss off the gpu
                 train_loss.append(loss.detach().cpu().item())
+                train_loss_breakdown.append(loss_breakdown)
 
             #runs eval and saves the model          
             if step > self.config.model_min_eval_steps and (step + 1) % eval_every == 0:
@@ -199,38 +211,70 @@ class Trainer:
                 result = self.eval_loop(model, val_loader, step=step)
                 #get the train loss mean
                 train_loss_mean = sum(train_loss) / len(train_loss) if len(train_loss) > 0 else -1
-                loss_msg = f"step: {step}, train loss mean: {round(train_loss_mean,4)}, eval loss mean: {round(result['eval loss'],4)}"
+                model_save_score_current = 0 if result['eval loss'] <= 0 else self.make_model_save_score(result)
+                loss_msg = f"step: {step}, train loss mean: {round(train_loss_mean,4)}, eval loss mean: {round(result['eval loss'],4)}, save_score: {round(model_save_score_current, 4)}"
                 #reset the train loss list
                 train_loss = []
                 #show the metrics on screen
                 if 'visual_results' in result:
                     print(result['visual results'])
-                print(self.make_metrics_summary(result, msg='interim_val ', type='format'))
+                print(self.make_metrics_summary(result, msg='val results ', type='format'))
                 print(loss_msg)
                 #write the data to the log
                 self.config.logger.write(f"{loss_msg}, {self.make_metrics_summary(result, type='log')}", output_to_console=False)
-                if self.config.collect_grads: 
-                    self.show_grad_heatmap(grad_data)
+
+                '''
+                #run the eval loop test
+                result = self.eval_loop(model, test_loader, step=step)
+                #show the metrics on screen
+                if 'visual_results' in result:
+                    print(result['visual results - TEST'])
+                print(self.make_metrics_summary(result, msg='test results ', type='format'))
+                self.config.logger.write(f"step: {step}, test loss mean: {round(result['eval loss'],4)}", output_to_console=False)
+                '''
+
+                #collect loss breakdown
+                if self.config.loss_breakdown and train_loss_breakdown:
+                    self.dump_loss_breakdown(train_loss_breakdown)
 
                 #save the model if the metrics meet the criteria
                 if self.config.model_save and step > self.config.model_min_save_steps:
                     eval_loss = result['eval loss']
-                    model_save_score_current = 0
-                    if eval_loss > 0:
-                        model_save_score_current = self.make_model_save_score(result)
-
-                    if model_save_score_current > model_save_score:
-                        model_early_stop_cnt = 0
-                        model_save_score = model_save_score_current
-                        self.model_manager.save_pretrained(model, self.config.model_colab_folder, self.config.model_file_name)
-                        print(f"Model saved — step={step}, save_score={model_save_score_current:.4f}")
+                    if model_save_score_current == 0:   #eval_loss is None or eval_loss <= 0:
+                        print(f'bad eval loss skipping save evaluation: {eval_loss}')
                     else:
-                        #increment the early stopping counter and exit the train loop if it passes the thd
-                        model_early_stop_cnt += 1
-                        self.config.logger.write(f"Model not saved — step={step}, save_score={model_save_score_current:.4f} < {model_save_score:.4f}")
-                        if model_early_stop_cnt >= self.config.model_early_stopping: 
-                            print("Early Stoppong Triggered")
-                            break
+                        #model_save_score_current = self.make_model_save_score(result)
+                        #self.config.logger.write(f"step: {step}, model_save_score: {round(model_save_score_current,4)}", output_to_console=False)
+                        ########################################################
+                        if not hasattr(self, 'save_score_history'):
+                            self.save_score_history = []
+                            self.ema_score_history = []
+                            self.ema_alpha = self.config.save_score_ema_alpha
+                        # Append current raw score
+                        self.save_score_history.append(model_save_score_current)
+                        # Compute EMA
+                        if len(self.save_score_history) == 1:
+                            smoothed_score = model_save_score_current
+                        else:
+                            prev_ema = self.ema_score_history[-1]
+                            smoothed_score = self.ema_alpha * model_save_score_current + (1 - self.ema_alpha) * prev_ema
+                        self.ema_score_history.append(smoothed_score)
+                        ########################################################
+
+                        if smoothed_score > model_save_score:
+                            model_early_stop_cnt = 0
+                            model_save_score = smoothed_score
+                            self.model_manager.save_pretrained(model, self.config.model_colab_folder, self.config.model_file_name)
+                            self.config.logger.write(f"Model saved — step={step}, raw_score={model_save_score_current:.4f}, smoothed={smoothed_score:.4f}")
+                        else:
+                            #increment the early stopping counter and exit the train loop if it passes the thd
+                            model_early_stop_cnt += 1
+                            self.config.logger.write(f"Model not saved — step={step}, raw_score={model_save_score_current:.4f}, smoothed={smoothed_score:.4f} < {model_save_score:.4f}")
+                            if model_early_stop_cnt >= self.config.model_early_stopping: 
+                                self.config.logger.write("Early Stopping Triggered")
+                                break
+
+
 
             '''
             ###############################################################
@@ -251,10 +295,10 @@ class Trainer:
         ###########################################
         '''
         pbar_train.close()
+
         #load the best model
         if not os.path.exists(self.config.model_colab_path):
             return None
-
         model = self.model_manager.load_pretrained(self.config.model_colab_path, self.config.device)
         #run the final eval and test loop
         result_val = self.eval_loop(model, val_loader)
@@ -262,7 +306,7 @@ class Trainer:
         #write summary to log
         self.config.logger.write(self.make_metrics_summary(result_val, msg='final_val '))
         self.config.logger.write(self.make_metrics_summary(result_test, msg='final_test '))
-        #copy the best model to drive
+        #copy models to drive
         self.model_manager.copy_model_to_drive(self.config.model_colab_folder, self.config.model_full_folder, self.config.model_file_name)
 
         return dict(
@@ -271,26 +315,33 @@ class Trainer:
         )
 
 
+
     def make_model_save_score(self, result):
         '''
         makes the f1 based score for saving the model, favours balanced precision and recall over unbalanced ones
         #the balance calc is reduced in severity by quad root so that balance requirements do not dominate
         '''
-        #do spans
+        # Span score
         p = result['span_metrics']['precision']
         r = result['span_metrics']['recall']
         f1 = result['span_metrics']['f1']
-        balance = (min(p,r) / max(p,r))**(1/4) if max(p,r) > 0 else 0
+        balance = (min(p, r) / max(p, r))**(self.config.balance_reduction_factor) if max(p, r) > 0 else 0
         span_score = f1 * balance
 
-        #do rels
+        # Rel score
         p = result['rel_metrics']['precision']
         r = result['rel_metrics']['recall']
         f1 = result['rel_metrics']['f1']
-        balance = (min(p,r) / max(p,r))**(1/4) if max(p,r) > 0 else 0
+        balance = (min(p, r) / max(p, r))**(self.config.balance_reduction_factor) if max(p, r) > 0 else 0
         rel_score = f1 * balance
-        
-        return (span_score + rel_score) / 2
+
+        # Loss penalty
+        loss = result.get('eval loss')
+        loss_penalty = 1/(1 + loss)
+
+        f1_score  = (span_score + rel_score) /2
+
+        return f1_score   # * loss_penalty
 
 
 
@@ -320,6 +371,18 @@ class Trainer:
         
         return msg
 
+
+    def dump_loss_breakdown(self, train_loss_breakdown):
+        # Compute the average for each key
+        n = len(train_loss_breakdown)
+        avg = {}
+        for k in train_loss_breakdown[0].keys():
+            avg[k] = sum(item[k] for item in train_loss_breakdown) / n
+        # Format and emit one line
+        msg = ', '.join(f"{k}: {v:.2f}" for k, v in avg.items())
+        self.config.logger.write(f"loss breakdown: {msg}", output_to_console=False)
+        # Reset for next window
+        train_loss_breakdown.clear()
 
 
     def check_inf_gradients(self, model):
@@ -396,21 +459,6 @@ class Trainer:
 
 
 
-    def show_grad_heatmap(self, gradient_data):
-        # Prepare data for the heatmap
-        # Convert the dictionary of lists to a 2D array where rows are steps and columns are layers
-        layer_names = list(gradient_data.keys())
-        data = np.array([gradient_data[name] for name in layer_names])
-        # Plotting the heatmap
-        sns.heatmap(data.T, cmap='viridis', xticklabels=5)  # Transpose data to switch rows and columns
-        plt.title('Gradient Norms Heatmap')
-        plt.xlabel('Training Step')
-        plt.ylabel('Model Layers')
-        plt.yticks(ticks=np.arange(len(layer_names)), labels=layer_names, rotation=0)  # Add layer names as y-axis labels
-        plt.show()
-
-
-
 
     def show_visual_results(self, evaluator):
         #here get the eval obs that you want to display from evaluator.all_preds['spans'] and evaluator.all_labels['spans']
@@ -480,9 +528,15 @@ class Trainer:
                     result = model(x, step=step)        #step should be the train step here
 
                 if result is None:
+                    self.config.logger.write(f"Warning: Aborted forward pass at {eval_step}. Skipping...", level='warning')
+                    continue  # Skip step if NaN loss or aborted forward pass
+                elif result == 1:
                     self.config.logger.write(f"Warning: Aborted forward pass (top_k_spans was 0) at {eval_step}. Skipping...", level='warning')
                     continue  # Skip step if NaN loss or aborted forward pass
-                if torch.isnan(result['loss']).any():
+                elif result == 2:
+                    self.config.logger.write(f"Warning: Aborted forward pass (top_k_rels was 0) at {eval_step}. Skipping...", level='warning')
+                    continue  # Skip step if NaN loss or aborted forward pass
+                elif torch.isnan(result['loss']).any():
                     self.config.logger.write(f"Warning: NaN loss detected at step {eval_step}. Skipping...", level='warning')
                     continue
 
@@ -554,6 +608,12 @@ class Trainer:
 
                 if result is None:
                     self.config.logger.write(f"Warning: aborted forward pass at {pred_step}. Skipping...", level='warning')
+                    continue  # Skip step if NaN loss or aborted forward pass
+                elif result == 1:
+                    self.config.logger.write(f"Warning: aborted forward pass (top_k_spans is 0) at {pred_step}. Skipping...", level='warning')
+                    continue  # Skip step if NaN loss or aborted forward pass
+                elif result == 2:
+                    self.config.logger.write(f"Warning: aborted forward pass (top_k_rels is 0) at {pred_step}. Skipping...", level='warning')
                     continue  # Skip step if NaN loss or aborted forward pass
 
                 #make the predictions for the batch and add to the predictor object    

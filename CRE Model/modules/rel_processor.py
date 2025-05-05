@@ -58,17 +58,87 @@ class RelationProcessor():
             return rel_labels.view(batch, -1, self.config.num_rel_types)
 
 
-    def get_rel_labels(self, rel_annotations, orig_map, span_filter_map, span_masks):
+
+    def update_lost_rel_data(self, all_span_ids, orig_map, token_logits, filter_score_span, head_idx_raw, tail_idx_raw, head_cand_idx, tail_cand_idx, lost_rel_penalty, lost_rel_counts, b):
+        '''
+        calculates the lost rel penalty for one relation       
+        '''
+        eps = 1e-8
+        if self.config.token_tagger and self.config.tagging_mode == 'BE':
+            #get the start/end actual of the head/tail span
+            head_start, head_end = all_span_ids[b, orig_map[b][head_idx_raw]]
+            tail_start, tail_end = all_span_ids[b, orig_map[b][tail_idx_raw]]
+            #convert ends to actual
+            head_end = head_end - 1
+            tail_end = tail_end - 1
+            #make the scores
+            B_score_h = token_logits[b, head_start, 0]
+            E_score_h = token_logits[b, head_end,   1]
+            h_label_score = (B_score_h + E_score_h) / 2
+            B_score_t = token_logits[b, tail_start, 0]
+            E_score_t = token_logits[b, tail_end,   1]
+            t_label_score = (B_score_t + E_score_t) / 2
+            #make the penalties
+            h_penalty = -torch.log(torch.sigmoid(h_label_score) + eps)
+            t_penalty = -torch.log(torch.sigmoid(t_label_score) + eps)
+
+        else:
+            raise Exception('not implemented yet for BECO or bfhs')
+        
+        if head_cand_idx == -1 and tail_cand_idx != -1:
+            #increment the lost rel counter for this batch
+            lost_rel_counts[b] += 1
+            #add the lost_rel_penalty
+            #lost_rel_penalty.add(self.config.lost_rel_penalty_incr)    #this doesn't backpropagate
+            lost_rel_penalty = lost_rel_penalty + h_penalty
+        elif head_cand_idx != -1 and tail_cand_idx == -1:
+            #increment the lost rel counter for this batch
+            lost_rel_counts[b] += 1
+            #add the lost_rel_penalty
+            #lost_rel_penalty.add(self.config.lost_rel_penalty_incr)    #this doesn't backpropagate
+            lost_rel_penalty = lost_rel_penalty + t_penalty
+        else:
+            #increment the lost rel counter again as it has double missing spans
+            lost_rel_counts[b] += 2
+            #add the lost_rel_penalty again for double missing spans
+            #lost_rel_penalty.add(2 * self.config.lost_rel_penalty_incr)  #this doesn't backpropagate
+            lost_rel_penalty = lost_rel_penalty + h_penalty + t_penalty
+
+        return lost_rel_penalty, lost_rel_counts
+
+
+
+    def get_rel_labels(self, rel_annotations, orig_map, span_filter_map, all_span_ids, span_masks, token_logits, filter_score_span):
+        '''
+        ok so if mode is tths or both, token_logits will be not None, if we are in bfhs then it will be None
+        if it is None, we use the filter_score_spans as they will be for all possible spans
+        So we have to lookup the missed span in teh all span ids list which we get to with just orig_map
+
+        if it is not None, then we use the token_logits and have to generate the score for all the missed spans
+        The calc will be depending on wheterh we are using BE or BECO for the tagger loss, we can determine this by the last dim of the token_logits BE = 2, BECO = 4
+        So we need the start/end-1 from teh span annotations, I think orig_map[b][head_idx_raw], orig_map[b][tail_idx_raw]
+        Note sure the input is the annoattion head and tail id, we need orig map to map this to the all span ids idx, then we read the start/end idx, then we lookup the logit from token_logits with start and end-1
+        for BE:
+            #dim 0 is the batch and dim 1 is the token idx and dim 2 is the B or E
+            B_scores = logits[valid_B_idx, 0]  # Get B logits at valid_B_idx
+            E_scores = logits[valid_E_idx, 1]  # Get E logits at valid_E_idx
+            pred_span_scores = (B_scores + E_scores) / 2  # Average of B and E logits
+        
+        for BECO:
+            #dim 0 is the batch and dim 1 is the token idx and dim 2 is the B, E, C or O
+            B_scores = logits[valid_B, self.B_class] # Get B logits at valid_B
+            E_scores = logits[valid_E - 1, self.E_class] # Get E logits at valid_E-1 (actual end token)
+            multi_token_scores = (B_scores + E_scores) / 2  # Average of B and E logits
+        '''
         batch, num_spans = span_masks.shape
         device = span_masks.device
 
         #init the lost_rel_counts, lost_rel_penalty tensors and the rel_labels tensor.
         lost_rel_counts =  torch.zeros(batch, dtype=torch.long, device=device)
-        #NOTE: the lost_rel_penalty is for calculting the penalty loss for lost rels, so it needs to be shape (1) float and requires_grad
-        lost_rel_penalty = torch.tensor(0.0, dtype=self.config.torch_precision, device=device, requires_grad=True)
+        lost_rel_penalty = torch.tensor(0.0, dtype=self.config.torch_precision, device=device)
         #initialize the rel_labels
         rel_labels = self.init_rel_labels(batch, num_spans, device)
-
+ 
         #Process each relation and update labels
         #do it in a loop as the number of positive rels are small (typically 0-2 per obs)
         for b in range(batch):
@@ -81,18 +151,14 @@ class RelationProcessor():
                 try:
                     if head_cand_idx != -1 and tail_cand_idx != -1:
                         self.update_rel_labels(rel_labels, b, head_cand_idx, tail_cand_idx, rel_type)
-                    else:    #here we have a lost relation case caused by one or 2 missing spans in num_spans
-                        #self.config.logger.write('lost rel')
-                        #increment the lost rel counter for this batch
-                        lost_rel_counts[b] += 1
-                        #add the lost_rel_penalty
-                        lost_rel_penalty = lost_rel_penalty + self.config.lost_rel_penalty_incr
-                        if head_cand_idx == -1 and tail_cand_idx == -1:   #double the penalty if both spans are missing
-                            #add an extra penalty if both spans are missing causing the lost rel causing the lost rel
-                            lost_rel_penalty = lost_rel_penalty + self.config.lost_rel_penalty_incr
+                    
+                    #do the lost rel processing as one or both of the head/tail spans are missing
+                    ###########################################33
+                    else:
+                        lost_rel_penalty, lost_rel_counts = self.update_lost_rel_data(all_span_ids, orig_map, token_logits, filter_score_span, head_idx_raw, tail_idx_raw, head_cand_idx, tail_cand_idx, lost_rel_penalty, lost_rel_counts, b)
+                    ######################################################3
                 except Exception as e:
                     print(e)
-                
 
         #Flatten tensors for compatibility with downstream processing
         rel_labels = self.flatten_rel_labels(rel_labels)
@@ -128,7 +194,7 @@ class RelationProcessor():
 
 
 
-    def get_rel_tensors(self, span_masks, rel_annotations, orig_map, span_filter_map):
+    def get_rel_tensors(self, all_span_ids, span_masks, rel_annotations, orig_map, span_filter_map, token_logits, filter_score_span):
         """
         Generates relation labels, masks, and IDs for all possible pairs of candidate spans derived from provided span indices.
         
@@ -156,7 +222,7 @@ class RelationProcessor():
             return rel_ids, rel_masks, None, None, None
 
         #get rel_labels if we have labels
-        rel_labels, lost_rel_counts, lost_rel_penalty = self.get_rel_labels(rel_annotations, orig_map, span_filter_map, span_masks) 
+        rel_labels, lost_rel_counts, lost_rel_penalty = self.get_rel_labels(rel_annotations, orig_map, span_filter_map, all_span_ids, span_masks, token_logits, filter_score_span) 
         
         return rel_ids, rel_masks, rel_labels, lost_rel_counts, lost_rel_penalty
 

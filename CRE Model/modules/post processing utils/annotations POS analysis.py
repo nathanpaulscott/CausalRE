@@ -18,9 +18,14 @@ import matplotlib.pyplot as plt
 #main_path = 'D:\\A.Nathan\\1a.UWA24-Hons\\Honours Project\\0a.Code\\0a.Nathan Model\data\\new causal processed mar25\\maven\\old'
 #infile = 'maven - data - short - triggers_for_annotation'
 
-main_path = 'D:\\A.Nathan\\1a.UWA24-Hons\\Honours Project\\0a.Code\\0a.Nathan Model\\data\\final'
-infile = 'mixed_final'
+#main_path = 'D:\\A.Nathan\\1a.UWA24-Hons\\Honours Project\\0a.Code\\0a.Nathan Model\\data\\final'
+#infile = 'mixed_final_for_annotation'
 #infile = 'model_data_semeval_for_annotation'
+
+main_path = 'D:\\A.Nathan\\1a.UWA24-Hons\\Honours Project\\0a.Code\\0a.Nathan Model\\data\\unicausal'
+#infile = 'model_data_ctb_for_annotation'
+#infile = 'model_data_because_for_annotation'
+infile = 'model_data_altlex_for_annotation'
 
 #main_path = 'D:\\A.Nathan\\1a.UWA24-Hons\\Honours Project\\0a.Code\\0a.Nathan Model\\data\\conll04 - spert'
 #infile = 'conll04_nathan_for_annotation'
@@ -122,6 +127,19 @@ def analyze_data(input_data):
     mean_span_width = round(np.mean(span_lengths), 4)
     mean_rel_context_width = round(np.mean(rel_context_lengths), 4)
 
+    total_span_tokens = sum(pos_counts_in_spans.values())
+    total_rel_tokens = sum(pos_counts_in_relations.values())
+
+    mean_pos_perc_per_span = dict(sorted(
+        ((pos, round((counts / total_span_tokens) * 100, 4)) for pos, counts in pos_counts_in_spans.items()),
+        key=lambda item: item[1], reverse=True))
+
+    mean_pos_perc_per_relation = dict(sorted(
+        ((pos, round((counts / total_rel_tokens) * 100, 4)) for pos, counts in pos_counts_in_relations.items()),
+        key=lambda item: item[1], reverse=True))
+
+
+    '''
     # Calculate and sort mean POS counts per span and per relation context
     mean_pos_perc_per_span = dict(sorted(
         ((pos, round(counts / len(input_data['data']), 6)) for pos, counts in pos_counts_in_spans.items()),
@@ -130,7 +148,8 @@ def analyze_data(input_data):
     mean_pos_perc_per_relation = dict(sorted(
         ((pos, round(counts / len(input_data['data']), 6)) for pos, counts in pos_counts_in_relations.items()),
         key=lambda item: item[1], reverse=True))
-
+    '''
+    
     # Ratio of observations with at least one relation
     ratio_with_relations = round(obs_with_relations / len(input_data['data']), 6)
 

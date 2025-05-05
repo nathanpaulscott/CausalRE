@@ -1,8 +1,8 @@
 #####################################################################
 #Run Config
 #####################################################################
-run_type: predict                         #train/predict.  
-predict_split: val                       #the name of the split to use for predictions/inference
+run_type: train                         #train/predict.  
+predict_split: test                       #the name of the split to use for predictions/inference
 predict_folder: preds
 #NOTE:
 #For train you need 3 labeled splits in the data json file (train/val/test) each split needs the tokens key along with the spans and relations keys for the labels. 
@@ -10,12 +10,14 @@ predict_folder: preds
 random_seed: 42
 #display
 eval_step_display: False                     #display the preds for the first batch obs in eval batch idx
-log_step_data: False                    #show the training step data in the logs (not really needed, just log the eval points)
+log_step_data: True                    #show the training step data in the logs (not really needed, just log the eval points)
+loss_breakdown: True
+collect_grads: True                    #true to collect and map gradients for debugging
 #####################################################################
 #Directory Paths
 #####################################################################
 model_folder: "models"                  #location of the models folder
-model_name: "best"                      #pretrained model name => Use "none" to not load a model
+model_name: "test"                      #pretrained model name => Use "none" to not load a model
 #model_name: "semeval-BE-tths-nathan-max_temp_tf"                      #pretrained model name => Use "none" to not load a model
 #model_name: "bfhs-nathan-max_temp_tf" #"model"                      #pretrained model name => Use "none" to not load a model
 #model_name: "BE-tths-nathan-max_temp_tf" #"model"                      #pretrained model name => Use "none" to not load a model
@@ -66,8 +68,16 @@ print_log: True                         #print the log to screen as it is writte
 #data_format: idx                         
 #NOTE: this is the same custom dataset with pruned spans down to the kernel of the event/state, but I leave adjacent words in if they enhance the span meaning, so not pure triggers
 #---------------------------------------
-#TEMP
-data_path: "data/final/mixed_final_for_model_rs129.json" 
+#data_path: "data/final/mixed_final_for_model_rs129.json" 
+#data_format: idx                         #id/idx.  'id' is when the spans and rels have a unique id and the head and tail of the rel reference the span id.  idx is the spert format where there is no id and the rel head/tail reference the span list idx
+#---------------------------------------
+#data_path: "data/final/mixed_final_for_model_tvt_rs129.json" 
+#data_format: idx                         #id/idx.  'id' is when the spans and rels have a unique id and the head and tail of the rel reference the span id.  idx is the spert format where there is no id and the rel head/tail reference the span list idx
+#---------------------------------------
+#data_path: "data/final/mixed_final_for_model_85-8-7_rs129.json" 
+#data_format: idx                         #id/idx.  'id' is when the spans and rels have a unique id and the head and tail of the rel reference the span id.  idx is the spert format where there is no id and the rel head/tail reference the span list idx
+#---------------------------------------
+data_path: "data/final/mixed_final_for_model_85-8-7_rs129_gemini_reformat.json" 
 data_format: idx                         #id/idx.  'id' is when the spans and rels have a unique id and the head and tail of the rel reference the span id.  idx is the spert format where there is no id and the rel head/tail reference the span list idx
 
 
@@ -82,7 +92,9 @@ eval_type: manual                       #skl/manual => whether to use skl metric
 f1_ave: micro                           #micro/macro...  for the metrics
 #loss override
 cosine_loss_override: False             #True/False, if True we use cosine similarity loss for all losses to soften the loss signal with fuzzy matching, i mix this in with the regular loss, I do not see any noticable effect, actually makes it much worse for long span!!!
-cosine_loss_start_step: 1000            #when to switch to cosine loss, use 0 to always use it
+cosine_loss_start_step: 2000            #when to switch to cosine loss, use 0 to always use it
+cosine_alpha: 1                       #loss is added to the span and pred filter/classifier losses with this multiplier
+cosine_beta: 0                       #loss is added to the span and pred filter/classifier losses with this multiplier
 #metrics matching
 matching_loose: True                    #use loose span matching or exact
 matching_tolerance: 0.15                 #span width tolerance for loose matching.  >= 1 => absolute, i.e. +- that many words on each side. <1 is % of each spans width, i.e. 0.15 => for a span of width 10, the tolerance is 1.5 words on each side (so basically 1)
@@ -108,8 +120,8 @@ freeze_encoder: False                   #whether to allow fine tuning of the tra
 bert_shared_unmarked_span_rel: True     #whether to use a separate bert for spans and rels or share it
 hidden_size: 768                        #hidden size of the bert based encoder
 dropout: 0.1      #0.1                      #standard model dropout
-max_seq_len: 200  #130                  #word token limit, this will generally affect the model speed, so keep it as low as possible.  I have this in just a  a protection fro very long sequences coming in
-max_span_width: 80   #60                #max span width in word tokens (10-12 for NER, 40+ for long span event detection)
+max_seq_len: 200  #200                  #word token limit, this will generally affect the model speed, so keep it as low as possible.  I have this in just a  a protection fro very long sequences coming in
+max_span_width: 80   #80                #max span width in word tokens (10-12 for NER, 40+ for long span event detection)
 dump_missed_spans_on_import: True       #ture/false: true => dumps the annotated spans to the log file that could not be used due to the max_seq_len and max_span_width limits
 num_precision: full                     #full/half => the num precision to use for the model => full => 32bit, half=>16bit
 projection_layer_type: ffn   #ffn           #simple/ffn (ffn uses too much memory). for the span_rep and rel_rep generation output layers.  'simple' to just use a simple projection layer for the output or a 'ffn' for a more complex ffn layer.  Not implemented yet, just use 'ffn'
@@ -125,9 +137,9 @@ tagging_mode: BE                        #BE/BECO => BE is Begin-End, multiclass,
 ###############
 #span rep config
 ###############
-width_embedding_size: 100               #hidden size of the span width embedding, spert had 2
-span_mode: nathan                       #firstlast_grapher/firstlast/spert/nathan/attn... used to configure the method used to generate the span reps from the token reps, NEED TO EXPLAIN WHAT EACH ONE DOES   attn needs lots of memory so have to make batch size 1 and clear tensors each batch
-span_win_alpha: 0.2   #0.2              #the alpha used to determine the start/end token windows as a % of the span_width (ceil(span_width*alpha) for nathan's method, use 1 to disable this and just use the first and last tokens
+width_embedding_size: 100             #hidden size of the span width embedding, spert had 2
+span_mode: nathan                      #firstlast_grapher/firstlast/spert/nathan/attn... used to configure the method used to generate the span reps from the token reps, NEED TO EXPLAIN WHAT EACH ONE DOES   attn needs lots of memory so have to make batch size 1 and clear tensors each batch
+span_win_alpha: 0.2   #0.2            #the alpha used to determine the start/end token windows as a % of the span_width (round(span_width*alpha) for nathan's method, use 1 to disable this and just use the first and last tokens.
 use_width_embedding: True
 use_cls_embedding: True
 #span marking config
@@ -152,19 +164,23 @@ span_score_percentile: 0                #not used for now, code is wrong....only
 rel_score_percentile: 0                 #not used for now, code is wrong....only include rels with a score in this percentile, increase this to prune more, decrease to prune less (0, 100).  This basically controls the size of top_k_rels
 filter_dropout: True                    #whether to use dropout before the binary filter head
 filter_head_type: single                #single/double => whether to use a single class binary filter head or double class binary filter head for the span/rel filtering, both work in similar ways, double was used in graphER
-
+overlap_thd: 0.8   #0.8                 #range (0 to 1) spans with this much overlap are considered conflicted (one is potentially redundant), this is a normalised overlap metric so it ranges from 0 = no overlap to 1 = identical
+post_model_prune: True                  #true/false whether to prune redundant spans and hanging rels after the model forward pass
+prune_step_limit: 3000                  #when to start doing this
+overwrite_masks: False                  #whether to overwrite hte span and rel masks after the pruning which then goes into the classifier head loss calcs, recommend do not overwrite
 ##############
 #lost rel handling
 ##############
-lost_rel_alpha: 1                       #0 to inf, global adjustment of the lost rel penalty to get the lost rel loss => higher penalises the model more for missing spans causing lost rels (in non-teacher forced mode)
-
+lost_rel_alpha: 0.5   #0.5                       #0 to inf, global adjustment of the lost rel penalty to get the lost rel loss => higher penalises the model more for missing spans causing lost rels (in non-teacher forced mode)
+redundant_span_alpha: 1   #1
+hanging_rel_alpha: 1    #1
 ###############
 #rel rep config
 ###############
-rel_mode: between_window_context              #no_context/between_context/window_context/between_window_context => add context reps in (no context, from tokens between spans, from tokens in windows before/after each span)  => only beteween works well
+rel_mode: between_window_context       #no_context/between_context/window_context/between_window_context => add context reps in (no context, from tokens between spans, from tokens in windows before/after each span)  => only beteween works well
 rel_no_context_rep: emb                #zero/emb => whether to replace the context reps in the case of no valid context tokens, to all zero (zero) or a learned no context embedding (emb)
-rel_context_pooling: crossattn               #max/selfattn/crossattn/crossattn_pure => how to pool the valid context tokens to get one context rep.  max => max pool them, selfattn just use a pooler token to pool the context tokens then concat with head and tail reps, crossattn(pure) => use attention pooling w.r.t the concatenated and reprojected head and tail spans as the query (for_pure: no head and tail concat after this)
-rel_window_size: 15                    #tokens or subtoken window size for the window algo
+rel_context_pooling: crossattn         #max/selfattn/crossattn/crossattn_pure => how to pool the valid context tokens to get one context rep.  max => max pool them, selfattn just use a pooler token to pool the context tokens then concat with head and tail reps, crossattn(pure) => use attention pooling w.r.t the concatenated and reprojected head and tail spans as the query (for_pure: no head and tail concat after this)
+rel_window_size: 50   #15              #tokens or subtoken window size for the window algo
 modified_span_reps_for_rel_reps: True  #whether to use just the span reps without the width embedding or cls embedding when building the rel reps, if False, it just reuses the span reps
 #rel marking config
 use_rel_marker: False                   #the top_k_rels will be marked and run through bert again to get enriched rel_reps => slow but good
@@ -194,29 +210,29 @@ graph_filter_head_type: single          #single/double => whether to use a singl
 #####################################################################
 #Training Parameters
 #####################################################################
-num_steps: 20000                        #how many batches to run through the system, the total batches in the dataset is going to be much smaller, so it just repeats the batches
-eval_every: 100                         #eval every 'eval_every' batches
-model_min_save_steps: 3000
-model_min_eval_steps: 300
-model_early_stopping: 25                 #if the score doesn't increase for this many eval runs, then exit train loop, 500 eval step, use 5, 250 eval step use 10
-train_batch_size: 2  #4                  #num obs per train batch
+num_steps: 30000                        #how many batches to run through the system, the total batches in the dataset is going to be much smaller, so it just repeats the batches
+eval_every: 50     #200                 #eval every 'eval_every' batches
+model_min_save_steps: 5000 #4000
+model_min_eval_steps: 1000
+model_early_stopping: 50 #12          #if the score doesn't increase for this many eval runs, then exit train loop, 500 eval step, use 5, 250 eval step use 10
+balance_reduction_factor: 1  #2           #(make it less than 1), closer to 0 to lessen the effect, closer to 1 to enhance the focus on balance between p and r
+save_score_ema_alpha: 1  # 0.6             #smoothes the early stopping calc a bit
+train_batch_size: 2  #4                 #num obs per train batch
 accumulation_steps: 1 #1                #accumulate losses for this many batches, so effective batch size is accumulation_steps*train_batch_size
-eval_batch_size: 10 #6                  #num obs per val/test batch
+eval_batch_size: 4 #6                   #num obs per val/test batch
 opt_type: 2                             #1/2 => 1 use the same lr and wd for all params, 2 => use specific lr/wds 
 opt_weight_decay:  0.01                 #adamw optimiser weight decay
 lr_encoder_span: 1e-5  #1e-5                 #this is the learning rate used for the tranformer encoder
 lr_encoder_rel: 1e-5  #1e-5                 #this is the learning rate used for the tranformer encoder
 lr_encoder_marker: 1e-5  #1e-5                 #this is the learning rate used for the tranformer encoder
 lr_others: 5e-5   #5e-5                 #this is the learning rate used for all other weights other than the transformer encoder
-warmup_ratio: 0.3                       #warmup_steps will thus be warmup_ratio * num_steps
-scheduler_type: 'constant' #linear                  #'cosine', 'linear', 'constant', 'polynomial', 'inverse_sqrt'
+warmup_ratio: 0.1                       #warmup_steps will thus be warmup_ratio * num_steps
+scheduler_type: linear #'constant' #linear                  #'cosine', 'linear', 'constant', 'polynomial', 'inverse_sqrt'
 loss_reduction: mean                    #mean/sum => whether to use loss reduction of sum or mean as well as whether to mean the accumulation losses or not before backprop => sum will have large grads, mean will have small grads
 clear_tensor_steps: 10    #10                 #clear the cuda cache and gc collect, it actually runs del tensors each step (which is fast)
-grad_clip: 1     #1                      #clip the grads to this max_norm => False to disable, do not set too high training gets unstable, 1 is good
-collect_grads: False                    #true to collect and map gradients for debugging
+grad_clip: 10     #1                      #clip the grads to this max_norm => False to disable, do not set too high training gets unstable, 1 is good
 span_loss_mf: 1                         #mult the span loss by this much
 rel_loss_mf: 1                         #mult the rel loss by this much
-
 #####################################################################
 #Advanced Training Settings
 #####################################################################
@@ -235,6 +251,17 @@ span_neg_sampling: False                 #True/False
 rel_neg_sampling_limit: 100              #max number of neg samples per batch obs
 rel_neg_sampling: False                  #True/False
 
-#I am confused, the model seems to train well, and the eval preds I see on teh screen look good, but when I do predict with the trained model, I get 10x more spans and rels than the labels, this makes no sense
-#need to think how  Ican shed light on what is going on?
-#is it the prep and add batch stuff as it is different in the predictor and evaluator, check this, maybe just use the eval version?!?!?!?!?!?!
+
+
+#Latest Late Apr2025:
+#So I have implemented penatlies that send grads back to assist with nuding the model.  I don't thin they hurt but it is also not clear if they have any benefit whatsoever.  Basically the model does a good enough job wiht its current losses.
+#To quantify the benfit is difficult as the runs are different each time I do it, so forget that.
+
+#I have gone with a good config and will just do some break down of the resutls and the training.  For the most part, the model turns out to be a not bad first pass annotator, misses a few relations but the snpans are not bad, in many cases better than the human.
+#end of story
+
+#I have not got tot eh bottom of these things:
+#1 why it gives differtn results each time I run it despite using all the random seed settign stuff
+#2 why there is this weird hump in loss around 3-4K steps
+#3 why the val F1 keep improving while the val loss increases?  I would have thought there would have been a dropoff, but in many cases not.  Not sure what to do in terms of picking the optimal model as the F1 at the lowpoint of val loss is garbage
+#I do notice on the grads that they drop to a minimum variance aroudn 2-3K steps then the noise ramps up but the average level drops.  This is for unclipped.  No explanation

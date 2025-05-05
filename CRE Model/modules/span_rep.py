@@ -153,23 +153,23 @@ class Spert(nn.Module):
         '''
         num_spans = span_ids.shape[1]
         # Get maxpooled span representations
-        span_maxpool_reps = extract_span_reps(token_reps, 
-                                              span_ids, 
-                                              span_masks, 
-                                              mode='maxpool',
-                                              neg_limit = neg_limit)
+        span_reps = extract_span_reps(token_reps, 
+                                      span_ids, 
+                                      span_masks, 
+                                      mode='maxpool',
+                                      neg_limit = neg_limit)
         
         # Get width embeddings
         if self.width_embeddings is not None:
             width_emb = self.width_embeddings(span_widths)
-            # Combine components
-            span_reps = torch.cat([span_maxpool_reps, width_emb], dim=-1)
+            #Combine components
+            span_reps = torch.cat([span_reps, width_emb], dim=-1)
         
         #add cls reps if required
         if self.cls_flag and cls_reps is not None:
             #Expand cls_reps
             cls_expanded = cls_reps.unsqueeze(1).expand(-1, num_spans, -1)
-            span_reps = torch.cat([cls_expanded, span_reps], dim=-1)
+            span_reps = torch.cat([span_reps, cls_expanded], dim=-1)
 
         span_reps = self.out_project(span_reps)
         return span_reps    #(batch, num_spans, hidden)
@@ -266,6 +266,8 @@ class SpanAttentionPoolerSelf(nn.Module):
 
     def forward(self, token_reps, span_content_masks=None):
         """
+        This basically does self attention over each particular span tokens and extracts the cls embedding from the output as the pooled span representation
+
         token_reps: [batch, seq_len, hidden]
         span_content_masks: [batch, num_spans, seq_len] (bool) - True = valid token, False = pad => these show which tokens are in each span
         """
@@ -282,9 +284,9 @@ class SpanAttentionPoolerSelf(nn.Module):
         qkv = token_reps_mod.unsqueeze(1).repeat(1, num_spans, 1, 1)  # [batch, num_spans, seq_len + 1, hidden]
         qkv = qkv.reshape(batch * num_spans, seq_len + 1, hidden)  # [batch * num_spans, seq_len + 1, hidden]
 
-        #Run hte attention depending on the context masks
+        #Run the attention depending on the context masks
         if span_content_masks is not None:
-            # Adjust context masks to account for the CLS token
+            #add the cls to the mask
             cls_mask = torch.ones(batch, num_spans, 1, dtype=torch.bool, device=token_reps.device)
             span_content_masks_mod = torch.cat([cls_mask, span_content_masks], dim=-1)  # [batch, num_spans, seq_len + 1]
             key_padding_mask = ~span_content_masks_mod.reshape(batch * num_spans, seq_len + 1)  # [batch * num_spans, seq_len + 1]
@@ -298,16 +300,18 @@ class SpanAttentionPoolerSelf(nn.Module):
                                                          key              = valid_qkv,
                                                          value            = valid_qkv,
                                                          key_padding_mask = valid_key_padding_mask)   # [batch * num_spans, seq_len + 1, hidden]
+                #extract only the cls embedding as the pooled output
                 valid_span_reps = valid_span_reps[:, 0, :]    # [batch * num_spans, 1, hidden]
                 valid_span_reps = valid_span_reps.squeeze(1)   # [batch * num_spans, hidden]
                 span_reps[valid_indices] = valid_span_reps
 
         else:
-            # Apply attention without a mask
+            # Apply attention without a mask, so this pools all token reps to the cls embedding => not sure why you woudl ever do this...
             span_reps = self.context_self_attn(query            = qkv,
                                                key              = qkv,
                                                value            = qkv,
                                                key_padding_mask = None)   # [batch * num_spans, seq_len + 1, hidden]
+            #extract only the cls embedding as the pooled output
             span_reps = span_reps[:, 0, :]    # [batch * num_spans, 1, hidden]
             span_reps = span_reps.squeeze(1)   # [batch * num_spans, hidden]
 
@@ -453,6 +457,7 @@ def extract_span_reps(token_reps, span_ids, span_masks, mode='start_end', neg_li
         win = torch.ones_like(span_lengths)
     else:
         # Calculate the window size based on alpha otherwise
+        #round to the nearest integer
         raw_win = torch.round(span_lengths.float() * alpha).long()
         # Clamp the window size to be at least 1 and at most equal to span_lengths
         win = raw_win.clamp(min=1)

@@ -369,7 +369,7 @@ class RelRepContextBase(nn.Module, ABC):
             rel_reps = context_reps
         else:
             #concat everything
-            rel_reps = torch.cat([head_reps, tail_reps, context_reps], dim=-1)  # (batch, num_rels, 3 * hidden)
+            rel_reps = torch.cat([head_reps, context_reps, tail_reps], dim=-1)  # (batch, num_rels, 3 * hidden)
 
         #Apply output layer and reshape.
         return self.out_layer(rel_reps)     # (batch, num_rels, hidden)

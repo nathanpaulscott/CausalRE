@@ -233,7 +233,8 @@ class BECOTagger(BaseTagger):
         # Extract indices where mask is True
         valid_B_idx, valid_E_idx = valid_mask.nonzero(as_tuple=True)
         #Generate valid multi-token spans
-        #NOTE: we are converting to actual + 1 ends here
+        #NOTE: we are converting to actual + 1 ends here for valid_E
+        #NOTE: valid_E_idx is actual
         valid_B, valid_E = BC_indices[valid_B_idx], EC_indices[valid_E_idx] + 1  # Convert E to actual+1
         multi_token_spans = torch.stack([valid_B, valid_E], dim=1) if valid_B.numel() else torch.empty((0, 2), dtype=torch.long, device=self.device)
         multi_token_scores = torch.empty((0,), dtype=logits.dtype, device=self.device)
@@ -341,7 +342,8 @@ class BECOTagger(BaseTagger):
             token_labels = self.make_token_labels(token_masks, span_ids, span_masks, span_labels)
             tagger_loss = cross_entropy_loss(token_logits, token_labels, token_masks, reduction=reduction)
 
-        #add the tagger_loss
+        #add the tagger_loss and token logits
+        result['token_logits'] = token_logits    #(batch, num_tokens, 4)
         result['tagger_loss'] = tagger_loss
         return result
     
@@ -391,7 +393,8 @@ class BETagger(BaseTagger):
         valid_mask = (E_exp >= B_exp) & ((E_exp - B_exp) < self.max_span_width)
         valid_B_idx, valid_E_idx = valid_mask.nonzero(as_tuple=True)
         #Generate valid spans
-        #NOTE: we are converting to actual + 1 ends here
+        #NOTE: we are converting to actual + 1 ends here for valid_E
+        #NOTE: valid_E_idx is still actual
         valid_B, valid_E = B_indices[valid_B_idx], E_indices[valid_E_idx] + 1
         
         pred_span_ids = torch.empty((0, 2), dtype=torch.long, device=self.device)
@@ -478,7 +481,8 @@ class BETagger(BaseTagger):
             token_labels = self.make_token_labels(token_masks, span_ids, span_masks, span_labels)
             tagger_loss = binary_cross_entropy_loss(token_logits, token_labels, token_masks, reduction=reduction)
 
-        #add the tagger_loss
+        #add the tagger_loss and token logits
+        result['token_logits'] = token_logits    #(batch, num_tokens, 2)
         result['tagger_loss'] = tagger_loss
         return result
 
