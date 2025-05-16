@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
+import random
 from pathlib import Path
 from typing import Tuple, List, Dict, Union
 import os, re, math
@@ -101,7 +102,8 @@ class Trainer:
         #Clip gradients => NOTE: this needs adjustment for use with mixed precision
         raw_norm = None
         if self.config.grad_clip:
-            raw_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=self.config.grad_clip)
+            clip_val = max(1.0, self.config.grad_clip * (1 - step / (self.config.num_steps/2)))
+            raw_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=clip_val)
         
         #get lost rel count sum for info
         lost_rel_cnt = result['lost_rel_counts'].sum().item()
@@ -206,7 +208,21 @@ class Trainer:
                 train_loss_breakdown.append(loss_breakdown)
 
             #runs eval and saves the model          
-            if step > self.config.model_min_eval_steps and (step + 1) % eval_every == 0:
+            #if step > self.config.model_min_eval_steps and (step + 1) % eval_every == 0:
+            if step > self.config.model_min_eval_steps and (step + 1) % int(random.gauss(eval_every, eval_every*0.15)) == 0:    #randomise the eval points a bit
+                '''
+                #run the eval loop on the test set
+                result = self.eval_loop(model, test_loader, step=step)
+                #show the metrics on screen
+                if 'visual_results' in result:
+                    print(result['visual results - TEST'])
+                print(self.make_metrics_summary(result, msg='test results ', type='format'))
+                test_loss_msg = f"step: {step}, test loss mean: {round(result['eval loss'],4)}"
+                self.config.logger.write(f"{test_loss_msg}, {self.make_metrics_summary(result, type='log')}", output_to_console=False)
+                #get the test loss breakdown, its called the eval_loss breadown in the result!!!
+                if self.config.loss_breakdown:
+                    self.dump_loss_breakdown(result['eval_loss_breakdown'], prefix_msg='test loss breakdown')
+                '''
                 #run the eval loop
                 result = self.eval_loop(model, val_loader, step=step)
                 #get the train loss mean
@@ -222,20 +238,10 @@ class Trainer:
                 print(loss_msg)
                 #write the data to the log
                 self.config.logger.write(f"{loss_msg}, {self.make_metrics_summary(result, type='log')}", output_to_console=False)
-
-                '''
-                #run the eval loop test
-                result = self.eval_loop(model, test_loader, step=step)
-                #show the metrics on screen
-                if 'visual_results' in result:
-                    print(result['visual results - TEST'])
-                print(self.make_metrics_summary(result, msg='test results ', type='format'))
-                self.config.logger.write(f"step: {step}, test loss mean: {round(result['eval loss'],4)}", output_to_console=False)
-                '''
-
-                #collect loss breakdown
-                if self.config.loss_breakdown and train_loss_breakdown:
+                #collect the loss breakdowns
+                if self.config.loss_breakdown:
                     self.dump_loss_breakdown(train_loss_breakdown)
+                    self.dump_loss_breakdown(result['eval_loss_breakdown'], prefix_msg='eval loss breakdown')
 
                 #save the model if the metrics meet the criteria
                 if self.config.model_save and step > self.config.model_min_save_steps:
@@ -243,8 +249,6 @@ class Trainer:
                     if model_save_score_current == 0:   #eval_loss is None or eval_loss <= 0:
                         print(f'bad eval loss skipping save evaluation: {eval_loss}')
                     else:
-                        #model_save_score_current = self.make_model_save_score(result)
-                        #self.config.logger.write(f"step: {step}, model_save_score: {round(model_save_score_current,4)}", output_to_console=False)
                         ########################################################
                         if not hasattr(self, 'save_score_history'):
                             self.save_score_history = []
@@ -281,7 +285,7 @@ class Trainer:
             prof.step()  # Inform profiler that one step (iteration) is complete
             
             #TEMP, break for quick analysis of the profiler
-            if step == 25:
+            if step > 25:
                 break
             ###############################################################
             ''' 
@@ -300,6 +304,7 @@ class Trainer:
         if not os.path.exists(self.config.model_colab_path):
             return None
         model = self.model_manager.load_pretrained(self.config.model_colab_path, self.config.device)
+
         #run the final eval and test loop
         result_val = self.eval_loop(model, val_loader)
         result_test = self.eval_loop(model, test_loader)
@@ -308,6 +313,16 @@ class Trainer:
         self.config.logger.write(self.make_metrics_summary(result_test, msg='final_test '))
         #copy models to drive
         self.model_manager.copy_model_to_drive(self.config.model_colab_folder, self.config.model_full_folder, self.config.model_file_name)
+
+        #run predict on the best model
+        self.config.logger.write('running predict with best model')
+        #force model to predict mode
+        model.config.run_type = 'predict'
+        result = self.predict_loop(model, test_loader)
+        pred_result_file = join_paths(self.config.predict_folder, f'pred_{self.config.model_name}.json')
+        pred_analysis_file = join_paths(self.config.predict_folder, f'pred_analysis_{self.config.model_name}.txt')
+        save_to_json(result, pred_result_file)
+        process_preds(pred_result_file, pred_analysis_file)
 
         return dict(
             result_val = result_val,
@@ -321,27 +336,29 @@ class Trainer:
         makes the f1 based score for saving the model, favours balanced precision and recall over unbalanced ones
         #the balance calc is reduced in severity by quad root so that balance requirements do not dominate
         '''
+        def make_score(p, r, f1, k):
+            balance = min(p, r) / max(p, r) if max(p, r) > 0 else 0
+            balance = balance**self.config.balance_reduction_factor
+            return f1 * balance
+
         # Span score
         p = result['span_metrics']['precision']
         r = result['span_metrics']['recall']
         f1 = result['span_metrics']['f1']
-        balance = (min(p, r) / max(p, r))**(self.config.balance_reduction_factor) if max(p, r) > 0 else 0
-        span_score = f1 * balance
-
+        span_score = make_score(p,r,f1, self.config.balance_reduction_factor) 
         # Rel score
         p = result['rel_metrics']['precision']
         r = result['rel_metrics']['recall']
         f1 = result['rel_metrics']['f1']
-        balance = (min(p, r) / max(p, r))**(self.config.balance_reduction_factor) if max(p, r) > 0 else 0
-        rel_score = f1 * balance
+        rel_score = make_score(p,r,f1, self.config.balance_reduction_factor) 
+
+        save_score  = (span_score + rel_score) / 2
 
         # Loss penalty
-        loss = result.get('eval loss')
-        loss_penalty = 1/(1 + loss)
+        #loss = result.get('eval loss')
+        #loss_penalty = 1/(1 + loss)
 
-        f1_score  = (span_score + rel_score) /2
-
-        return f1_score   # * loss_penalty
+        return save_score   # * loss_penalty
 
 
 
@@ -372,17 +389,17 @@ class Trainer:
         return msg
 
 
-    def dump_loss_breakdown(self, train_loss_breakdown):
+    def dump_loss_breakdown(self, loss_breakdown, prefix_msg='loss breakdown'):
         # Compute the average for each key
-        n = len(train_loss_breakdown)
+        n = len(loss_breakdown)
         avg = {}
-        for k in train_loss_breakdown[0].keys():
-            avg[k] = sum(item[k] for item in train_loss_breakdown) / n
+        for k in loss_breakdown[0].keys():
+            avg[k] = sum(item[k] for item in loss_breakdown) / n
         # Format and emit one line
         msg = ', '.join(f"{k}: {v:.2f}" for k, v in avg.items())
-        self.config.logger.write(f"loss breakdown: {msg}", output_to_console=False)
+        self.config.logger.write(f"{prefix_msg}: {msg}", output_to_console=False)
         # Reset for next window
-        train_loss_breakdown.clear()
+        loss_breakdown.clear()
 
 
     def check_inf_gradients(self, model):
@@ -515,6 +532,7 @@ class Trainer:
         total_eval_steps = len(data_loader)
         visual_results = ''
         eval_loss = []
+        eval_loss_breakdown = []
         model.eval()
         with torch.no_grad():
             #for x in tqdm(eval_loader, desc=f"Eval({total_eval_steps} batches)", leave=True):
@@ -560,15 +578,21 @@ class Trainer:
                     clear_gpu_tensors([v for k,v in result.items() if k != 'loss'], gc_collect=True, clear_cache=True)   #slows it down if true
                 
                 eval_loss.append(result['loss'].detach().cpu().item())
-
+                if self.config.loss_breakdown:
+                    eval_loss_breakdown.append(result['loss_breakdown'])
             pbar_eval.close()
 
+
+        #post loop processing
         #run the evaluator on whole dataset results (stored in the evaluator object) and return a dict with the metrics and preds
         result = evaluator.evaluate()
         #add the visual results and the eval mean loss
         if self.config.eval_step_display:
             result['visual results'] = self.show_visual_results(evaluator)
         result['eval loss'] = sum(eval_loss) / len(eval_loss) if len(eval_loss) > 0 else -1
+        if self.config.loss_breakdown:
+            result['eval_loss_breakdown'] = eval_loss_breakdown
+
         return result
     ##############################################################
     ##############################################################
@@ -580,7 +604,7 @@ class Trainer:
     ##############################################################
     #PREDICT
     ##############################################################
-    def predict_loop(self, model, loaders):
+    def predict_loop(self, model, data_loader):
         '''
         This is the predict loop, the run_type param is 'predict' so the model will run without labels and not calculate loss
         The loss returned from the model will be None
@@ -588,7 +612,6 @@ class Trainer:
         self.config.logger.write('Starting the Predict Loop')
 
         #read some params from config
-        data_loader = loaders['predict']
         #make the predictor and evaluators
         predictor = Predictor(self.config)
         evaluator = make_evaluator(self.config)
@@ -688,7 +711,7 @@ class Trainer:
             #this has the results_eval and result_test in a dict
 
         elif self.config.run_type == 'predict': 
-            result = self.predict_loop(model, loaders)
+            result = self.predict_loop(model, loaders['predict'])
             pred_result_file = join_paths(self.config.predict_folder, f'pred_{self.config.model_name}.json')
             pred_analysis_file = join_paths(self.config.predict_folder, f'pred_analysis_{self.config.model_name}.txt')
             save_to_json(result, pred_result_file)

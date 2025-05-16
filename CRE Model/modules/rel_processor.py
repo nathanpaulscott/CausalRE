@@ -82,8 +82,16 @@ class RelationProcessor():
             h_penalty = -torch.log(torch.sigmoid(h_label_score) + eps)
             t_penalty = -torch.log(torch.sigmoid(t_label_score) + eps)
 
+        elif self.config.span_filtering_type == 'bfhs':
+            #just use the filter span scores for the penalty
+            # use binary filter head score for BFHS
+            h_score = filter_score_span[b, orig_map[b][head_idx_raw]]
+            t_score = filter_score_span[b, orig_map[b][tail_idx_raw]]
+            h_penalty = -torch.log(torch.sigmoid(h_score) + eps)
+            t_penalty = -torch.log(torch.sigmoid(t_score) + eps)
+        
         else:
-            raise Exception('not implemented yet for BECO or bfhs')
+            raise Exception('not implemented yet for both or tths:BECO, current tagger flag: {self.config.token_tagger}, current token tagging mode: {self.config.tagging_mode}')
         
         if head_cand_idx == -1 and tail_cand_idx != -1:
             #increment the lost rel counter for this batch

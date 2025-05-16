@@ -18,19 +18,14 @@ from .layers_transformer_encoder_hf import TransformerEncoderHF
 from .layers_token_tagging import TokenTagger
 from .layers_filtering import FilteringLayerBinaryDouble, FilteringLayerBinarySingle
 from .layers_other import LstmSeq2SeqEncoder, TransformerEncoderTorch, GraphEmbedder, GraphTransformerModel, OutputLayer
-from .loss_functions import classification_loss, cosine_similarity_loss
-from .span_marker import SpanMarker
-from .rel_marker import RelMarker
+from .loss_functions import classification_loss
 from .utils import clear_gpu_tensors
 
 from .span_rep import SpanRepLayer
-#from .span_rep_old import SpanRepLayer
 
 from .rel_processor import RelationProcessor
-#from .rel_processor_old import RelationProcessor
 
 from .rel_rep import RelationRepLayer
-#from .rel_rep_old import RelationRepLayer
 
 
 
@@ -47,17 +42,8 @@ class Model(nn.Module):
         else:
             self.transformer_encoder_span = TransformerEncoderHF(self.config)
             self.transformer_encoder_rel = TransformerEncoderHF(self.config)
-
-        #get the bert instance for the marker
-        self.transformer_encoder_marker = TransformerEncoderHF(self.config)
-
-        #make the span/relmarker if required
-        if self.config.use_span_marker:
-            self.span_marker = SpanMarker(self.transformer_encoder_marker, self.config)
-        if self.config.use_rel_marker:
-            self.rel_marker = RelMarker(self.transformer_encoder_marker, self.config)
         
-        #bilstem layer to mix the embeddings around even more
+        #bilstm layer to mix the embeddings around even more
         if self.config.use_lstm:
             self.rnn = LstmSeq2SeqEncoder(input_size      = self.config.hidden_size,
                                           hidden_size     = self.config.hidden_size // 2,
@@ -613,7 +599,6 @@ class Model(nn.Module):
 
 
 
-
     def prune_hanging_rels(self, rel_ids, logits_span, span_masks, rel_masks):
         """
         Remove any relation whose head or tail span was either
@@ -646,7 +631,6 @@ class Model(nn.Module):
         hanging_masks = rel_masks & ~keep_rel
 
         return new_rel_masks, hanging_masks
-
 
 
 
@@ -737,6 +721,7 @@ class Model(nn.Module):
         return new_masks, redundant
 
 
+
     ##################################################################################
     ##################################################################################
     ##################################################################################
@@ -795,31 +780,6 @@ class Model(nn.Module):
         prune_loss        = torch.tensor(0., device=self.device)  # scalar tensor
         token_logits = None
         span_logits = None
-
-        #get the cosine similarity flag
-        cosine_flag = self.training and self.config.cosine_loss_override and self.step > self.config.cosine_loss_start_step
-        #prep for cosine similarity analysis if needed
-        if cosine_flag:
-            #raise Exception('xxxxxxxxxxxxxx')
-            #disable teacher forcing for cosine similarity loss
-            self.config.span_force_pos = 'never'
-            #get span label data
-            label_span_ids, label_span_masks, label_span_labels, label_span_reps = self.make_span_label_data(token_reps       = token_reps,
-                                                                                                            cls_reps         = cls_reps, 
-                                                                                                            span_annotations = span_annotations, 
-                                                                                                            neg_limit        = -self.config.num_limit, 
-                                                                                                            alpha            = self.config.span_win_alpha)
-            #get rel label data
-            label_rel_ids, label_rel_masks, label_rel_labels, label_rel_reps = self.make_rel_label_data(token_reps      = token_reps,
-                                                                                                        token_masks     = token_masks,
-                                                                                                        label_span_reps = label_span_reps,
-                                                                                                        label_span_ids  = label_span_ids,
-                                                                                                        rel_annotations = rel_annotations, 
-                                                                                                        neg_limit       = -self.config.num_limit,
-                                                                                                        cls_reps        = None)    #not used at moment
-
-
-
 
         #######################################################
         # SPANS ###############################################
@@ -923,27 +883,6 @@ class Model(nn.Module):
         ############################
         #END OF BINARY FILTER HEAD
         ############################
-
-        #cosine loss override
-        #we override the filter_loss_span with a cosine loss
-        #NOTE: the span_reps and label_span_Reps do NOT need to be aligned, and TF should be disabled
-        if cosine_flag:
-            #raise Exception('xxxxxxxxxxxxxx')
-            cosine_loss_span = cosine_similarity_loss(
-                pred_reps  = span_reps, 
-                gold_reps  = label_span_reps,
-                neg_limit  = -self.config.num_limit,
-                pred_labels = None, #do binary similarity    #span_labels,
-                gold_labels = None, #do binary similarity    #label_span_labels,
-                pred_masks = span_masks,
-                gold_masks = label_span_masks)
-            filter_loss_span = filter_loss_span * self.config.cosine_beta + cosine_loss_span * self.config.cosine_alpha
-
-        #this runs the span marker code to make better span embeddings from the shortlist
-        #NOTE it can't handle top_k_spans more than about 20, but test it
-        if self.config.use_span_marker:
-            #make enriched span_reps
-            span_reps = self.span_marker(tokens, span_ids, span_masks)
 
         ###############################################################
         # RELATIONS ###################################################
@@ -1053,26 +992,6 @@ class Model(nn.Module):
         rel_ids    = rel_ids[self.batch_ids, rel_idx_to_keep]     #(batch, top_k_rels, 2) int
         rel_labels = rel_labels[self.batch_ids, rel_idx_to_keep] if run_type_is_train else None     #(batch, top_k_rels) int for unilabel or (batch, top_k_rels, num rel types) int for multilabel 
 
-        #cosine loss override
-        #we override the filter_loss_rel with a cosine loss
-        #NOTE: the rel_reps and label_rel_reps do NOT need to be aligned, and TF should be disabled
-        if cosine_flag:
-            #raise Exception('xxxxxxxxxxxxxx')
-            cosine_loss_rel = cosine_similarity_loss(pred_reps  = rel_reps, 
-                                                     gold_reps  = label_rel_reps,
-                                                     neg_limit  = -self.config.num_limit,
-                                                     pred_labels = None,   #do binary similarity    #rel_labels,
-                                                     gold_labels = None,   #do binary similarity    #label_rel_labels,
-                                                     pred_masks = rel_masks,
-                                                     gold_masks = label_rel_masks)
-            filter_loss_rel = filter_loss_rel * self.config.cosine_beta + cosine_loss_rel * self.config.cosine_alpha
-
-        #this runs the rel marker code to make better rel embeddings from the shortlist
-        #NOTE it can't handle top_k_rels more than about 30, but test it
-        if self.config.use_rel_marker:
-            #make enriched rel_reps
-            rel_reps = self.rel_marker(tokens, rel_ids, span_ids, rel_masks)
-
         #########################################################
         #the graph transformer section
         #########################################################
@@ -1133,25 +1052,35 @@ class Model(nn.Module):
         logits_span = self.output_head_span(node_reps)  # Shape: (batch, top_k_spans, num_span_types)
         logits_rel = self.output_head_rel(edge_reps)   # Shape: (batch, top_k_rels, num_rel_types)
 
+        ########################################################################
+        #all this stuff is not really critical
         #do the post model pruning
-        if self.config.post_model_prune and self.training and self.step > self.config.prune_step_limit:
+        #this is for the training with the train set case where we are calculating gradients
+        if self.config.consistency_penalties_train and self.training and self.step > self.config.penalty_step_limit:
             #remove redundant spans and make the penalty
             span_masks_mod, redundant_masks = self.prune_redundant_spans(span_ids, logits_span, span_labels, span_masks, overlap_thd=self.config.overlap_thd)
             span_scores = torch.sigmoid(logits_span.squeeze(-1))   #unilabel scores
-            redundant_penalty = span_scores[redundant_masks].sum()
-            prune_loss = prune_loss + self.config.redundant_span_alpha * redundant_penalty
-
+            redundant_span_penalty = span_scores[redundant_masks].sum()
             #remove hanging rels and make the penalty
-            rel_masks_mod, hanging_masks = self.prune_hanging_rels(rel_ids, logits_span, span_masks_mod, rel_masks)
+            _, hanging_masks = self.prune_hanging_rels(rel_ids, logits_span, span_masks_mod, rel_masks)
             rel_scores = torch.sigmoid(logits_rel.max(dim=-1).values)  # (B, R)    #best multilabel score
-            hanging_penalty = rel_scores[hanging_masks].sum()
-            prune_loss = prune_loss + self.config.hanging_rel_alpha * hanging_penalty
+            hanging_rel_penalty = rel_scores[hanging_masks].sum()
 
-            #set the masks back to the orig masks
-            if self.config.overwrite_masks:
-                span_masks = span_masks_mod
-                rel_masks = rel_masks_mod
-            
+            prune_loss = prune_loss + self.config.hanging_rel_alpha * hanging_rel_penalty
+            prune_loss = prune_loss + self.config.redundant_span_alpha * redundant_span_penalty
+
+
+        #deal with pruning for the predict inference case
+        #best to do this externally  
+        if self.config.post_model_prune_inference and not run_type_is_train:
+            #remove redundant spans
+            empty_labels = torch.zeros_like(span_masks, dtype=torch.int)
+            span_masks, _ = self.prune_redundant_spans(span_ids, logits_span, empty_labels, span_masks, overlap_thd=self.config.overlap_thd)
+            #remove hanging rels
+            rel_masks, _ = self.prune_hanging_rels(rel_ids, logits_span, span_masks, rel_masks)
+        ########################################################################
+
+
         #final processing and return
         total_loss = None
         loss_breakdown = None
@@ -1168,53 +1097,12 @@ class Model(nn.Module):
                                                                   rel_labels, 
                                                                   rel_masks)
 
-            #cosine loss override
-            #we override the filter_loss_span with a cosine loss
-
-            if cosine_flag:
-                pass
-                #raise Exception('xxxxxxxxxxxxxx')
-                #use the label_span_reps/masks/labels created earlier
-                #'''
-                cosine_loss_final_span = cosine_similarity_loss(
-                    pred_reps   = node_reps, 
-                    gold_reps   = label_span_reps,
-                    neg_limit   = -self.config.num_limit,
-                    pred_labels = span_labels,
-                    gold_labels = label_span_labels,
-                    pred_masks  = span_masks,
-                    gold_masks  = label_span_masks)
-                pred_loss_span = pred_loss_span * self.config.cosine_beta + cosine_loss_final_span * self.config.cosine_alpha
-
-                #use the label_rel_reps/masks/labels created earlier
-                cosine_loss_final_rel = cosine_similarity_loss(
-                    pred_reps   = edge_reps, 
-                    gold_reps   = label_rel_reps,
-                    neg_limit   = -self.config.num_limit,
-                    pred_labels = rel_labels,
-                    gold_labels = label_rel_labels,
-                    pred_masks  = rel_masks,
-                    gold_masks  = label_rel_masks)
-                pred_loss_rel = pred_loss_rel * self.config.cosine_beta + cosine_loss_final_rel * self.config.cosine_alpha
-                #'''
-
             #get the lost rel_loss (only will have values if we are using non teacher forcing for spans, i.e. temp and past the warmup)
             lost_rel_loss = lost_rel_penalty * self.config.lost_rel_alpha
             #self.config.logger.write(f'lost rel count: {lost_rel_counts.sum().item()}')
 
-
-            #temp, to disable some of the losses
-            #tagger_loss       = torch.tensor(0.0, device=self.device, requires_grad=False)
-            #filter_loss_span  = torch.tensor(0.0, device=self.device, requires_grad=False)
-            #filter_loss_rel   = torch.tensor(0.0, device=self.device, requires_grad=False)
-            #filter_loss_graph = torch.tensor(0.0, device=self.device, requires_grad=False)
-            #lost_rel_loss     = torch.tensor(0.0, device=self.device, requires_grad=False)
-            #pred_loss_span    = torch.tensor(0.0, device=self.device, requires_grad=False)
-            #pred_loss_rel    = torch.tensor(0.0, device=self.device, requires_grad=False)
-
             #get the total loss
             total_loss = sum([tagger_loss, filter_loss_span, filter_loss_rel, lost_rel_loss, filter_loss_graph, prune_loss, self.config.span_loss_mf*pred_loss_span, self.config.rel_loss_mf*pred_loss_rel])
-            #'''
             loss_breakdown = dict(step              = step,
                                   tagger_loss       = tagger_loss.detach().cpu().item(),
                                   filter_loss_span  = filter_loss_span.detach().cpu().item(),
@@ -1224,25 +1112,6 @@ class Model(nn.Module):
                                   prune_loss        = prune_loss.detach().cpu().item(), 
                                   pred_loss_span    = pred_loss_span.detach().cpu().item(),
                                   pred_loss_rel     = pred_loss_rel.detach().cpu().item())
-            #'''
-
-        '''
-        print(
-            f"tl: {tagger_loss:.4f}, "
-            f"fls: {filter_loss_span:.4f}, "
-            f"flr: {filter_loss_rel:.4f}, "
-            f"lrl: {lost_rel_loss:.4f}, "
-            f"pl: {prune_loss:.4f}, "
-            f"{(f'flg: {filter_loss_graph:.4f}' if self.config.use_graph else '-')}, "
-            f"cls: {pred_loss_span:.4f}, "
-            f"clr: {pred_loss_rel:.4f}"
-        )
-        '''
-
-        debug_msg = ''
-        #debug_msg += f", tl: {tagger_loss:.4f}, fls: {filter_loss_span:.4f}, flr: {filter_loss_rel:.4f}, lrl: {lost_rel_loss:.4f}, pl: {prune_loss:.4f}, {(f'flg: {filter_loss_graph:.4f}' if self.config.use_graph else '-')}, cls: {pred_loss_span:.4f}, clr: {pred_loss_rel:.4f}"
-        if debug_msg != '':
-            print(debug_msg)
 
         output = dict(
             loss                 = total_loss,

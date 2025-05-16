@@ -70,9 +70,9 @@ if __name__ == "__main__":
     ]
 
     #main_path = 'D:\\A.Nathan\\1a.UWA24-Hons\\Honours Project\\0a.Code\\0a.Nathan Model\\0a.final analysis\\detailed train logs'
-    #main_path = 'D:\\A.Nathan\\1a.UWA24-Hons\\Honours Project\\0a.Code\\0a.Nathan Model\\logs'
-    main_path = 'D:\\A.Nathan\\1a.UWA24-Hons\\Honours Project\\0a.Code\\0a.Nathan Model\\0a.final analysis\\logs'
-    filename = 'log_best_final_long_20250503_082421.log'
+    main_path = 'D:\\A.Nathan\\1a.UWA24-Hons\\Honours Project\\0a.Code\\0a.Nathan Model\\logs'
+    #main_path = 'D:\\A.Nathan\\1a.UWA24-Hons\\Honours Project\\0a.Code\\0a.Nathan Model\\0a.final analysis\\logs'
+    filename = 'log_test_20250511_164338.log'
     
     df = parse_log(main_path + '\\' + filename)
     
@@ -106,3 +106,5 @@ if __name__ == "__main__":
     plt.xticks(rotation=45)
     plt.tight_layout()
     plt.show()
+
+

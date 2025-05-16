@@ -56,13 +56,14 @@ def extract_metrics_from_log(log_path):
         lines = f.readlines()
 
     for i, line in enumerate(lines):
-        if 'Eval_type: final_val' in line:
+        #if 'Eval_type: final_val' in line:
+        if 'Eval_type: final_test' in line:
             # Ensure there are enough lines after the current line
             if i + 10 < len(lines):
                 eval_block = lines[i+2:i+10]
                 break
     else:
-        return None  # Skip if no evaluation block found
+        return None  # Skip if no test evaluation block found
 
     pattern = re.compile(r'(\w+):\s+S:\s+\d+\s+P:\s+([\d.]+)%\s+R:\s+([\d.]+)%\s+F1:\s+([\d.]+)%')
 
@@ -80,6 +81,7 @@ def extract_metrics_from_log(log_path):
 
 
 def collect_raw_log_metrics(root_dir):
+    filename = 'log_metrics_raw.csv'
     data = []
     root_path = Path(root_dir)
     for log_file in root_path.rglob('*_train.log'):
@@ -96,17 +98,18 @@ def collect_raw_log_metrics(root_dir):
             data.append(metrics)
 
     df = pd.DataFrame(data)
-    df.to_csv(Path(root_dir) / 'log_metrics_raw.csv', index=False)
-    print(f"✅ Raw metrics saved to: {Path(root_dir) / 'log_metrics_raw.csv'}")
+    df.to_csv(Path(root_dir) / filename, index=False)
+    print(f"✅ Raw metrics saved to: {Path(root_dir) / filename}")
     return df
 
 
 def aggregate_log_metrics(df, root_dir):
+    filename = 'log_metrics_aggregated.csv'
     numeric_cols = [col for col in df.columns if col not in ['base_name', 'seed']]
     agg_df = df.groupby('base_name')[numeric_cols].agg(['mean', 'std']).reset_index()
     agg_df.columns = ['_'.join(col).strip('_') for col in agg_df.columns.values]
-    agg_df.to_csv(Path(root_dir) / 'log_metrics_aggregated.csv', index=False)
-    print(f"✅ Aggregated metrics saved to: {Path(root_dir) / 'log_metrics_aggregated.csv'}")
+    agg_df.to_csv(Path(root_dir) / filename, index=False)
+    print(f"✅ Aggregated metrics saved to: {Path(root_dir) / filename}")
     return agg_df
 
 

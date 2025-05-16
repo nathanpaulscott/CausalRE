@@ -11,16 +11,18 @@ from scipy.stats import pearsonr, spearmanr
 
 
 
-#main_path = 'D:\\A.Nathan\\1a.UWA24-Hons\\Honours Project\\0a.Code\\0a.Nathan Model\\logs'
-main_path = 'D:\\A.Nathan\\1a.UWA24-Hons\\Honours Project\\0a.Code\\0a.Nathan Model\\0a.final analysis\\logs'
-infile = 'log_best_final_long_20250503_082421.log'
-
-
+#main_path = 'D:\\A.Nathan\\1a.UWA24-Hons\\Honours Project\\0a.Code\\0a.Nathan Model\\0a.final analysis\\logs'
+#infile = 'log_best_final_long_20250503_082421.log'
+main_path = 'D:\\A.Nathan\\1a.UWA24-Hons\\Honours Project\\0a.Code\\0a.Nathan Model\\logs'
+infile = 'log_conll04-80-10-10_20250516_015502.log'
+infile = 'log_conll04-80-10-10_20250516_025031.log'
 
 def read_text_file(file_path):
     """Reads a text file and returns its content as a string, handling encoding issues."""
     with open(file_path, 'r', encoding='utf-8', errors='replace') as f:
         return f.read()
+
+
 
 
 def parse_log_file(filepath):
@@ -30,12 +32,16 @@ def parse_log_file(filepath):
         'eval_loss': [],
         'span_f1': [],
         'rel_f1': [],
+        'span_p': [],
+        'span_r': [],
+        'rel_p': [],
+        'rel_r': [],
         'rel_mod_f1': [],
         'span_l_f1': [],
         'rel_l_f1': [],
         'rel_mod_l_f1': [],
         'test_loss': {},  # step → loss, optional
-        'save_score': [],  #optional
+        'save_score': [],  # optional
     }
 
     with open(filepath, 'r', encoding='utf-8', errors='replace') as file:
@@ -48,35 +54,44 @@ def parse_log_file(filepath):
                 data['test_loss'][step] = test_loss
                 continue
 
-            # Normal eval/training metrics
             if "train loss mean" in line:
                 try:
                     step_match = re.search(r'step: (\d+)', line)
                     train_loss_match = re.search(r'train loss mean: (\d+\.\d+)', line)
                     eval_loss_match = re.search(r'eval loss mean: (\d+\.\d+)', line)
-                    span_f1_match = re.search(r'Span: \(S: \d+, P: \d+\.\d+%, R: \d+\.\d+%, F1: (\d+\.\d+)%\)', line)
-                    rel_f1_match = re.search(r'Rel: \(S: \d+, P: \d+\.\d+%, R: \d+\.\d+%, F1: (\d+\.\d+)%\)', line)
-                    rel_mod_f1_match = re.search(r'Rel_mod: \(S: \d+, P: \d+\.\d+%, R: \d+\.\d+%, F1: (\d+\.\d+)%\)', line)
-                    span_l_f1_match = re.search(r'Span_l: \(S: \d+, P: \d+\.\d+%, R: \d+\.\d+%, F1: (\d+\.\d+)%\)', line)
-                    rel_l_f1_match = re.search(r'Rel_l: \(S: \d+, P: \d+\.\d+%, R: \d+\.\d+%, F1: (\d+\.\d+)%\)', line)
-                    rel_mod_l_f1_match = re.search(r'Rel_mod_l: \(S: \d+, P: \d+\.\d+%, R: \d+\.\d+%, F1: (\d+\.\d+)%\)', line)
-                    
-                    if all([step_match, train_loss_match, eval_loss_match,
-                            span_f1_match, rel_f1_match, rel_mod_f1_match,
-                            span_l_f1_match, rel_l_f1_match, rel_mod_l_f1_match]):
+
+                    span_match = re.search(r'Span: \(S: \d+, P: ([\d\.]+)%, R: ([\d\.]+)%, F1: ([\d\.]+)%\)', line)
+                    rel_match = re.search(r'Rel: \(S: \d+, P: ([\d\.]+)%, R: ([\d\.]+)%, F1: ([\d\.]+)%\)', line)
+
+                    rel_mod_f1_match = re.search(r'Rel_mod: .*?F1: ([\d\.]+)%\)', line)
+                    span_l_f1_match = re.search(r'Span_l: .*?F1: ([\d\.]+)%\)', line)
+                    rel_l_f1_match = re.search(r'Rel_l: .*?F1: ([\d\.]+)%\)', line)
+                    rel_mod_l_f1_match = re.search(r'Rel_mod_l: .*?F1: ([\d\.]+)%\)', line)
+
+                    if all([step_match, train_loss_match, eval_loss_match, span_match, rel_match]):
                         data['step'].append(int(step_match.group(1)))
                         data['train_loss'].append(float(train_loss_match.group(1)))
                         data['eval_loss'].append(float(eval_loss_match.group(1)))
-                        data['span_f1'].append(float(span_f1_match.group(1)))
-                        data['rel_f1'].append(float(rel_f1_match.group(1)))
-                        data['rel_mod_f1'].append(float(rel_mod_f1_match.group(1)))
-                        data['span_l_f1'].append(float(span_l_f1_match.group(1)))
-                        data['rel_l_f1'].append(float(rel_l_f1_match.group(1)))
-                        data['rel_mod_l_f1'].append(float(rel_mod_l_f1_match.group(1)))
-    
+
+                        # Span
+                        data['span_p'].append(float(span_match.group(1)))
+                        data['span_r'].append(float(span_match.group(2)))
+                        data['span_f1'].append(float(span_match.group(3)))
+
+                        # Rel
+                        data['rel_p'].append(float(rel_match.group(1)))
+                        data['rel_r'].append(float(rel_match.group(2)))
+                        data['rel_f1'].append(float(rel_match.group(3)))
+
+                        # Optional extras
+                        data['rel_mod_f1'].append(float(rel_mod_f1_match.group(1)) if rel_mod_f1_match else 0.0)
+                        data['span_l_f1'].append(float(span_l_f1_match.group(1)) if span_l_f1_match else 0.0)
+                        data['rel_l_f1'].append(float(rel_l_f1_match.group(1)) if rel_l_f1_match else 0.0)
+                        data['rel_mod_l_f1'].append(float(rel_mod_l_f1_match.group(1)) if rel_mod_l_f1_match else 0.0)
+
                         save_score_match = re.search(r'save_score: ([\d\.]+)', line)
                         data['save_score'].append(float(save_score_match.group(1)) if save_score_match else None)
-    
+
                 except Exception as e:
                     print("Error processing line: ", line)
                     print(e)
@@ -86,6 +101,7 @@ def parse_log_file(filepath):
 
 
 def plot_metrics(data):
+    save_score_mult_factor = 10
     eval_loss_div_factor = 1
     plot_loose_matching = True
     plot_rel_mod = False
@@ -116,10 +132,11 @@ def plot_metrics(data):
         ax1.plot(test_x_smooth, test_y_smooth, label='Test Loss', color='cyan', linestyle='--', linewidth=2, alpha=0.4)
 
     if data.get('save_score') and any(s is not None for s in data['save_score']):
-        valid_save_scores = [(s, sc) for s, sc in zip(data['step'], data['save_score']) if sc is not None]
+        valid_save_scores = [(s, sc*save_score_mult_factor) for s, sc in zip(data['step'], data['save_score']) if sc is not None]
         save_steps, save_scores = zip(*valid_save_scores)
         save_x_smooth, save_y_smooth = smooth_line(save_steps, save_scores)
-        ax1.plot(save_x_smooth, 10*save_y_smooth, label='Save Score', color='cyan', linestyle='--', linewidth=2, alpha=0.5)
+        #ax1.plot(save_x_smooth, save_y_smooth, label='Save Score', color='cyan', linestyle='--', linewidth=2, alpha=0.5)
+        ax1.plot(save_steps, save_scores, label='Save Score', color='cyan', linestyle='-', linewidth=2, alpha=0.3)
 
     ax1.tick_params(axis='y', labelcolor='black')
     ax1.legend(loc='upper left')
@@ -209,12 +226,53 @@ def plot_scatter(data):
 
 
 
+def recalc_save_score(data, balance_factor):
+    """
+    Recalculates the save_score using a custom formula:
+    save_score = span_f1 * min(span_p, span_r) / (max(span_p, span_r) ** x) +
+                 rel_f1 * min(rel_p, rel_r) / (max(rel_p, rel_r) ** x)
+    
+    Where `x` is the `balance_factor` controlling the penalty for imbalance.
+
+    Modifies data['save_score'] in place.
+    """
+    new_scores = []
+
+    for i in range(len(data['step'])):
+        # Span component
+        sp_f1 = data['span_f1'][i]
+        sp_p = data['span_p'][i]
+        sp_r = data['span_r'][i]
+        sp_min = min(sp_p, sp_r)
+        sp_max = max(sp_p, sp_r)
+        span_score = sp_f1 * (sp_min / sp_max) ** balance_factor if sp_max > 0 else 0.0
+
+        # Rel component
+        rl_f1 = data['rel_f1'][i]
+        rl_p = data['rel_p'][i]
+        rl_r = data['rel_r'][i]
+        rl_min = min(rl_p, rl_r)
+        rl_max = max(rl_p, rl_r)
+        rel_score = rl_f1 * (rl_min / rl_max) ** balance_factor if rl_max > 0 else 0.0
+
+        score = (span_score + rel_score)/2/200
+        
+        new_scores.append(score)
+
+    data['save_score'] = new_scores
+    
+    return data
+
+
+
 
 def main():
     # Path to the JSON file to read
     input_path = main_path + '\\' + infile
 
     data = parse_log_file(input_path)
+
+    #data = recalc_save_score(data , balance_factor=2)
 
     #plot_scatter(data)
     

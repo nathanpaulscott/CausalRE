@@ -25,7 +25,7 @@ class Orchestrator():
 
 
 
-    def make_new_config(self, experiment, seed=None, first_seed=True, train=False):
+    def make_new_config(self, experiment, seed=None, train=False):
         #load the base config dict
         config_dict = start.load_config(self.base_config_path)
         #get the experiment unique name
@@ -51,7 +51,7 @@ class Orchestrator():
             config_dict['run_type']   = 'train'
             config_dict['log_name']   = f"log_{experiment_name_w_seed}_train"    
             config_dict['model_load'] = False
-            config_dict['model_save'] = True,   #True if first_seed else False
+            config_dict['model_save'] = True,   
             config_file = f'config_{experiment_name}_train.yaml'
             config_path = join_paths(experiment['folder'], config_file)
         else:
@@ -70,13 +70,13 @@ class Orchestrator():
 
 
 
-    def do_training(self, experiment, seed, first_seed):
+    def do_training(self, experiment, seed):
         '''
         train the model given the specific config file
         '''
         print("\n####################################################")
         print(f"Starting training on model: {experiment['name']}, seed: {seed}")
-        config_path = self.make_new_config(experiment, seed=seed, first_seed=first_seed, train=True)
+        config_path = self.make_new_config(experiment, seed=seed, train=True)
         ###################################################
         #run the training with return_data=True to get the log_file_path
         start.run_model(config_path)
@@ -130,10 +130,8 @@ class Orchestrator():
                 ###################################################
                 #reset the particular experiment folder
                 ensure_clean_directory(experiment['folder'])
-                first_seed = True
                 for seed in train_seeds:
-                    self.do_training(experiment, seed, first_seed)
-                    first_seed=False
+                    self.do_training(experiment, seed)
                 ###################################################
 
             if self.predict:
@@ -153,27 +151,27 @@ if __name__ == "__main__":
     base_config_path = "config.yaml"
     experiments_folder = 'experiments'
     train_flag = True
-    predict_flag = True
+    predict_flag = False
 
-    #experiments_file = 'experiments-rel pooling.json'
-    #experiments_file = 'experiments-rel pooling-spanattn-relcrossattn.json'
-    #experiments_file = 'experiments-teacher forcing.json'
-    #experiments_file = 'experiments-graph-lstm_temp.json'
-    #experiments_file = 'experiments-separate-bert.json'
-    #experiments_file = 'experiments-baseline.json'
-    #experiments_file = 'experiments-marking.json'  #doesn't work
-    #experiments_file = 'experiments-topk.json'
-    #experiments_file = 'experiments-rel context.json'
-    #experiments_file = 'experiments-backbones.json'
-    #experiments_file = 'experiments-spanbert-rel calc.json'
-    #experiments_file = 'experiments-spanbert_rel_calc_temp_tf.json'
-    #experiments_file = 'experiments-spanbert_orig_config.json'
-    #experiments_file = 'experiments-spanbert-semeval-conll04.json'
-    #experiments_file = 'experiments-bert-conll04.json'
-    experiments_file = 'experiments-best.json'
-
+    #Done
+    #--------------------------
+    experiments_file = 'experiments-baseline.json'                 #done, done
+    #experiments_file = 'experiments-rel contex more heads.json'    #done, done
+    #experiments_file = 'experiments-penalties extra.json'          #done, done
+    #experiments_file = 'experiments-baseline_span_width_50.json'   #done, done
+    #experiments_file = 'experiments-rel context test.json'         #done, done
+    #experiments_file = 'experiments-graph test.json'               #done, done
+    #experiments_file = 'experiments-penalties test.json'           #done, done
+    #experiments_file = 'experiments-vbig graph test.json'          #done, done
+    #experiments_file = 'experiments-vvbig graph test.json'         #done, done
     
-    orchestrator = Orchestrator(experiments_folder, experiments_file, base_config_path, train=True, predict=True)
+    #in process
+    #----------------------------
+    #special run, needs to be on A100
+    #experiments_file = 'experiments-tagger-vs_brute_force.json'    #done, running
+
+
+    orchestrator = Orchestrator(experiments_folder, experiments_file, base_config_path, train=train_flag, predict=predict_flag)
 
     #kick off the experiments
     orchestrator.start_experiments()

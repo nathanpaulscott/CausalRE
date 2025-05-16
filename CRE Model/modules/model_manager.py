@@ -17,7 +17,6 @@ import copy, shutil
 from .utils import load_from_json, save_to_json, join_paths
 from .model import Model
 #from .model_spert import Model as model_spert
-#from .model_span_marker import Model as model_span_marker
 
 
 
@@ -109,7 +108,6 @@ class ModelManager:
                             'opt_weight_decay',
                             'lr_encoder_span',
                             'lr_encoder_rel',
-                            'lr_encoder_marker',
                             'lr_others',
                             'warmup_ratio',
                             'scheduler_type',
@@ -119,7 +117,7 @@ class ModelManager:
                             'collect_grads',
                             'span_loss_mf',
                             'rel_loss_mf',
-                            'span_force_pos: always',
+                            'span_force_pos',
                             'force_pos_step_limit',
                             'rel_force_pos',
                             'span_neg_sampling_limit',
@@ -140,12 +138,13 @@ class ModelManager:
                             'r_to_id',
                             'id_to_r',
                             'all_span_ids',
-                            'has_labels'
+                            'has_labels',
                         ]
             #get teh safe param values, read from teh main_configs
             safe_update_dict = {k: v for k, v in self.main_configs.to_dict.items() if k in safe_params}
             #load the pre-trained model and read the non-safe params from it to update the current config namespace
-            model_path = join_paths(self.config.model_folder, self.config.model_file_name)
+            #model_path = join_paths(self.config.model_folder, self.config.model_file_name)
+            model_path = join_paths(self.config.model_full_folder, self.config.model_file_name)
             try:
                 if not os.path.exists(model_path):
                     return None
@@ -205,19 +204,15 @@ class Optimizer:
         """
         lr_encoder_span = float(config.lr_encoder_span)
         lr_encoder_rel = float(config.lr_encoder_rel)
-        lr_encoder_marker = float(config.lr_encoder_marker)
         lr_others = float(config.lr_others)
         param_groups = []
 
         encoder_params_span = list(model.transformer_encoder_span.parameters())
-        encoder_params_marker = list(model.transformer_encoder_marker.parameters())
         if not self.config.bert_shared_unmarked_span_rel:
             encoder_params_rel = list(model.transformer_encoder_rel.parameters())
         # Handle freezing and learning rate assignment separately for each encoder
         if config.freeze_encoder:
             for param in encoder_params_span:
-                param.requires_grad = False
-            for param in encoder_params_marker:
                 param.requires_grad = False
             if not self.config.bert_shared_unmarked_span_rel:
                 for param in encoder_params_rel:
@@ -227,9 +222,8 @@ class Optimizer:
         else:
             # Assign different learning rates if needed
             param_groups.append({"params": encoder_params_span, "lr": lr_encoder_span})
-            param_groups.append({"params": encoder_params_marker, "lr": lr_encoder_marker})
             # Track which parameters are processed
-            processed_params = set(encoder_params_span + encoder_params_marker)
+            processed_params = set(encoder_params_span)
             #deal with bert rel params if not shared
             if not self.config.bert_shared_unmarked_span_rel:
                 param_groups.append({"params": encoder_params_rel, "lr": lr_encoder_rel})
