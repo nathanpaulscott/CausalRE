@@ -17,14 +17,7 @@ collect_grads: False                    #true to collect and map gradients for d
 #Directory Paths
 #####################################################################
 model_folder: "models"                  #location of the models folder
-model_name: "conll04-80-10-10"                      #pretrained model name => Use "none" to not load a model
-#model_name: "semeval-BE-tths-nathan-max_temp_tf"                      #pretrained model name => Use "none" to not load a model
-#model_name: "bfhs-nathan-max_temp_tf" #"model"                      #pretrained model name => Use "none" to not load a model
-#model_name: "BE-tths-nathan-max_temp_tf" #"model"                      #pretrained model name => Use "none" to not load a model
-#model_name: "BE-tths-nathan-max_tf" #"model"                      #pretrained model name => Use "none" to not load a model
-#model_name: "BECO-tths-nathan-max_temp_tf" #"model"                      #pretrained model name => Use "none" to not load a model
-#model_name: "BE-tths-attn-max_temp_tf" #"model"                      #pretrained model name => Use "none" to not load a model
-#####model_name: "BE-tths-attn-selfattn_temp_tf"     #needs to run at batch of 1 and clear tensors 1   #"model"                      #pretrained model name => Use "none" to not load a model
+model_name: "test"                      #pretrained model name => Use "none" to not load a model
 model_save: True
 model_load: False
 #--------------------------------------------------------------------------------
@@ -37,8 +30,8 @@ print_log: True                         #print the log to screen as it is writte
 #data_path: "data/final/conll04_nathan.json"      #the dataset file
 #data_format: idx                         #id/idx.  'id' is when the spans and rels have a unique id and the head and tail of the rel reference the span id.  idx is the spert format where there is no id and the rel head/tail reference the span list idx
 #---------------------------------------
-data_path: "data/final/conll04_nathan_for_model_rs129.json"      #the dataset file
-data_format: idx                         #id/idx.  'id' is when the spans and rels have a unique id and the head and tail of the rel reference the span id.  idx is the spert format where there is no id and the rel head/tail reference the span list idx
+#data_path: "data/final/conll04_nathan_for_model_rs129.json"      #the dataset file
+#data_format: idx                         #id/idx.  'id' is when the spans and rels have a unique id and the head and tail of the rel reference the span id.  idx is the spert format where there is no id and the rel head/tail reference the span list idx
 #---------------------------------------
 #data_path: "data/unicausal/model_data_altlex.json"      #the dataset file  => span width max is 116, seq len 135
 #data_format: id                         #id/idx.  'id' is when the spans and rels have a unique id and the head and tail of the rel reference the span id.  idx is the spert format where there is no id and the rel head/tail reference the span list idx
@@ -71,17 +64,8 @@ data_format: idx                         #id/idx.  'id' is when the spans and re
 #data_format: idx                         
 #NOTE: this is the same custom dataset with pruned spans down to the kernel of the event/state, but I leave adjacent words in if they enhance the span meaning, so not pure triggers
 #---------------------------------------
-#data_path: "data/final/mixed_final_for_model_rs129.json" 
-#data_format: idx                         #id/idx.  'id' is when the spans and rels have a unique id and the head and tail of the rel reference the span id.  idx is the spert format where there is no id and the rel head/tail reference the span list idx
-#---------------------------------------
-#data_path: "data/final/mixed_final_for_model_tvt_rs129.json" 
-#data_format: idx                         #id/idx.  'id' is when the spans and rels have a unique id and the head and tail of the rel reference the span id.  idx is the spert format where there is no id and the rel head/tail reference the span list idx
-#---------------------------------------
-#data_path: "data/final/mixed_final_for_model_85-8-7_rs129.json" 
-#data_format: idx                         #id/idx.  'id' is when the spans and rels have a unique id and the head and tail of the rel reference the span id.  idx is the spert format where there is no id and the rel head/tail reference the span list idx
-#---------------------------------------
-#data_path: "data/final/mixed_final_for_model_80-10-10_rs129.json" 
-#data_format: idx                         #id/idx.  'id' is when the spans and rels have a unique id and the head and tail of the rel reference the span id.  idx is the spert format where there is no id and the rel head/tail reference the span list idx
+data_path: "data/final/mixed_final_for_model_80-10-10_rs129.json" 
+data_format: idx                         #id/idx.  'id' is when the spans and rels have a unique id and the head and tail of the rel reference the span id.  idx is the spert format where there is no id and the rel head/tail reference the span list idx
 
 
 
@@ -103,23 +87,19 @@ matching_make_binary: True              #treat labels and preds as binary, only 
 #Model Configuration
 #####################################################################
 #backbone_model_name: bert-base-uncased  #name of the flair or hf model, eg 'microsoft/deberta-v3-base' or 'bert-base-uncased'
-backbone_model_name: "/content/drive/Othercomputers/Laptop/0a.Nathan Model/backbone/bert-base-cased"     #use a predownloaded version as HF servers suck
-#backbone_model_name: "/content/drive/Othercomputers/Laptop/0a.Nathan Model/backbone/spanbert-base-cased"     #use a predownloaded version as HF servers suck
+#backbone_model_name: "/content/drive/Othercomputers/Laptop/0a.Nathan Model/backbone/bert-base-cased"     #use a predownloaded version as HF servers suck
+backbone_model_name: "/content/drive/Othercomputers/Laptop/0a.Nathan Model/backbone/spanbert-base-cased"     #use a predownloaded version as HF servers suck
 
 backbone_model_source: HF               #HF, only HF is now supported, flair wa snot so useful
 ###############
-use_prompt: False                       #whether to use prompting of the span and rel types to generate span_type_reps and rel_type_reps
-                                        #NOTE: 
-                                        #if False, we send the final span and rel reps through regular multiclass output classification heads to get the final logits for each candidate span and rel  (batch, top_k_spans/rels)
-                                        #if True, we send the final reps aslong with the span_type_Reps and rel_type_reps to an einsum operation to produce a similarity matrix for spans and rels as the output logits (batch, top_k_spans/rels, num_span/rel_types)
 subtoken_pooling: maxpool               #first/last/first_last/mean/maxpool/none (maxpool and none are HF only).  none will disable subtoken pooling, only supported by HF.  NOTE: first_last will double the hidden dim, but the projection layer will pull it back to normal
 shuffle_train: True                     #always be true, except for debugging
 freeze_encoder: False                   #whether to allow fine tuning of the transformer encoder params (eg. bert), true will freeze the encoder and not allow training 
 bert_shared_unmarked_span_rel: True     #whether to use a separate bert for spans and rels or share it
 hidden_size: 768                        #hidden size of the bert based encoder
 dropout: 0.1      #0.1                      #standard model dropout
-max_seq_len: 130  #200                  #word token limit, this will generally affect the model speed, so keep it as low as possible.  I have this in just a  a protection fro very long sequences coming in
-max_span_width: 12   #80                #max span width in word tokens (10-12 for NER, 40+ for long span event detection)
+max_seq_len: 200  #200                  #word token limit, this will generally affect the model speed, so keep it as low as possible.  I have this in just a  a protection fro very long sequences coming in
+max_span_width: 80   #80                #max span width in word tokens (10-12 for NER, 40+ for long span event detection)
 dump_missed_spans_on_import: True       #ture/false: true => dumps the annotated spans to the log file that could not be used due to the max_seq_len and max_span_width limits
 num_precision: full                     #full/half => the num precision to use for the model => full => 32bit, half=>16bit
 projection_layer_type: ffn   #ffn           #simple/ffn (ffn uses too much memory). for the span_rep and rel_rep generation output layers.  'simple' to just use a simple projection layer for the output or a 'ffn' for a more complex ffn layer.  Not implemented yet, just use 'ffn'
@@ -169,7 +149,7 @@ hanging_rel_alpha: 1    #1
 ###############
 #rel rep config
 ###############
-rel_mode: between_context       #no_context/between_context/window_context/between_window_context => add context reps in (no context, from tokens between spans, from tokens in windows before/after each span)  => only beteween works well
+rel_mode: between_window_context       #no_context/between_context/window_context/between_window_context => add context reps in (no context, from tokens between spans, from tokens in windows before/after each span)  => only beteween works well
 rel_no_context_rep: emb                #zero/emb => whether to replace the context reps in the case of no valid context tokens, to all zero (zero) or a learned no context embedding (emb)
 rel_context_pooling: crossattn         #max/selfattn/crossattn/crossattn_pure => how to pool the valid context tokens to get one context rep.  max => max pool them, selfattn just use a pooler token to pool the context tokens then concat with head and tail reps, crossattn(pure) => use attention pooling w.r.t the concatenated and reprojected head and tail spans as the query (for_pure: no head and tail concat after this)
 rel_window_size: 30   #15              #tokens or subtoken window size for the window algo
@@ -237,9 +217,4 @@ span_neg_sampling_limit: 100             #max number of neg samples per batch ob
 span_neg_sampling: False                 #True/False
 rel_neg_sampling_limit: 100              #max number of neg samples per batch obs
 rel_neg_sampling: False                  #True/False
-
-
-
-#Latest Late Apr2025:
-
 

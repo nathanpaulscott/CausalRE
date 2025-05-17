@@ -78,16 +78,6 @@ def run_model(config_path):
         model_colab_path = join_paths(model_colab_folder, model_file_name)
         model_full_folder = join_paths(app_path, config_dict['model_folder'])
 
-        #temp hack for debugging
-        #temp hack for debugging
-        #temp hack for debugging
-        #temp hack for debugging
-        model_full_folder = '/content/drive/MyDrive/temp'
-        #temp hack for debugging
-        #temp hack for debugging
-        #temp hack for debugging
-        #temp hack for debugging
-
         # Create config object and update settings
         main_configs = Config(config_dict)
         main_configs.update({
