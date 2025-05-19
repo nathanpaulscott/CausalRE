@@ -1,3 +1,26 @@
+//TO DO
+//19Jan2025
+//VIP => you need to convert the incoming format to require idx format, i.e. no 'id' key, the head and tail are the list idx of the spans in the span list (call this the idx format or the spert format)
+//Internally you should add unique ids to the spans and rels and move each of them to a dict of dicts (object of objetcs) where the key is the unique id and the head/tail value is the span id as opposed to the idx.
+//WHY: This format is easier to remove spans without affecting the head/tail values.  This is almost what you are doing internally at the moment.  So you really need just the import conversion code.  
+//I think currently internally you are still using a list of dicts and each dict has an id key, this is stupid
+//You also need to then make an export conversion to convert the internal format to the idx format on view or export
+//in summary you need to do 3 things:
+//1) make the import require the idx format and then convert it to the internal id format
+//2) change the current internal format from list of objects to object of objects with the id as key
+//3) add in a conversion function to convert the internal id format back to idx format on view or export data
+
+//For the time being I am converting my mistaken list of objects form in my model code back to idx FormData, but 
+
+
+
+
+
+
+
+
+
+
 ///////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////
