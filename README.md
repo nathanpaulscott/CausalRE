@@ -1,5 +1,5 @@
 # CausalRE
-An Honours research project for Casual Relation Extraction from Text
+An honours research project for Casual Relation Extraction from Text
 
 ## Summary
 This repo contains the research reports and code for an honours project on investigating causal triplet extraction from natural language text.  
